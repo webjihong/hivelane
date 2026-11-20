@@ -249,6 +249,11 @@ export class AgentRunner {
       const parent = m.parent_tool_use_id;
       const subType = parent ? c.agentTaskUse.get(parent) : undefined;
       const owner = (subType && c.subByType.get(subType)) || spec.agent.id;
+      if (!parent) {
+        // 지금 맥락 크기 = 메인 스레드 마지막 응답의 입력 토큰(캐시 포함). result.usage 는 턴 안 모든 호출의 합이라 쓰지 않는다.
+        const u = m.message.usage as { input_tokens?: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } | undefined;
+        if (u) c.result.contextTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      }
       for (const b of m.message.content) {
         if (b.type === 'text' && b.text.trim()) {
           store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: 'text', body: b.text });
@@ -313,9 +318,8 @@ export class AgentRunner {
       if (m.subtype === 'success') c.result.text = m.result;
       else c.result.error = m.subtype === 'error_max_budget_usd' ? '예산 상한에 도달했습니다' : `실행 오류: ${m.subtype}`;
       const u = m.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
-      const ctx = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
-      c.result.contextTokens = ctx;
-      store.addAgentUsage(spec.agent.id, { cost: c.result.costUsd, inTok: ctx, outTok: u.output_tokens ?? 0, context: ctx });
+      const billedIn = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      store.addAgentUsage(spec.agent.id, { cost: c.result.costUsd, inTok: billedIn, outTok: u.output_tokens ?? 0, context: c.result.contextTokens });
       if (c.teamId) store.addTeamCost(c.teamId, c.result.costUsd);
       store.addAgentEvent({ agent_id: spec.agent.id, team_id: c.teamId, kind: 'result', body: `${c.result.ok ? '턴 완료' : c.result.error ?? m.subtype} · $${c.result.costUsd.toFixed(3)} · ${m.num_turns}턴` });
     }

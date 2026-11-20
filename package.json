@@ -14,7 +14,12 @@
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "service:install": "tsx scripts/service.ts install --tailscale",
+    "service:uninstall": "tsx scripts/service.ts uninstall --tailscale",
+    "service:status": "tsx scripts/service.ts status",
+    "service:restart": "tsx scripts/service.ts restart",
+    "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.329",
