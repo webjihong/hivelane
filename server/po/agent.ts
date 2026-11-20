@@ -44,6 +44,8 @@ export class PoAgent {
   constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier }) {
     mkdirSync(deps.cfg.poDir, { recursive: true });
     bus.on('po_event', () => this.scheduleEvents());
+    // 서버가 꺼져 있던 동안 쌓인 사건도 처리
+    if (deps.store.pendingPoEvents().length) this.scheduleEvents();
   }
 
   /** 사용자 → PO */
