@@ -13,6 +13,10 @@ import { poPrompt } from '../agents/prompts.ts';
 import { TurnHandle } from '../agents/runner.ts';
 import type { Priority, TemplateRole } from '../../shared/types.ts';
 
+/** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
+const T: typeof tool = (n, d, s, h, x) => tool(n, d, s, h, { ...x, alwaysLoad: true });
+
+
 const log = logger('po');
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
 
@@ -205,23 +209,23 @@ const roleSchema = z.object({ key: z.string(), name: z.string(), model: z.enum([
 function poMcpServer(impl: PoTools) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK 가 도구 배열을 any 스키마로 받는다
   const tools: SdkMcpToolDefinition<any>[] = [
-    tool('list_projects', '등록된 프로젝트 목록', {}, async () => text(impl.listProjects())),
-    tool('list_templates', '팀 템플릿 목록(역할·모델·실행 방식)', {}, async () => text(impl.listTemplates())),
-    tool('list_teams', '팀 목록. state 로 거를 수 있다', { state: z.string().optional() }, async (a) => text(impl.listTeams(a.state))),
-    tool('get_task_status', '팀 하나의 상세(할 일·질문·요약·바뀐 파일). team_id 없으면 진행 중 전체', { team_id: z.string().optional() }, async (a) => text(impl.getTaskStatus(a.team_id))),
-    tool('find_changes', '파일 변경 기록 조회', { path_contains: z.string().optional(), since_hours: z.number().optional(), project: z.string().optional() }, async (a) => text(impl.findChanges(a.path_contains, a.since_hours, a.project))),
-    tool('get_timeline', '기간별 작업 요약', { from: z.string().optional().describe('ISO 시각'), to: z.string().optional(), project: z.string().optional() }, async (a) => text(impl.getTimeline(a.from, a.to, a.project))),
-    tool('search_records', '대화·요약·파일 기록 전문/의미 검색', { query: z.string(), project: z.string().optional() }, async (a) => text(await impl.searchRecords(a.query, a.project))),
-    tool('propose_team', '팀 구성을 제안한다(사용자가 승인해야 생성)', {
+    T('list_projects', '등록된 프로젝트 목록', {}, async () => text(impl.listProjects())),
+    T('list_templates', '팀 템플릿 목록(역할·모델·실행 방식)', {}, async () => text(impl.listTemplates())),
+    T('list_teams', '팀 목록. state 로 거를 수 있다', { state: z.string().optional() }, async (a) => text(impl.listTeams(a.state))),
+    T('get_task_status', '팀 하나의 상세(할 일·질문·요약·바뀐 파일). team_id 없으면 진행 중 전체', { team_id: z.string().optional() }, async (a) => text(impl.getTaskStatus(a.team_id))),
+    T('find_changes', '파일 변경 기록 조회', { path_contains: z.string().optional(), since_hours: z.number().optional(), project: z.string().optional() }, async (a) => text(impl.findChanges(a.path_contains, a.since_hours, a.project))),
+    T('get_timeline', '기간별 작업 요약', { from: z.string().optional().describe('ISO 시각'), to: z.string().optional(), project: z.string().optional() }, async (a) => text(impl.getTimeline(a.from, a.to, a.project))),
+    T('search_records', '대화·요약·파일 기록 전문/의미 검색', { query: z.string(), project: z.string().optional() }, async (a) => text(await impl.searchRecords(a.query, a.project))),
+    T('propose_team', '팀 구성을 제안한다(사용자가 승인해야 생성)', {
       project: z.string().nullable().describe('프로젝트 id 또는 이름'), title: z.string(), instruction: z.string().describe('사용자 원문'), brief: z.string().describe('PM에게 줄 구체적 지시'),
       template_id: z.string(), roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'), priority: z.enum(['urgent', 'normal', 'low']).default('normal'),
       budget_usd: z.number().optional(), note: z.string().optional().describe('사용자에게 보일 한두 문장'),
     }, async (a) => text(impl.proposeTeam({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
-    tool('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
-    tool('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
-    tool('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),
-    tool('resume_team', '멈춘 팀을 재개', { team_id: z.string() }, async (a) => text(await impl.resumeTeam(a.team_id))),
-    tool('pin_team', '「멈추지 않음」 설정/해제', { team_id: z.string(), on: z.boolean() }, async (a) => text(impl.pinTeam(a.team_id, a.on))),
+    T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
+    T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
+    T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),
+    T('resume_team', '멈춘 팀을 재개', { team_id: z.string() }, async (a) => text(await impl.resumeTeam(a.team_id))),
+    T('pin_team', '「멈추지 않음」 설정/해제', { team_id: z.string(), on: z.boolean() }, async (a) => text(impl.pinTeam(a.team_id, a.on))),
   ];
   return createSdkMcpServer({ name: 'hivelane', version: '0.1.0', tools });
 }

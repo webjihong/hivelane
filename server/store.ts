@@ -28,7 +28,10 @@ export interface TaskRow {
 interface ProjectRow { id: string; name: string; path: string; base_ref: string; deps_strategy: string; heavy_patterns: string; blocked_patterns: string; memory_paths: string; default_template_id: string | null }
 interface ProposalRow { id: string; project_id: string | null; title: string; instruction: string; brief: string; template_id: string | null; roles: string; priority: Priority; budget_usd: number | null; note: string; status: 'pending' | 'approved' | 'rejected'; task_id: string | null; created_at: string; decided_at: string | null }
 
-export const DEFAULT_HEAVY = ['\\bjest\\b', '\\bvitest\\b', '\\btsc\\b', 'next build', 'npm run (build|test|typecheck|lint)', 'npx (jest|vitest|tsc)', 'nest build', 'docusaurus build'];
+export const DEFAULT_HEAVY = [
+  '\\bjest\\b', '\\bvitest\\b', '\\btsc\\b', 'next build', 'nest build', 'docusaurus build', 'node --test', 'playwright test',
+  '\\b(npm|pnpm|yarn|bun)\\s+(run\\s+)?(build|test|typecheck|lint|e2e)\\b', '\\bnpm\\s+t\\b', '\\bnpx\\s+(jest|vitest|tsc|playwright)\\b',
+];
 export const DEFAULT_BLOCKED = [
   '\\bgit\\s+(commit|push|reset\\s+--hard|rebase|merge|cherry-pick|tag)\\b',
   '\\bgit\\s+checkout\\s+(-f|--force)',

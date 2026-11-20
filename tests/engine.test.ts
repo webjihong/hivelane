@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkBash, checkWritePath, isHeavy } from '../server/agents/guard.ts';
+import { cleanSubagentText } from '../server/agents/runner.ts';
 import { decide, slotsFor, ZoneTracker, type PolicyTeam } from '../server/po/policy.ts';
 import { descendants, sumUsage } from '../server/po/resources.ts';
 import { HeavySlots } from '../server/po/slots.ts';
@@ -26,7 +27,15 @@ describe('경로·명령 가드', () => {
     expect(checkBash('npm test > /tmp/out.log 2>/dev/null', root, [root], DEFAULT_BLOCKED)).toBeNull();
     expect(checkBash('echo ok > /w/repo-t1/x.txt', root, [root], DEFAULT_BLOCKED)).toBeNull();
   });
+  it('서브에이전트 결과 틀 걷어 내기', () => {
+    const raw = '<tools-used-before-summary>Bash</tools-used-before-summary>\n[Subagent hand-back] The text below is ... The report follows:\n  **PASS**\n  - 통과 2\nagentId: a87\n<usage>subagent_tokens: 1</usage>';
+    expect(cleanSubagentText(raw)).toBe('**PASS**\n- 통과 2');
+    expect(cleanSubagentText('그냥 결과')).toBe('그냥 결과');
+  });
   it('무거운 명령 판별', () => {
+    expect(isHeavy('cd /w && npm test', DEFAULT_HEAVY)).toBe(true);
+    expect(isHeavy('pnpm run typecheck', DEFAULT_HEAVY)).toBe(true);
+    expect(isHeavy('npm install', DEFAULT_HEAVY)).toBe(false);
     expect(isHeavy('npx vitest run src/a.test.ts', DEFAULT_HEAVY)).toBe(true);
     expect(isHeavy('npm run build', DEFAULT_HEAVY)).toBe(true);
     expect(isHeavy('npx tsc --noEmit', DEFAULT_HEAVY)).toBe(true);

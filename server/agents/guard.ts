@@ -1,11 +1,27 @@
+import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, normalize, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { matchesAny } from '../util.ts';
 
 export const WRITE_TOOLS: Record<string, string> = { Write: 'file_path', Edit: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' };
 
+/** 심볼릭 링크를 푼 실제 경로. 아직 없는 파일은 있는 조상까지 풀고 나머지를 붙인다(/var ↔ /private/var). */
+export function real(p: string): string {
+  let cur = normalize(p);
+  const rest: string[] = [];
+  for (let i = 0; i < 64; i++) {
+    try { return rest.length ? join(realpathSync(cur), ...rest.reverse()) : realpathSync(cur); } catch {
+      const parent = dirname(cur);
+      if (parent === cur) return normalize(p);
+      rest.push(basename(cur));
+      cur = parent;
+    }
+  }
+  return normalize(p);
+}
+
 function within(root: string, p: string): boolean {
-  const rel = relative(normalize(root), normalize(p));
+  const rel = relative(real(root), real(p));
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 

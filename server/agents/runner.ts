@@ -101,6 +101,12 @@ export class AgentRunner {
       const t = (input as { agent_type?: string }).agent_type;
       return (t && subByType.get(t)) || spec.agent.id;
     };
+    // 역할별로 쓸 수 있는 도구(세션 권한은 합집합으로 주고, 여기서 역할마다 좁힌다)
+    const toolsOf = (input: HookInput): string[] => {
+      const t = (input as { agent_type?: string }).agent_type;
+      const sub = t ? spec.subagents?.[t] : undefined;
+      return sub ? sub.tools ?? [] : spec.allowedTools;
+    };
 
     const preTool = async (input: HookInput, toolUseId: string | undefined, { signal }: { signal: AbortSignal }): Promise<HookJSONOutput> => {
       if (input.hook_event_name !== 'PreToolUse') return {};
@@ -113,6 +119,17 @@ export class AgentRunner {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } };
       };
       if (handle.pauseRequested) return deny('팀이 일시정지되었습니다. 지금 하던 일을 멈추고 기다려라.');
+      const mine = toolsOf(input);
+      if (!tool.startsWith('mcp__') && tool !== 'ToolSearch' && !mine.includes(tool)) {
+        return deny(`이 역할은 ${tool} 도구를 쓸 수 없습니다(쓸 수 있는 도구: ${mine.join(', ')}). ${tool in WRITE_TOOLS || tool === 'Bash' ? '구현·실행은 팀원에게 맡겨라.' : ''}`);
+      }
+      if (tool === 'Agent' || tool === 'Task') {
+        // 서브에이전트는 끝날 때까지 기다리게 한다(백그라운드·격리 실행 금지)
+        const inp: Record<string, unknown> = { ...(input.tool_input as Record<string, unknown>), run_in_background: false };
+        delete inp.isolation; delete inp.team_name; delete inp.mode;
+        store.updateAgent(owner, { state: 'busy', current_step: describeTool(tool, inp) });
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: inp } };
+      }
       if (tool in WRITE_TOOLS) {
         const r = checkWritePath(tool, input.tool_input, input.cwd || spec.cwd, writable);
         if (r) return deny(r);
@@ -159,10 +176,14 @@ export class AgentRunner {
     };
 
     const agents: Record<string, AgentDefinition> = {};
+    const union = new Set(spec.allowedTools);
     for (const [k, d] of Object.entries(spec.subagents ?? {})) {
       const { roleAgentId: _a, roleName: _b, ...def } = d;
-      agents[k] = def;
+      agents[k] = { ...def, background: false };
+      for (const t of def.tools ?? []) union.add(t);
     }
+    if (Object.keys(agents).length) union.add('Agent');
+    union.add('ToolSearch');
 
     const options: Options = {
       cwd: spec.cwd,
@@ -170,7 +191,8 @@ export class AgentRunner {
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.systemAppend },
       settingSources: spec.settingSources ?? ['project', 'local'],
       permissionMode: 'dontAsk',
-      allowedTools: spec.allowedTools,
+      allowedTools: [...union],
+      tools: [...union].filter((t) => !t.startsWith('mcp__')),
       additionalDirectories: spec.additionalDirectories,
       mcpServers: spec.mcpServers,
       agents: Object.keys(agents).length ? agents : undefined,
@@ -270,7 +292,8 @@ export class AgentRunner {
         if (typeof b !== 'object' || b === null || (b as { type?: string }).type !== 'tool_result') continue;
         const tr = b as { tool_use_id: string; content?: unknown; is_error?: boolean };
         const sub = c.agentTaskUse.get(tr.tool_use_id);
-        const text = toolResultText(tr.content);
+        const raw = toolResultText(tr.content);
+        const text = sub ? cleanSubagentText(raw) : raw;
         const owner = c.toolOwner.get(tr.tool_use_id) ?? spec.agent.id;
         store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: tr.is_error ? 'tool_error' : 'tool_result', body: truncate(text, 4000) });
         if (sub) {
@@ -297,6 +320,20 @@ export class AgentRunner {
       store.addAgentEvent({ agent_id: spec.agent.id, team_id: c.teamId, kind: 'result', body: `${c.result.ok ? '턴 완료' : c.result.error ?? m.subtype} · $${c.result.costUsd.toFixed(3)} · ${m.num_turns}턴` });
     }
   }
+}
+
+/** 서브에이전트 결과에 SDK 가 붙이는 틀(머리말·도구 목록·사용량)을 걷어 내고 보고 본문만 남긴다. */
+export function cleanSubagentText(t: string): string {
+  let s = t.replace(/<tools-used-before-summary>[\s\S]*?<\/tools-used-before-summary>/g, '');
+  const head = s.indexOf('[Subagent hand-back]');
+  if (head >= 0) {
+    const follows = s.indexOf('The report follows:', head);
+    s = follows >= 0 ? s.slice(follows + 'The report follows:'.length) : s.slice(head);
+  }
+  s = s.replace(/\n?agentId:\s*\S+\s*/g, '\n').replace(/<usage>[\s\S]*?<\/usage>/g, '');
+  const lines = s.split('\n');
+  const indented = lines.filter((l) => l.trim()).every((l) => l.startsWith('  '));
+  return (indented ? lines.map((l) => l.slice(2)) : lines).join('\n').trim();
 }
 
 function toolResultText(content: unknown): string {
