@@ -292,10 +292,13 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     }
     const wt = team.worktree_path ?? cfg.home;
     const l = this.L(team.id);
+    // 프로젝트 없는 직속 팀은 등록된 프로젝트를 모두 읽을 수 있다(쓰기는 자기 폴더만)
+    const readAll = team.lifetime === 'standing' && !project ? store.listProjects() : [];
+    const readNote = readAll.length ? `\n\n## 읽을 수 있는 프로젝트(읽기 전용)\n${readAll.map((p) => `- ${p.name}: ${p.path}`).join('\n')}` : '';
     return {
-      agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt,
+      agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote,
       allowedTools: [...presetTools('pm'), ...teamToolNames(sessionRoles.length > 0, readable)],
-      additionalDirectories: project?.memory_paths ?? [],
+      additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path)],
       writableRoots: [wt],
       heavyPatterns: project?.heavy_patterns ?? [],
       blockedPatterns: project?.blocked_patterns ?? [],

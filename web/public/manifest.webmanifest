@@ -1,0 +1,16 @@
+{
+  "name": "Hivelane 관제실",
+  "short_name": "Hivelane",
+  "description": "로컬 맥에서 AI 개발팀을 지휘하는 관제실",
+  "lang": "ko",
+  "start_url": "/#home",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1F4F6",
+  "theme_color": "#0B7480",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

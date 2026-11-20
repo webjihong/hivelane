@@ -131,6 +131,7 @@ export interface TeamView {
   check_interval_sec: number | null;
   last_check_at: string | null;
   last_check_ok: boolean | null;
+  readable_team_ids: string[];
   agents: AgentView[];
   busy_note: string | null;
 }

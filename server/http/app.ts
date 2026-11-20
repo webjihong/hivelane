@@ -63,32 +63,41 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => store.teamView(t)), proposals: store.listProposals('pending'), poBusy: po.busy, vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => store.teamView(t)), proposals: store.listProposals(), poBusy: po.busy, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
   app.get('/api/events', (c) => streamSSE(c, async (stream) => {
     const queue: BusEvent[] = [];
     let wake: (() => void) | null = null;
-    const off = bus.onEvent((e) => { queue.push(e); wake?.(); });
-    stream.onAbort(() => { off(); wake?.(); });
-    await stream.writeSSE({ event: 'hello', data: JSON.stringify({ version: VERSION }) });
+    // 「상태 바뀜」은 연결마다 따로 모아 최대 300ms 에 한 번만 보낸다(전역 이벤트로 되돌리면 연결끼리 서로 증폭한다).
+    let statePending = false;
+    let stateTimer: NodeJS.Timeout | null = null;
     let lastState = 0;
+    const MAX_QUEUE = 2000;
+    const off = bus.onEvent((e) => {
+      if (e.type === 'state') { statePending = true; wake?.(); return; }
+      queue.push(e);
+      if (queue.length > MAX_QUEUE) { queue.splice(0, queue.length - MAX_QUEUE); statePending = true; } // 느린 연결: 오래된 스트림 줄은 버리고 새로 받게 한다
+      wake?.();
+    });
+    stream.onAbort(() => { off(); if (stateTimer) clearTimeout(stateTimer); wake?.(); });
+    await stream.writeSSE({ event: 'hello', data: JSON.stringify({ version: VERSION }) });
     while (!stream.aborted) {
-      if (!queue.length) await Promise.race([new Promise<void>((r) => { wake = r; }), stream.sleep(15000)]);
+      if (!queue.length && !(statePending && !stateTimer)) await Promise.race([new Promise<void>((r) => { wake = r; }), stream.sleep(15000)]);
       wake = null;
       if (stream.aborted) break;
-      if (!queue.length) { await stream.writeSSE({ event: 'ping', data: '' }); continue; }
       const batch = queue.splice(0);
-      let sawState = false;
-      for (const e of batch) {
-        if (e.type === 'state') { sawState = true; continue; }
-        await stream.writeSSE({ event: e.type, data: JSON.stringify(e) });
+      for (const e of batch) await stream.writeSSE({ event: e.type, data: JSON.stringify(e) });
+      if (statePending && !stateTimer) {
+        const wait = 300 - (Date.now() - lastState);
+        if (wait <= 0) { statePending = false; lastState = Date.now(); await stream.writeSSE({ event: 'state', data: '{}' }); }
+        else stateTimer = setTimeout(() => { stateTimer = null; wake?.(); }, wait);
       }
-      if (sawState && Date.now() - lastState > 300) { lastState = Date.now(); await stream.writeSSE({ event: 'state', data: '{}' }); }
-      else if (sawState) setTimeout(() => bus.changed('debounce'), 350);
+      if (!batch.length && !statePending) await stream.writeSSE({ event: 'ping', data: '' });
     }
     off();
+    if (stateTimer) clearTimeout(stateTimer);
   }));
 
   app.get('/api/teams/:id', (c) => { const dt = store.teamDetail(c.req.param('id')); if (!dt) throw new HttpError(404, '팀이 없습니다'); return c.json(dt); });

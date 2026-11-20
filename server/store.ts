@@ -382,7 +382,7 @@ export class Store {
       question: parseJson(t.question, null), cost_usd: t.cost_usd, budget_usd: t.budget_usd, branch: t.branch, worktree_path: t.worktree_path, error: t.error,
       started_at: t.started_at, finished_at: t.finished_at, created_at: t.created_at, last_activity_at: t.last_activity_at, last_heartbeat_at: t.last_heartbeat_at,
       revived_count: t.revived_count, standing_brief: t.standing_brief, check_command: t.check_command, check_interval_sec: t.check_interval_sec,
-      last_check_at: t.last_check_at, last_check_ok: t.last_check_ok == null ? null : !!t.last_check_ok, agents,
+      last_check_at: t.last_check_at, last_check_ok: t.last_check_ok == null ? null : !!t.last_check_ok, readable_team_ids: parseJson<string[]>(t.readable_team_ids, []), agents,
       busy_note: busy ? `${busy.role_name}: ${busy.current_step}` : null,
     };
   }
