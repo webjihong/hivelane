@@ -1,0 +1,306 @@
+import { spawn } from 'node:child_process';
+import {
+  query, type AgentDefinition, type HookCallbackMatcher, type HookInput, type HookJSONOutput, type McpServerConfig, type Options, type Query,
+  type SDKMessage, type SpawnedProcess, type SpawnOptions,
+} from '@anthropic-ai/claude-agent-sdk';
+import { logger } from '../log.ts';
+import type { AgentRow, Store, TeamRow } from '../store.ts';
+import { truncate } from '../util.ts';
+import { checkBash, checkWritePath, describeTool, isHeavy, WRITE_TOOLS } from './guard.ts';
+import type { HeavySlots } from '../po/slots.ts';
+import type { Priority } from '../../shared/types.ts';
+
+const log = logger('runner');
+
+export interface TurnSpec {
+  agent: AgentRow;
+  team: TeamRow | null;
+  prompt: string;
+  cwd: string;
+  systemAppend: string;
+  allowedTools: string[];
+  additionalDirectories?: string[];
+  writableRoots?: string[];
+  heavyPatterns?: string[];
+  blockedPatterns?: string[];
+  mcpServers?: Record<string, McpServerConfig>;
+  subagents?: Record<string, AgentDefinition & { roleAgentId: string; roleName: string }>;
+  settingSources?: Options['settingSources'];
+  resume?: string | null;
+  maxBudgetUsd?: number | null;
+  priority?: Priority;
+  standing?: boolean;
+  /** PreToolUse 마다 불려 사용자 지시처럼 끼워 넣을 문장을 돌려준다. */
+  injectContext?: () => string | null;
+  label?: string;
+  /** MCP 서버 뒤의 실제 구현. 가짜 러너(테스트)가 직접 부른다. */
+  toolsImpl?: unknown;
+}
+
+export interface TurnResult {
+  ok: boolean;
+  subtype: string;
+  text: string;
+  costUsd: number;
+  sessionId: string | null;
+  interrupted: boolean;
+  error: string | null;
+  contextTokens: number;
+}
+
+/** 실행 중인 턴 하나. 멈춤·강한 멈춤에 쓴다. */
+export class TurnHandle {
+  q: Query | null = null;
+  pid: number | null = null;
+  pauseRequested = false;
+  interrupted = false;
+  readonly releases = new Map<string, () => void>();
+  readonly abort = new AbortController();
+
+  async interrupt(): Promise<void> {
+    this.pauseRequested = true;
+    this.interrupted = true;
+    try { await this.q?.interrupt(); } catch (e) { log.warn('interrupt 실패', e); }
+  }
+  releaseAll(): void {
+    for (const r of this.releases.values()) r();
+    this.releases.clear();
+  }
+}
+
+export interface RunnerDeps {
+  store: Store;
+  slots: HeavySlots;
+  pathToClaude?: string;
+}
+
+const PRESET_TOOLS = {
+  pm: ['Read', 'Glob', 'Grep', 'Agent', 'TodoWrite'],
+  write: ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'TodoWrite'],
+  verify: ['Read', 'Glob', 'Grep', 'Bash', 'TodoWrite'],
+  read: ['Read', 'Glob', 'Grep'],
+} as const;
+export function presetTools(p: keyof typeof PRESET_TOOLS): string[] { return [...PRESET_TOOLS[p]]; }
+
+/** Agent SDK 한 턴(=query 하나)을 실행하고 모든 진행을 DB·버스에 남긴다. */
+export class AgentRunner {
+  constructor(private deps: RunnerDeps) {}
+
+  async runTurn(spec: TurnSpec, handle: TurnHandle = new TurnHandle()): Promise<TurnResult> {
+    const { store } = this.deps;
+    const team = spec.team;
+    const teamId = team?.id ?? null;
+    const writable = spec.writableRoots ?? [spec.cwd];
+    const toolOwner = new Map<string, string>(); // tool_use_id → agent id (서브에이전트 귀속)
+    const subByType = new Map<string, string>(); // subagent_type → role agent id
+    const subLabel = new Map<string, string>();
+    for (const [k, d] of Object.entries(spec.subagents ?? {})) { subByType.set(k, d.roleAgentId); subLabel.set(k, d.roleName); }
+    const agentTaskUse = new Map<string, string>(); // Agent tool_use_id → subagent_type
+
+    const ownerOf = (input: HookInput): string => {
+      const t = (input as { agent_type?: string }).agent_type;
+      return (t && subByType.get(t)) || spec.agent.id;
+    };
+
+    const preTool = async (input: HookInput, toolUseId: string | undefined, { signal }: { signal: AbortSignal }): Promise<HookJSONOutput> => {
+      if (input.hook_event_name !== 'PreToolUse') return {};
+      const tool = input.tool_name;
+      const id = toolUseId ?? input.tool_use_id;
+      const owner = ownerOf(input);
+      const deny = (reason: string): HookJSONOutput => {
+        store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'denied', name: tool, body: reason });
+        store.endRun(id, 'denied');
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } };
+      };
+      if (handle.pauseRequested) return deny('팀이 일시정지되었습니다. 지금 하던 일을 멈추고 기다려라.');
+      if (tool in WRITE_TOOLS) {
+        const r = checkWritePath(tool, input.tool_input, input.cwd || spec.cwd, writable);
+        if (r) return deny(r);
+      }
+      let extra: string | null = null;
+      if (tool === 'Bash') {
+        const cmd = String((input.tool_input as { command?: unknown })?.command ?? '');
+        const r = checkBash(cmd, input.cwd || spec.cwd, writable, spec.blockedPatterns ?? []);
+        if (r) return deny(r);
+        if (isHeavy(cmd, spec.heavyPatterns ?? [])) {
+          const started = Date.now();
+          store.updateAgent(owner, { current_step: `무거운 명령 대기 (${this.deps.slots.waitingPosition(teamId ?? '') || '…'}번째)`, state: 'busy' });
+          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: `무거운 명령 자리 대기: ${truncate(cmd, 120)}` });
+          try {
+            const release = await this.deps.slots.acquire(teamId ?? 'po', spec.priority ?? 'normal', !!spec.standing, signal);
+            handle.releases.set(id, release);
+          } catch {
+            return deny('무거운 명령 대기가 취소되었습니다(팀 멈춤).');
+          }
+          const waited = Date.now() - started;
+          if (waited > 1000) store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: `자리 받음 · ${Math.round(waited / 1000)}초 대기` });
+          store.addRunWait(id, waited);
+          if (handle.pauseRequested) { handle.releases.get(id)?.(); handle.releases.delete(id); return deny('팀이 일시정지되었습니다.'); }
+        }
+      }
+      store.updateAgent(owner, { state: 'busy', current_step: describeTool(tool, input.tool_input) });
+      if (team) store.touchTeam(team.id);
+      const inj = spec.injectContext?.();
+      if (inj) extra = inj;
+      return extra ? { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: extra } } : {};
+    };
+    const postTool = async (input: HookInput, toolUseId: string | undefined): Promise<HookJSONOutput> => {
+      const id = toolUseId ?? (input as { tool_use_id?: string }).tool_use_id ?? '';
+      const rel = handle.releases.get(id);
+      if (rel) { rel(); handle.releases.delete(id); }
+      store.endRun(id, input.hook_event_name === 'PostToolUseFailure' ? 'error' : 'ok');
+      return {};
+    };
+    const hookTimeout = 24 * 3600;
+    const hooks: Partial<Record<'PreToolUse' | 'PostToolUse' | 'PostToolUseFailure', HookCallbackMatcher[]>> = {
+      PreToolUse: [{ hooks: [preTool], timeout: hookTimeout }],
+      PostToolUse: [{ hooks: [postTool], timeout: 30 }],
+      PostToolUseFailure: [{ hooks: [postTool], timeout: 30 }],
+    };
+
+    const agents: Record<string, AgentDefinition> = {};
+    for (const [k, d] of Object.entries(spec.subagents ?? {})) {
+      const { roleAgentId: _a, roleName: _b, ...def } = d;
+      agents[k] = def;
+    }
+
+    const options: Options = {
+      cwd: spec.cwd,
+      model: spec.agent.model,
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.systemAppend },
+      settingSources: spec.settingSources ?? ['project', 'local'],
+      permissionMode: 'dontAsk',
+      allowedTools: spec.allowedTools,
+      additionalDirectories: spec.additionalDirectories,
+      mcpServers: spec.mcpServers,
+      agents: Object.keys(agents).length ? agents : undefined,
+      resume: spec.resume ?? undefined,
+      maxBudgetUsd: spec.maxBudgetUsd ?? undefined,
+      hooks,
+      abortController: handle.abort,
+      env: { ...process.env, MCP_TOOL_TIMEOUT: String(24 * 3600 * 1000), CLAUDE_AGENT_SDK_CLIENT_APP: 'hivelane/0.1' },
+      stderr: (d: string) => { if (d.trim()) log.debug(`claude stderr (${spec.agent.role_key})`, truncate(d.trim(), 400)); },
+      spawnClaudeCodeProcess: (o: SpawnOptions): SpawnedProcess => {
+        const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+        handle.pid = child.pid ?? null;
+        child.stderr?.on('data', (b: Buffer) => { const s = b.toString().trim(); if (s) log.debug(`claude(${spec.agent.role_key})`, truncate(s, 300)); });
+        return child as unknown as SpawnedProcess;
+      },
+    };
+    if (this.deps.pathToClaude) options.pathToClaudeCodeExecutable = this.deps.pathToClaude;
+
+    store.updateAgent(spec.agent.id, { state: 'busy', current_step: '생각 중' });
+    const result: TurnResult = { ok: false, subtype: 'unknown', text: '', costUsd: 0, sessionId: spec.resume ?? null, interrupted: false, error: null, contextTokens: 0 };
+    let lastText = '';
+    try {
+      const q = query({ prompt: spec.prompt, options });
+      handle.q = q;
+      for await (const m of q) this.onMessage(m, spec, { toolOwner, agentTaskUse, subByType, subLabel, teamId, result, setLastText: (t) => { lastText = t; } });
+    } catch (e) {
+      result.error = e instanceof Error ? e.message : String(e);
+      result.subtype = handle.interrupted ? 'interrupted' : 'exception';
+      log.warn(`턴 예외 (${spec.agent.role_key}${teamId ? ' · ' + teamId : ''})`, result.error);
+    } finally {
+      handle.releaseAll();
+      handle.q = null;
+      handle.pid = null;
+    }
+    result.interrupted = handle.interrupted;
+    if (!result.text) result.text = lastText;
+    for (const id of new Set([spec.agent.id, ...subByType.values()])) store.updateAgent(id, { state: handle.pauseRequested ? 'stop' : 'idle', current_step: handle.pauseRequested ? '일시정지' : result.ok ? '턴 완료' : '대기' });
+    if (result.sessionId) store.updateAgent(spec.agent.id, { session_id: result.sessionId });
+    return result;
+  }
+
+  private onMessage(m: SDKMessage, spec: TurnSpec, c: {
+    toolOwner: Map<string, string>; agentTaskUse: Map<string, string>; subByType: Map<string, string>; subLabel: Map<string, string>;
+    teamId: string | null; result: TurnResult; setLastText: (t: string) => void;
+  }): void {
+    const { store } = this.deps;
+    const pmLabel = spec.label ?? spec.agent.role_name;
+    if (m.type === 'system' && m.subtype === 'init') {
+      c.result.sessionId = m.session_id;
+      store.updateAgent(spec.agent.id, { session_id: m.session_id });
+      return;
+    }
+    if (m.type === 'assistant') {
+      const parent = m.parent_tool_use_id;
+      const subType = parent ? c.agentTaskUse.get(parent) : undefined;
+      const owner = (subType && c.subByType.get(subType)) || spec.agent.id;
+      for (const b of m.message.content) {
+        if (b.type === 'text' && b.text.trim()) {
+          store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: 'text', body: b.text });
+          if (!parent) c.setLastText(b.text);
+        } else if (b.type === 'thinking' && 'thinking' in b && typeof b.thinking === 'string' && b.thinking.trim()) {
+          store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: 'think', body: truncate(b.thinking, 2000) });
+        } else if (b.type === 'tool_use') {
+          c.toolOwner.set(b.id, owner);
+          const input = b.input as Record<string, unknown>;
+          const cmd = b.name === 'Bash' ? String(input.command ?? '') : (input.file_path as string | undefined) ?? (input.pattern as string | undefined) ?? null;
+          store.startRun({ agent_id: owner, team_id: c.teamId, tool_use_id: b.id, tool: b.name, command: cmd ? truncate(cmd, 2000) : null });
+          store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: 'tool_use', name: b.name, body: describeTool(b.name, input) + (b.name === 'Bash' ? `\n$ ${truncate(String(input.command ?? ''), 1500)}` : '') });
+          if ((b.name === 'Agent' || b.name === 'Task') && typeof input.subagent_type === 'string') {
+            c.agentTaskUse.set(b.id, input.subagent_type);
+            const subId = c.subByType.get(input.subagent_type);
+            const label = c.subLabel.get(input.subagent_type) ?? input.subagent_type;
+            if (subId) store.updateAgent(subId, { state: 'busy', current_step: truncate(String(input.description ?? '작업 시작'), 80) });
+            if (c.teamId) store.addMessage({ team_id: c.teamId, from_label: pmLabel, to_label: label, kind: 'handoff', body: String(input.prompt ?? input.description ?? '') });
+          }
+        }
+      }
+      return;
+    }
+    if (m.type === 'user' && m.parent_tool_use_id) {
+      // 서브에이전트 안쪽 도구 결과: 그 서브에이전트 기록으로만 남긴다
+      const sub = c.agentTaskUse.get(m.parent_tool_use_id);
+      const owner = (sub && c.subByType.get(sub)) || spec.agent.id;
+      const content = m.message.content;
+      if (Array.isArray(content)) for (const b of content) {
+        if (typeof b === 'object' && b && (b as { type?: string }).type === 'tool_result') {
+          const tr = b as { content?: unknown; is_error?: boolean };
+          store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: tr.is_error ? 'tool_error' : 'tool_result', body: truncate(toolResultText(tr.content), 2000) });
+        }
+      }
+      return;
+    }
+    if (m.type === 'user' && !m.parent_tool_use_id) {
+      const content = m.message.content;
+      if (!Array.isArray(content)) return;
+      for (const b of content) {
+        if (typeof b !== 'object' || b === null || (b as { type?: string }).type !== 'tool_result') continue;
+        const tr = b as { tool_use_id: string; content?: unknown; is_error?: boolean };
+        const sub = c.agentTaskUse.get(tr.tool_use_id);
+        const text = toolResultText(tr.content);
+        const owner = c.toolOwner.get(tr.tool_use_id) ?? spec.agent.id;
+        store.addAgentEvent({ agent_id: owner, team_id: c.teamId, kind: tr.is_error ? 'tool_error' : 'tool_result', body: truncate(text, 4000) });
+        if (sub) {
+          const subId = c.subByType.get(sub);
+          const label = c.subLabel.get(sub) ?? sub;
+          if (subId) store.updateAgent(subId, { state: 'idle', current_step: tr.is_error ? '실패로 끝남' : '보고 완료' });
+          if (c.teamId) store.addMessage({ team_id: c.teamId, from_label: label, to_label: pmLabel, kind: 'report', body: truncate(text, 6000) });
+        }
+      }
+      return;
+    }
+    if (m.type === 'result') {
+      c.result.subtype = m.subtype;
+      c.result.ok = m.subtype === 'success' && !m.is_error;
+      c.result.costUsd = m.total_cost_usd ?? 0;
+      c.result.sessionId = m.session_id;
+      if (m.subtype === 'success') c.result.text = m.result;
+      else c.result.error = m.subtype === 'error_max_budget_usd' ? '예산 상한에 도달했습니다' : `실행 오류: ${m.subtype}`;
+      const u = m.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+      const ctx = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      c.result.contextTokens = ctx;
+      store.addAgentUsage(spec.agent.id, { cost: c.result.costUsd, inTok: ctx, outTok: u.output_tokens ?? 0, context: ctx });
+      if (c.teamId) store.addTeamCost(c.teamId, c.result.costUsd);
+      store.addAgentEvent({ agent_id: spec.agent.id, team_id: c.teamId, kind: 'result', body: `${c.result.ok ? '턴 완료' : c.result.error ?? m.subtype} · $${c.result.costUsd.toFixed(3)} · ${m.num_turns}턴` });
+    }
+  }
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((x) => (typeof x === 'object' && x && 'text' in x ? String((x as { text: unknown }).text) : '')).join('\n');
+  return '';
+}
