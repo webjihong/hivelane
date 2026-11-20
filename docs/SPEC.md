@@ -20,7 +20,7 @@
   - `hivelane.db` SQLite(WAL), `worktrees/<project>/<task>`, `po/`, `standing/<team>/`, `logs/`, `vapid.json`
 - 서버: Hono, `127.0.0.1:4310`(`HIVELANE_PORT`). 빌드된 웹 화면도 같은 서버가 제공.
 - 상시 실행: launchd(KeepAlive) + 서버가 `caffeinate -i -w <pid>`로 잠자기 방지.
-- 원격: `tailscale serve --bg 4310`. funnel 금지.
+- 원격: 원격 전용 리스너 `127.0.0.1:4312`(`HIVELANE_REMOTE_PORT`)를 `tailscale serve --bg 4312` 로 연다. funnel 금지. 로컬 4310 은 serve 에 연결하지 않는다.
 - 인증: SDK가 맥의 Claude Code 로그인을 그대로 쓴다(API 키 불필요, 확인 2026-11-20).
 
 ## 3. 개념
@@ -97,7 +97,8 @@
 
 ## 10. 원격 접속·알림
 
-- 로컬(헤더 없음, 127.0.0.1): 모든 권한.
+- 로컬(4310 리스너): 모든 권한. 원격(4312 리스너): `Tailscale-User-Login` 이 주인 계정이어야 함(헤더 없는 태그 기기는 거부).
+- 모든 API: Host 허용 목록(리바인딩 차단). 변경 요청: `Content-Type: application/json` + `X-Hivelane: 1` + Origin 일치(CSRF 차단).
 - Tailscale(`Tailscale-User-Login` 헤더): 설정의 owner_login과 같아야 함. 원격 제한: 템플릿·설정·프로젝트 변경·worktree 정리 불가. 팀 구성 승인은 확인 단계 1번 더.
 - PWA(manifest + service worker), 웹 푸시(VAPID, `web-push`). 슬랙 웹훅(설정).
 - 알림 사건: 사람 확인 필요, 팀 완료·실패, 예산 초과, 직속 팀 장애·복구.

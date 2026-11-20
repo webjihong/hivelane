@@ -193,6 +193,89 @@ describe('오케스트레이터', () => {
   });
 });
 
+describe('리뷰 지적 회귀', () => {
+  it('H2: 작업 공간 준비 중 중단하면 PM 이 시작되지 않는다', async () => {
+    const env = setup(async () => {});
+    const team = env.orch.createFromProposal(env.propose().id);
+    const started = env.orch.start(team.id);
+    expect(env.orch.isRunning(team.id)).toBe(true);
+    await env.orch.cancel(team.id);
+    await started; await env.orch.idle();
+    expect(env.runner.calls).toHaveLength(0);
+    expect(env.store.getTeam(team.id)!.state).toBe('failed');
+  });
+
+  it('H4: PO 의 전달은 사람 질문(예산)에 답하지 못한다', async () => {
+    const env = setup(async (_s, _h, n) => (n === 0 ? { ok: false, subtype: 'error_max_budget_usd', error: '예산' } : undefined));
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    expect(env.orch.message(team.id, '계속 진행하세요', 'po')).toBe('queued');
+    await env.orch.idle();
+    expect(env.store.getTeam(team.id)).toMatchObject({ state: 'waiting_human', budget_usd: 5 });
+    expect(env.runner.calls).toHaveLength(1);
+  });
+
+  it('M9: 질문 대기 중 멈췄다 재개하면 다시 질문 대기로(답 없이 진행하지 않음)', async () => {
+    const env = setup(async (spec) => { tools(spec).askHuman('어느 쪽?', ['A', 'B']); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    await env.orch.pause(team.id, 'user', '잠깐');
+    expect(env.store.getTeam(team.id)!.state).toBe('paused');
+    await env.orch.resume(team.id, 'user');
+    await env.orch.idle();
+    expect(env.store.getTeam(team.id)!.state).toBe('waiting_human');
+    expect(env.runner.calls).toHaveLength(1);
+  });
+
+  it('M8: 보관된 직속 팀은 깨우지 않고, 멈춘 직속 팀은 지시를 쌓아 둔다', async () => {
+    const env = setup(async () => ({ text: '처리함' }));
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    await env.orch.pause(st.id, 'user', '휴식');
+    expect(env.orch.message(st.id, '점검해')).toBe('queued');
+    await env.orch.idle();
+    expect(env.runner.calls).toHaveLength(0);
+    await env.orch.resume(st.id, 'user');
+    await until(() => env.runner.calls.length === 1); await env.orch.idle();
+    expect(env.runner.calls[0]!.prompt).toContain('점검해');
+    await env.orch.cancel(st.id);
+    env.orch.wake(st.id, '또');
+    await env.orch.idle();
+    expect(env.runner.calls).toHaveLength(1);
+    expect(env.store.getTeam(st.id)!.state).toBe('archived');
+  });
+
+  it('M1: 질문 없는 팀·끝난 팀에는 답할 수 없다', async () => {
+    const env = setup(async (spec) => { tools(spec).report('done', 'ok'); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    expect(() => env.orch.answer(team.id, '네')).toThrow(/질문이 없습니다/);
+    await env.orch.start(team.id); await env.orch.idle();
+    expect(() => env.orch.answer(team.id, '네')).toThrow();
+    expect(() => env.orch.message(team.id, '더 해줘')).toThrow(/끝난 팀/);
+  });
+
+  it('M7: 보관 기간이 지난 팀의 세부 기록과 처리된 PO 사건을 정리, 파일 색인은 바뀐 것만', async () => {
+    const env = setup(async (spec) => { tools(spec).report('done', 'ok'); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    const pm = env.store.agentByRole(team.id, 'pm')!;
+    env.store.addAgentEvent({ agent_id: pm.id, team_id: team.id, kind: 'text', body: 'x' });
+    env.store.updateTeam(team.id, { finished_at: '2020-01-01T00:00:00.000Z' });
+    const id = env.store.addPoEvent('report', team.id);
+    env.store.markPoEventsHandled([id]);
+    env.store.db.prepare("UPDATE po_events SET created_at = '2020-01-01T00:00:00.000Z'").run();
+    const r = env.store.prune(14);
+    expect(r.events).toBeGreaterThan(0);
+    expect(r.poEvents).toBeGreaterThan(0);
+    // 같은 파일 목록을 다시 넣으면 색인을 새로 만들지 않는다
+    const before = (env.store.db.prepare("SELECT count(*) c FROM fts_map WHERE source_type = 'file'").get() as { c: number }).c;
+    env.store.replaceFileChanges(team.id, env.store.teamFiles(team.id));
+    env.store.replaceFileChanges(team.id, [{ path: 'a.js', change_type: 'added', lines_added: 1, lines_removed: 0 }]);
+    const after = env.store.db.prepare("SELECT source_id FROM fts_map WHERE source_type = 'file'").all() as { source_id: string }[];
+    expect(before).toBe(0);
+    expect(after.map((x) => x.source_id)).toEqual([`${team.id}:a.js`]);
+  });
+});
+
 describe('검색', () => {
   it('한국어 trigram 검색과 짧은 단어 LIKE, 프로젝트 필터', async () => {
     const { store } = testEnv();

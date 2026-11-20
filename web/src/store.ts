@@ -29,7 +29,13 @@ function errorText(j: unknown, status: number): string {
 export async function api<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', body?: unknown): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(path, { method, headers: body === undefined ? undefined : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const write = method !== 'GET';
+    r = await fetch(path, {
+      method,
+      // 서버는 변경 요청에 JSON + X-Hivelane 헤더를 요구한다(CSRF 차단)
+      headers: write ? { 'content-type': 'application/json', 'x-hivelane': '1' } : undefined,
+      body: write ? JSON.stringify(body ?? {}) : undefined,
+    });
   } catch {
     throw new Error('서버에 연결할 수 없습니다');
   }

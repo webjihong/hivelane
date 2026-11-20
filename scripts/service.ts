@@ -93,7 +93,7 @@ async function install(withTs: boolean) {
     const ts = tailscaleBin();
     if (!ts) { console.log('3) tailscale 명령을 찾지 못해 원격 설정을 건너뜁니다'); return; }
     console.log('3) tailscale serve (내 tailnet 안에서만, funnel 아님)');
-    sh(ts, ['serve', '--bg', String(cfg.port)]);
+    sh(ts, ['serve', '--bg', String(cfg.remotePort)]);
     const st = sh(ts, ['serve', 'status'], { quiet: true, allowFail: true });
     const url = st.match(/https:\/\/[^\s]+/)?.[0];
     if (url) console.log(`   휴대폰에서: ${url}  (설정 › 원격 접속에서 주인 계정 등록 필요)`);

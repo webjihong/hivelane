@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkBash, checkWritePath, isHeavy } from '../server/agents/guard.ts';
 import { cleanSubagentText } from '../server/agents/runner.ts';
+import { DEPS_MUTATE } from '../server/teams/orchestrator.ts';
 import { decide, slotsFor, ZoneTracker, type PolicyTeam } from '../server/po/policy.ts';
 import { descendants, sumUsage } from '../server/po/resources.ts';
 import { HeavySlots } from '../server/po/slots.ts';
@@ -31,6 +32,18 @@ describe('경로·명령 가드', () => {
     const raw = '<tools-used-before-summary>Bash</tools-used-before-summary>\n[Subagent hand-back] The text below is ... The report follows:\n  **PASS**\n  - 통과 2\nagentId: a87\n<usage>subagent_tokens: 1</usage>';
     expect(cleanSubagentText(raw)).toBe('**PASS**\n- 통과 2');
     expect(cleanSubagentText('그냥 결과')).toBe('그냥 결과');
+  });
+  it('git 전역 옵션으로 감싼 커밋·공유 ref 변경도 막고, 읽기 명령은 허용', () => {
+    for (const c of ['git -C . commit -m x', 'git --no-pager push', 'git -c user.name=x commit', 'git stash', 'git branch -f dev', 'git update-ref refs/heads/dev HEAD', 'git clean -fdx', 'git reset --hard HEAD~1', 'git checkout -b x'])
+      expect(checkBash(c, root, [root], DEFAULT_BLOCKED), c).toMatch(/막힌 패턴/);
+    for (const c of ['git status', 'git diff --stat', 'git log --oneline --grep commit', 'git show HEAD', 'git -C . diff'])
+      expect(checkBash(c, root, [root], DEFAULT_BLOCKED), c).toBeNull();
+  });
+  it('공유 node_modules 에서는 의존성 변경 명령을 막는다', () => {
+    expect(checkBash('npm install lodash', root, [root], DEPS_MUTATE)).toMatch(/막힌 패턴/);
+    expect(checkBash('pnpm add x', root, [root], DEPS_MUTATE)).toMatch(/막힌 패턴/);
+    expect(checkBash('npm test', root, [root], DEPS_MUTATE)).toBeNull();
+    expect(checkBash('npm run build', root, [root], DEPS_MUTATE)).toBeNull();
   });
   it('무거운 명령 판별', () => {
     expect(isHeavy('cd /w && npm test', DEFAULT_HEAVY)).toBe(true);

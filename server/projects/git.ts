@@ -159,5 +159,6 @@ export async function diffText(wt: string, baseSha: string, path?: string, maxBy
 }
 
 export function slug(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9가-힣._-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+  const v = s.toLowerCase().replace(/[^a-z0-9가-힣._-]+/g, '-').replace(/^[-.]+|-+$/g, '');
+  return v && !/^\.+$/.test(v) ? v : 'project';
 }

@@ -23,6 +23,7 @@ export class Engine {
   private stalled = new Set<string>();
   private checking = new Set<string>();
   private lastSamplePersist = 0;
+  private lastPrune = 0;
   last: ResourceSnapshot = { cpu: 0, mem: 0, zone: 'green', heavyRunning: 0, heavyWaiting: 0, takenAt: nowIso() };
 
   constructor(private deps: { store: Store; orch: Orchestrator; slots: HeavySlots; sampler: Sampler; intervalMs?: number }) {
@@ -91,6 +92,11 @@ export class Engine {
       this.lastSamplePersist = now;
       store.addSample({ cpu, mem, load: load1(), zone: z.zone, perTeam });
       store.pruneSamples();
+    }
+    if (now - this.lastPrune >= 3_600_000) {
+      this.lastPrune = now;
+      const r = store.prune();
+      if (r.events + r.runs + r.poEvents) log.info('오래된 기록 정리', r);
     }
     if (actions.length) bus.changed('engine');
   }

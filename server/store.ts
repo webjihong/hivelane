@@ -33,9 +33,13 @@ export const DEFAULT_HEAVY = [
   '\\b(npm|pnpm|yarn|bun)\\s+(run\\s+)?(build|test|typecheck|lint|e2e)\\b', '\\bnpm\\s+t\\b', '\\bnpx\\s+(jest|vitest|tsc|playwright)\\b',
 ];
 export const DEFAULT_BLOCKED = [
-  '\\bgit\\s+(commit|push|reset\\s+--hard|rebase|merge|cherry-pick|tag)\\b',
-  '\\bgit\\s+checkout\\s+(-f|--force)',
-  '\\bgit\\s+worktree\\s+(add|remove|prune)\\b',
+  // git 전역 옵션(-C dir, -c k=v, --git-dir=…, --no-pager)을 건너뛴 뒤의 하위 명령까지 본다
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+(commit|push|rebase|merge|cherry-pick|tag|stash|switch|update-ref|am|revert|pull|fetch|gc|prune|filter-branch|replace|notes)\\b',
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+reset\\s+(--hard|--keep|--merge)',
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+(checkout|restore)\\s+(-f|--force|-b|-B|--orphan|--source)',
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+branch\\s+(-f|-d|-D|-m|-M|--force|--delete|--move)',
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+clean\\b',
+  '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+worktree\\s+(add|remove|prune|move)\\b',
   '\\bgh\\s+(pr|release|repo)\\s+(create|merge|delete|edit)',
   'db:prod', 'prod:sync', '--profile\\s+\\S*prod', '\\bterraform\\s+(apply|destroy)',
   '\\brm\\s+-rf?\\s+(/|~|\\$HOME)(\\s|$)', '\\bsudo\\b', 'npm\\s+publish',
@@ -304,14 +308,40 @@ export class Store {
   replaceFileChanges(teamId: string, rows: { path: string; change_type: string; lines_added: number; lines_removed: number }[]): void {
     const team = this.getTeam(teamId);
     const ts = nowIso();
+    const key = (r: { path: string; change_type: string; lines_added: number; lines_removed: number }) => `${r.path}|${r.change_type}|${r.lines_added}|${r.lines_removed}`;
+    const old = new Map(this.teamFiles(teamId).map((r) => [r.path, key(r)]));
+    const next = new Map(rows.map((r) => [r.path, key(r)]));
+    const changed = rows.filter((r) => old.get(r.path) !== key(r));
+    const gone = [...old.keys()].filter((p) => old.get(p) !== next.get(p));
+    if (!changed.length && !gone.length) return;
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM file_changes WHERE team_id = ?').run(teamId);
       const ins = this.db.prepare('INSERT INTO file_changes (project_id, task_id, team_id, path, change_type, lines_added, lines_removed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       for (const r of rows) ins.run(team?.project_id ?? null, team?.task_id ?? null, teamId, r.path, r.change_type, r.lines_added, r.lines_removed, ts);
-      this.db.prepare("DELETE FROM search_fts WHERE source_type = 'file' AND team_id = ?").run(teamId);
+      for (const p of gone) this.unindex('file', `${teamId}:${p}`);
     })();
-    for (const r of rows) this.index('file', `${teamId}:${r.path}`, `${r.path} (${r.change_type} +${r.lines_added} -${r.lines_removed})`, team);
+    for (const r of changed) this.index('file', `${teamId}:${r.path}`, `${r.path} (${r.change_type} +${r.lines_added} -${r.lines_removed})`, team);
     bus.changed('files');
+  }
+
+  /** 검색 색인에서 지운다(FTS·벡터·위치 표). */
+  unindex(sourceType: string, sourceId: string): void {
+    const rows = this.db.prepare('SELECT rowid FROM fts_map WHERE source_type = ? AND source_id = ?').all(sourceType, sourceId) as { rowid: number }[];
+    for (const r of rows) {
+      this.db.prepare('DELETE FROM search_fts WHERE rowid = ?').run(r.rowid);
+      try { this.db.prepare('DELETE FROM search_vec WHERE rowid = ?').run(BigInt(r.rowid)); } catch { /* 벡터 표가 없을 수 있다 */ }
+      this.db.prepare('DELETE FROM fts_map WHERE rowid = ?').run(r.rowid);
+    }
+  }
+
+  /** 보관 기간: 끝난 지 오래된 팀의 세부 기록과 처리된 PO 사건을 지운다(요약·대화·변경 기록은 남긴다). */
+  prune(days = 14): { events: number; runs: number; poEvents: number } {
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+    const old = "SELECT id FROM teams WHERE state IN ('done','failed','archived') AND coalesce(finished_at, updated_at) < @cutoff";
+    const r1 = this.db.prepare(`DELETE FROM agent_events WHERE (team_id IN (${old})) OR (team_id IS NULL AND created_at < @cutoff)`).run({ cutoff });
+    const r2 = this.db.prepare(`DELETE FROM runs WHERE (team_id IN (${old})) OR (team_id IS NULL AND started_at < @cutoff)`).run({ cutoff });
+    const r3 = this.db.prepare('DELETE FROM po_events WHERE handled_at IS NOT NULL AND created_at < @cutoff').run({ cutoff });
+    return { events: r1.changes, runs: r2.changes, poEvents: r3.changes };
   }
   teamFiles(teamId: string): { path: string; change_type: string; lines_added: number; lines_removed: number }[] {
     return this.db.prepare('SELECT path, change_type, lines_added, lines_removed FROM file_changes WHERE team_id = ? ORDER BY path').all(teamId) as { path: string; change_type: string; lines_added: number; lines_removed: number }[];
@@ -329,8 +359,9 @@ export class Store {
   /** 검색 색인(FTS5). 벡터 색인은 search 모듈이 따로 붙인다. */
   index(sourceType: string, sourceId: string, text: string, team: TeamRow | null): void {
     if (!text.trim()) return;
-    this.db.prepare('INSERT INTO search_fts (text, source_type, source_id, project_id, task_id, team_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    const r = this.db.prepare('INSERT INTO search_fts (text, source_type, source_id, project_id, task_id, team_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(text, sourceType, sourceId, team?.project_id ?? null, team?.task_id ?? null, team?.id ?? null, nowIso());
+    this.db.prepare('INSERT INTO fts_map (rowid, source_type, source_id, team_id) VALUES (?, ?, ?, ?)').run(r.lastInsertRowid, sourceType, sourceId, team?.id ?? null);
     bus.emit('indexed', { sourceType, sourceId, text, teamId: team?.id ?? null, projectId: team?.project_id ?? null });
   }
 

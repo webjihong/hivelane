@@ -56,7 +56,7 @@ export class Search {
     try {
       while (this.queue.length && this.enabled()) {
         const batch = this.queue.splice(0, 16);
-        const rows = batch.map((b) => this.store.db.prepare('SELECT rowid FROM search_fts WHERE source_type = ? AND source_id = ? ORDER BY rowid DESC LIMIT 1').get(b.sourceType, b.sourceId) as { rowid: number } | undefined);
+        const rows = batch.map((b) => this.store.db.prepare('SELECT rowid FROM fts_map WHERE source_type = ? AND source_id = ? ORDER BY rowid DESC LIMIT 1').get(b.sourceType, b.sourceId) as { rowid: number } | undefined);
         const vecs = await this.embed(batch.map((b) => b.text.slice(0, 4000)));
         if (!vecs[0]) continue;
         this.ensureVecTable(vecs[0].length);

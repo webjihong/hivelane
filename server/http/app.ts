@@ -14,7 +14,7 @@ import type { PoAgent } from '../po/agent.ts';
 import { diffText, inspectRepo } from '../projects/git.ts';
 import type { Search } from '../search/index.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY, type Store } from '../store.ts';
-import type { Orchestrator } from '../teams/orchestrator.ts';
+import { ConflictError, type Orchestrator } from '../teams/orchestrator.ts';
 import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.ts';
 
 const log = logger('http');
@@ -32,19 +32,40 @@ export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
   const app = new Hono<Env>();
 
-  /* ---------- 접속 확인 ---------- */
+  /* ---------- 접속 확인 ----------
+   * - 어느 리스너로 들어왔는지로 로컬/원격을 정한다. tailscale serve 는 remotePort 로만 넘긴다.
+   *   (serve 는 127.0.0.1 에서 프록시하고, 태그 기기 요청엔 신원 헤더가 없으므로 주소·헤더만으로는 로컬과 구분 못 한다)
+   * - Host 허용 목록: DNS 리바인딩 차단.
+   * - 변경 요청(POST/PUT/PATCH/DELETE): JSON + X-Hivelane 헤더 필수, Origin 이 있으면 허용 목록. → 다른 사이트의 CSRF 차단.
+   */
+  const LOCAL_HOSTS = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, '127.0.0.1:4311', 'localhost:4311']);
+  const hostOk = (host: string, remote: boolean) => (remote ? /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$/i.test(host) : LOCAL_HOSTS.has(host.toLowerCase()));
   app.use('/api/*', async (c, next) => {
+    const localPort = c.env?.incoming?.socket?.localPort;
+    const remote = localPort === cfg.remotePort;
+    const host = c.req.header('host') ?? '';
+    if (c.env?.incoming && !hostOk(host, remote)) return c.json({ error: `허용되지 않은 Host: ${host}` }, 403);
+    const method = c.req.method;
+    if (method !== 'GET' && method !== 'HEAD') {
+      if (!(c.req.header('content-type') ?? '').toLowerCase().startsWith('application/json') || c.req.header('x-hivelane') !== '1') {
+        return c.json({ error: '변경 요청은 Hivelane 화면에서만 보낼 수 있습니다' }, 403);
+      }
+      const origin = c.req.header('origin');
+      if (origin) {
+        let oh = '';
+        try { oh = new URL(origin).host; } catch { /* 잘못된 Origin */ }
+        if (!oh || oh.toLowerCase() !== host.toLowerCase()) return c.json({ error: `허용되지 않은 출처: ${origin}` }, 403);
+      }
+    }
     const login = c.req.header('tailscale-user-login') ?? null;
-    const addr = c.env?.incoming?.socket?.remoteAddress ?? '';
-    const loopback = addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1' || addr === '';
-    if (login) {
+    if (remote) {
+      if (!login) return c.json({ error: '원격 접속은 Tailscale 사용자 기기에서만 할 수 있습니다' }, 403);
       const owner = store.getSettings().ownerLogin;
       store.setKv('last_remote_login', { login, at: new Date().toISOString() });
       if (!owner) return c.json({ error: `원격 접속 주인이 아직 등록되지 않았습니다. 맥에서 설정 › 원격 접속에서 ${login} 을(를) 주인으로 등록하세요.` }, 403);
       if (owner.toLowerCase() !== login.toLowerCase()) return c.json({ error: `허용되지 않은 계정입니다: ${login}` }, 403);
       c.set('access', 'remote');
-    } else if (loopback) c.set('access', 'local');
-    else return c.json({ error: '로컬 또는 Tailscale 로만 접속할 수 있습니다' }, 403);
+    } else c.set('access', 'local');
     c.set('login', login);
     await next();
   });
@@ -52,6 +73,7 @@ export function createApp(d: AppDeps): Hono<Env> {
 
   app.onError((e, c) => {
     if (e instanceof HttpError) return c.json({ error: e.message }, e.status);
+    if (e instanceof ConflictError) return c.json({ error: e.message }, 409);
     if (e instanceof z.ZodError) return c.json({ error: '입력값이 올바르지 않습니다', detail: e.issues.map((i) => `${i.path.join('.')}: ${i.message}`) }, 400);
     log.error(`${c.req.method} ${c.req.path}`, e);
     return c.json({ error: e instanceof Error ? e.message : '서버 오류' }, 500);
@@ -132,7 +154,8 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/teams/:id/retry', async (c) => {
     const t = team(c.req.param('id'));
     if (t.state !== 'failed') throw new HttpError(409, '실패한 팀만 다시 시작할 수 있습니다');
-    store.updateTeam(t.id, { state: 'queued', error: null, finished_at: null, nudges: 0 });
+    store.updateTeam(t.id, { state: 'queued', error: null, finished_at: null, nudges: 0, question: null });
+    if (t.task_id) store.updateTask(t.task_id, { status: 'open', finished_at: null });
     store.addDecision(t.id, 'user', 'retry', '다시 시작');
     return c.json({ ok: true });
   });

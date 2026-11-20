@@ -35,6 +35,10 @@ const app = createApp({ cfg, store, orch, engine, po, search, notifier });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });
+// tailscale serve 전용 리스너: 여기로 들어온 요청은 항상 원격(주인 계정 확인 + 원격 제한)
+const remoteServer = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: cfg.remotePort }, (info) => {
+  log.info(`원격(tailscale serve) 리스너 127.0.0.1:${info.port}`);
+});
 
 // 맥이 잠들면 팀이 멈춘다: 서버가 살아 있는 동안 잠자기 방지(전원 연결 시)
 let caffeinate: ChildProcess | null = null;
@@ -51,6 +55,7 @@ async function shutdown(sig: string) {
   engine.stop();
   caffeinate?.kill();
   server.close();
+  remoteServer.close();
   setTimeout(() => process.exit(0), 1500).unref();
 }
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

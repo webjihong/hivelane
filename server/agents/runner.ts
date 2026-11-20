@@ -56,11 +56,17 @@ export class TurnHandle {
   interrupted = false;
   readonly releases = new Map<string, () => void>();
   readonly abort = new AbortController();
+  /** 턴이 끝났다(이후 받은 자리는 즉시 반납) */
+  done = false;
 
   async interrupt(): Promise<void> {
     this.pauseRequested = true;
     this.interrupted = true;
-    try { await this.q?.interrupt(); } catch (e) { log.warn('interrupt 실패', e); }
+    const q = this.q;
+    if (!q) return;
+    // 응답이 없으면(프로세스 정지·멈춤 등) 5초 뒤 강제 종료
+    const ok = await Promise.race([q.interrupt().then(() => true, (e) => { log.warn('interrupt 실패', e); return false; }), new Promise<boolean>((r) => setTimeout(() => r(false), 5000))]);
+    if (!ok && !this.done) { log.warn('interrupt 응답 없음 → 턴 강제 종료'); this.abort.abort(); }
   }
   releaseAll(): void {
     for (const r of this.releases.values()) r();
@@ -144,7 +150,8 @@ export class AgentRunner {
           store.updateAgent(owner, { current_step: `무거운 명령 대기 (${this.deps.slots.waitingPosition(teamId ?? '') || '…'}번째)`, state: 'busy' });
           store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: `무거운 명령 자리 대기: ${truncate(cmd, 120)}` });
           try {
-            const release = await this.deps.slots.acquire(teamId ?? 'po', spec.priority ?? 'normal', !!spec.standing, signal);
+            const release = await this.deps.slots.acquire(teamId ?? 'po', spec.priority ?? 'normal', !!spec.standing, AbortSignal.any([signal, handle.abort.signal]));
+            if (handle.done) { release(); return deny('턴이 끝났습니다.'); }
             handle.releases.set(id, release);
           } catch {
             return deny('무거운 명령 대기가 취소되었습니다(팀 멈춤).');
@@ -157,7 +164,8 @@ export class AgentRunner {
       }
       store.updateAgent(owner, { state: 'busy', current_step: describeTool(tool, input.tool_input) });
       if (team) store.touchTeam(team.id);
-      const inj = spec.injectContext?.();
+      // 사람 지시는 PM(메인 스레드)에게만 끼워 넣는다. 서브에이전트가 가져가면 PM 이 못 본다.
+      const inj = (input as { agent_type?: string }).agent_type ? null : spec.injectContext?.();
       if (inj) extra = inj;
       return extra ? { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: extra } } : {};
     };
@@ -223,6 +231,7 @@ export class AgentRunner {
       result.subtype = handle.interrupted ? 'interrupted' : 'exception';
       log.warn(`턴 예외 (${spec.agent.role_key}${teamId ? ' · ' + teamId : ''})`, result.error);
     } finally {
+      handle.done = true;
       handle.releaseAll();
       handle.q = null;
       handle.pid = null;

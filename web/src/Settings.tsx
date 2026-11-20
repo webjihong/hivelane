@@ -329,7 +329,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
         </Section>
         <Section title="원격 접속" sub="Tailscale 로 휴대폰에서 보기">
           <div className="panel stack-s">
-            <div className="small">맥에서 <code className="mono">tailscale serve --bg 4310</code> 을 한 번 실행하면 같은 tailnet 의 기기에서 열 수 있습니다. funnel 은 쓰지 마세요.</div>
+            <div className="small">맥에서 <code className="mono">tailscale serve --bg 4312</code> 을 한 번 실행하면 같은 tailnet 의 기기에서 열 수 있습니다. funnel 은 쓰지 마세요.</div>
             <TextSetting label="주인 계정" sub="Tailscale 로그인 (예: me@github)" value={s.ownerLogin ?? ''} mono disabled={ro} onSave={(v) => saveSettings({ ownerLogin: v.trim() || null })} />
             <div className="small muted">
               마지막 원격 접속 시도: {remote?.lastRemote ? <><span className="mono">{remote.lastRemote.login}</span> · {hhmm(remote.lastRemote.at)}</> : '없음'}

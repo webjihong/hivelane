@@ -11,6 +11,8 @@ export interface AppConfig {
   logsDir: string;
   host: string;
   port: number;
+  /** tailscale serve 가 넘겨주는 전용 포트. 여기로 들어온 요청은 항상 원격으로 본다. */
+  remotePort: number;
   webDist: string;
   production: boolean;
 }
@@ -26,6 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     logsDir: join(home, 'logs'),
     host: env.HIVELANE_HOST ?? '127.0.0.1',
     port: Number(env.HIVELANE_PORT ?? 4310),
+    remotePort: Number(env.HIVELANE_REMOTE_PORT ?? Number(env.HIVELANE_PORT ?? 4310) + 2),
     webDist: join(import.meta.dirname, '..', 'dist', 'web'),
     production: env.NODE_ENV === 'production',
   };

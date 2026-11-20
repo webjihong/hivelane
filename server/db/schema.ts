@@ -245,4 +245,17 @@ CREATE TABLE push_subscriptions (
 );
 `,
   },
+  {
+    id: 2,
+    name: 'fts_map',
+    sql: `
+CREATE TABLE fts_map (rowid INTEGER PRIMARY KEY, source_type TEXT NOT NULL, source_id TEXT NOT NULL, team_id TEXT);
+CREATE INDEX fts_map_src ON fts_map(source_type, source_id);
+CREATE INDEX fts_map_team ON fts_map(source_type, team_id);
+INSERT INTO fts_map (rowid, source_type, source_id, team_id) SELECT rowid, source_type, source_id, team_id FROM search_fts;
+CREATE INDEX agent_events_time ON agent_events(created_at);
+CREATE INDEX runs_time ON runs(started_at);
+CREATE INDEX po_events_time ON po_events(created_at);
+`,
+  },
 ];

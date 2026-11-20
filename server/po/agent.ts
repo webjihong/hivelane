@@ -112,7 +112,7 @@ export class PoAgent {
         allowedTools: ['Read', 'Glob', 'Grep', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
         mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, label: 'PO', priority: 'urgent', standing: true,
       }, handle);
-      store.markPoEventsHandled(events.map((e) => e.id));
+      if (res.ok) store.markPoEventsHandled(events.map((e) => e.id));
       if (res.contextTokens > store.getSettings().contextLimitTokens) {
         store.updateAgent(agent.id, { session_id: null });
         log.info(`PO 맥락 ${Math.round(res.contextTokens / 1000)}k → 다음 턴 새 세션`);
@@ -153,7 +153,7 @@ ${chat}
   tools(): PoTools {
     const { store, orch, search } = this.deps;
     const teamLine = (t: TeamRow) => `- ${t.id} 「${t.name}」 ${t.state}${t.paused_reason ? `(${t.paused_reason})` : ''} · ${t.lifetime === 'standing' ? '직속' : 'PO'} · ${store.getProject(t.project_id)?.name ?? '-'} · 우선순위 ${t.priority}${t.pinned ? '·고정' : ''} · 단계 ${['기획', '구현', '검사', '보고', '끝'][t.stage]} · $${t.cost_usd.toFixed(2)}`;
-    const projectId = (name?: string | null) => (name ? store.findProjectByName(name)?.id ?? name : null);
+    const projectId = (name?: string | null) => (name ? store.findProjectByName(name)?.id ?? null : null);
     return {
       listProjects: () => store.listProjects().map((p) => `- ${p.id} ${p.name} · ${p.path} · 기준 ${p.base_ref} · 의존성 ${p.deps_strategy}`).join('\n') || '등록된 프로젝트가 없다.',
       listTemplates: () => store.listTemplates().map((t) => `- ${t.id} ${t.name}: ${t.description} · ${t.roles.map((r) => `${r.key}(${r.name}/${r.model}/${r.mode})`).join(', ')}`).join('\n'),
@@ -195,7 +195,7 @@ ${chat}
         }
         return `제안 ${prop.id} 를 만들었다. 사용자가 화면에서 승인하면 팀이 생긴다.`;
       },
-      sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, `(PO 전달) ${msg}`); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
+      sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
       pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `PO: ${reason}`); return '멈췄다.'; },
       resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', 'PO 재개'); return '재개했다.'; },

@@ -8,6 +8,7 @@ import type { Notifier } from '../notify/index.ts';
 import { addWorktree, collectChanges, prepareDeps, removeWorktree, slug } from '../projects/git.ts';
 import type { AgentRow, Store, TeamRow } from '../store.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
+import { descendants, listProcs, signalTree } from '../po/resources.ts';
 import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
 import { presetTools, TurnHandle, type TurnResult, type TurnSpec } from '../agents/runner.ts';
 import type { HeavySlots } from '../po/slots.ts';
@@ -15,6 +16,12 @@ import { teamMcpServer, teamToolNames, type TeamTools } from './tools.ts';
 import type { Priority, Project, TemplateRole } from '../../shared/types.ts';
 
 const log = logger('team');
+
+/** 지금 상태에서는 할 수 없는 요청(HTTP 409) */
+export class ConflictError extends Error {}
+
+/** node_modules 를 메인 트리와 공유할 때 막는 의존성 변경 명령 */
+export const DEPS_MUTATE = ['\\b(npm|pnpm|yarn|bun)\\s+(i|ci|install|add|remove|uninstall|rm|un|update|up|upgrade|link|prune|dedupe)\\b'];
 
 export interface TurnRunner { runTurn(spec: TurnSpec, handle: TurnHandle): Promise<TurnResult> }
 
@@ -29,6 +36,8 @@ interface Live {
   hardPaused: boolean;
   errors: number;
   overlapsSent: Set<string>;
+  /** worktree·의존성 준비 중(루프는 아직 없음) */
+  starting: boolean;
 }
 
 const MAX_NUDGES = 3;
@@ -40,10 +49,10 @@ export class Orchestrator {
 
   private L(teamId: string): Live {
     let l = this.live.get(teamId);
-    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set() }; this.live.set(teamId, l); }
+    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set(), starting: false }; this.live.set(teamId, l); }
     return l;
   }
-  isRunning(teamId: string): boolean { return !!this.live.get(teamId)?.loop; }
+  isRunning(teamId: string): boolean { const l = this.live.get(teamId); return !!(l?.loop || l?.starting); }
   isPausePending(teamId: string): boolean { return !!this.live.get(teamId)?.pausePending; }
   isHardPaused(teamId: string): boolean { return !!this.live.get(teamId)?.hardPaused; }
   rootPids(teamId: string): number[] {
@@ -65,6 +74,12 @@ export class Orchestrator {
     const projectId = override.project_id !== undefined ? override.project_id : p.project_id;
     const priority = override.priority ?? p.priority;
     const budget = override.budget_usd !== undefined ? override.budget_usd : p.budget_usd ?? store.getSettings().defaultBudgetUsd;
+    if (projectId && !store.getProject(projectId)) throw new ConflictError('제안의 프로젝트가 등록되어 있지 않습니다. 카드에서 프로젝트를 고르세요.');
+    return store.db.transaction(() => this.createFromProposalTx(proposalId, p, roles, projectId, priority, budget))();
+  }
+
+  private createFromProposalTx(proposalId: string, p: NonNullable<ReturnType<Store['getProposal']>>, roles: TemplateRole[], projectId: string | null, priority: Priority, budget: number | null): TeamRow {
+    const { store } = this.deps;
     const task = store.insertTask({ project_id: projectId, title: p.title, instruction: p.instruction, brief: p.brief, priority, template_id: p.template_id, budget_usd: budget });
     const team = store.insertTeam({ task_id: task.id, project_id: projectId, name: p.title, managed_by: 'po', lifetime: 'task', state: 'queued', priority, budget_usd: budget });
     this.createAgents(team, roles, store.getProject(projectId), false, '');
@@ -128,16 +143,23 @@ export class Orchestrator {
     if (!team || this.isRunning(teamId)) return;
     store.updateTeam(teamId, { state: 'running', started_at: team.started_at ?? nowIso(), error: null, paused_reason: null, pause_kind: null });
     const pm = store.agentByRole(teamId, 'pm')!;
+    const l = this.L(teamId);
+    l.starting = true;
+    l.errors = 0;
     try {
       await this.ensureWorkspace(teamId);
     } catch (e) {
+      l.starting = false;
       const msg = e instanceof Error ? e.message : String(e);
       store.updateTeam(teamId, { state: 'failed', error: `작업 공간 준비 실패: ${msg}`, finished_at: nowIso() });
       store.addDecision(teamId, 'engine', 'fail', `작업 공간 준비 실패: ${msg}`);
       this.deps.notifier.send({ title: '팀 시작 실패', body: `${team.name}: ${msg}`, level: 'crit', url: `/#team-${teamId}` });
       return;
     }
+    l.starting = false;
     const fresh = store.getTeam(teamId)!;
+    // 준비하는 동안 중단·멈춤됐으면 시작하지 않는다
+    if (fresh.state !== 'running' || fresh.pause_kind) { bus.changed('team'); return; }
     const task = store.getTask(fresh.task_id);
     const prompt = pm.session_id
       ? '서버가 다시 시작되어 이어서 진행한다. 할 일 목록과 지금까지의 진행을 확인하고 남은 일을 계속해라.'
@@ -174,7 +196,14 @@ export class Orchestrator {
     const l = this.L(teamId);
     if (l.loop) { l.pending.push(prompt); return; }
     l.reported = null; l.asked = null; l.pausePending = false;
-    l.loop = this.loop(teamId, prompt).catch((e) => log.error(`루프 예외 ${teamId}`, e)).finally(() => { l.loop = null; l.handle = null; bus.changed('team'); });
+    l.loop = this.loop(teamId, prompt).catch((e) => {
+      log.error(`루프 예외 ${teamId}`, e);
+      const t = this.deps.store.getTeam(teamId);
+      if (t && t.state === 'running') {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.deps.store.updateTeam(teamId, { state: t.lifetime === 'standing' ? 'down' : 'waiting_human', error: msg, question: JSON.stringify({ text: `내부 오류로 멈췄습니다: ${truncate(msg, 300)}`, options: ['다시 시도', '여기서 마무리'], asked_at: nowIso() }) });
+      }
+    }).finally(() => { l.loop = null; l.handle = null; bus.changed('team'); });
   }
 
   private async loop(teamId: string, firstPrompt: string): Promise<void> {
@@ -301,7 +330,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path)],
       writableRoots: [wt],
       heavyPatterns: project?.heavy_patterns ?? [],
-      blockedPatterns: project?.blocked_patterns ?? [],
+      blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
       mcpServers: { hivelane: teamMcpServer(impl, { sessionRoles: sessionRoles.map((r) => ({ key: r.key, name: r.name })), readableTeams: readable }) },
       toolsImpl: impl,
       subagents,
@@ -348,7 +377,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     try {
       const res = await this.deps.runner.runTurn({
         agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt, allowedTools: presetTools(role.tools),
-        additionalDirectories: project?.memory_paths ?? [], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: project?.blocked_patterns ?? [],
+        additionalDirectories: project?.memory_paths ?? [], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
         resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
       }, handle);
@@ -416,21 +445,30 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const team = store.getTeam(teamId);
     if (!team) return;
+    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀은 멈출 수 없습니다');
     store.addDecision(teamId, kind === 'user' ? 'user' : 'engine', 'pause', reason);
     store.updateTeam(teamId, { paused_reason: reason, pause_kind: kind });
     const l = this.live.get(teamId);
+    if (l?.hardPaused) await this.continueTree(teamId, '멈춤 요청 처리를 위해 강한 멈춤 해제');
     if (l?.loop) {
       l.pausePending = true;
       this.deps.slots.cancelTeam(teamId);
       await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]);
-    } else if (team.state === 'queued' || team.state === 'waiting_human' || team.state === 'running') {
+    } else if (['queued', 'waiting_human', 'running', 'idle', 'down', 'reviving'].includes(team.state) || l?.starting) {
       store.updateTeam(teamId, { state: 'paused' });
     }
+    // 엔진 멈춤은 PO 를 깨우지 않는다(빨강 구간에 PO 턴까지 돌면 부하만 늘어난다)
     if (kind !== 'user') this.deps.notifier.send({ title: '팀 일시정지', body: `${team.name}: ${reason}`, level: 'warn', url: `/#team-${teamId}`, tag: `pause-${teamId}` });
-    store.addPoEvent('paused', teamId, { by: kind, reason });
   }
 
   /** 강한 멈춤: 프로세스 트리 SIGSTOP. 엔진이 pids 를 넘긴다. */
+  /** 강한 멈춤(SIGSTOP)된 프로세스 트리를 깨운다. */
+  async continueTree(teamId: string, reason: string): Promise<void> {
+    const procs = await listProcs();
+    signalTree(descendants(procs, this.rootPids(teamId)), 'SIGCONT');
+    this.markHardPaused(teamId, false, reason);
+  }
+
   markHardPaused(teamId: string, on: boolean, reason: string): void {
     const l = this.L(teamId);
     l.hardPaused = on;
@@ -447,6 +485,12 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     store.updateTeam(teamId, { paused_reason: null, pause_kind: null });
     if (l.loop) { l.pausePending = false; if (l.handle) l.handle.pauseRequested = false; return; }
     if (team.state !== 'paused') return;
+    if (team.question) { store.updateTeam(teamId, { state: team.lifetime === 'standing' ? 'idle' : 'waiting_human' }); return; }
+    if (team.lifetime === 'standing') {
+      store.updateTeam(teamId, { state: 'idle' });
+      if (l.pending.length) this.wake(teamId, l.pending.splice(0).join('\n\n'));
+      return;
+    }
     const pm = store.agentByRole(teamId, 'pm');
     if (!team.started_at || !pm?.session_id) { store.updateTeam(teamId, { state: 'queued' }); return; }
     store.updateTeam(teamId, { state: 'running' });
@@ -457,7 +501,9 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const team = store.getTeam(teamId);
     if (!team) throw new Error('팀이 없습니다');
+    if (!team.question || !['waiting_human', 'paused', 'idle', 'down'].includes(team.state) || this.isRunning(teamId)) throw new ConflictError('지금은 답할 질문이 없습니다');
     const q = parseJson<{ kind?: string } | null>(team.question, null);
+    this.L(teamId).errors = 0;
     store.addMessage({ team_id: teamId, from_label: '사용자', to_label: 'PM', kind: 'reply', body: text });
     store.addDecision(teamId, 'user', 'answer', truncate(text, 200));
     if (q?.kind === 'budget') {
@@ -465,22 +511,27 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       store.updateTeam(teamId, { budget_usd: Math.round((team.budget_usd ?? store.getSettings().defaultBudgetUsd) * 1.5 * 100) / 100 });
     }
     if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
-    store.updateTeam(teamId, { question: null, state: team.lifetime === 'standing' ? 'running' : 'running', nudges: 0 });
+    store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });
+    if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.wake(teamId, `사용자 답변: ${text}`); return; }
     this.kick(teamId, `사용자 답변: ${text}`);
   }
 
   /** 사람이 팀 PM 에게 직접 지시. 돌고 있으면 다음 도구 호출 때 끼워 넣는다. */
-  message(teamId: string, text: string): 'delivered' | 'queued' {
+  message(teamId: string, text: string, actor: 'user' | 'po' = 'user'): 'delivered' | 'queued' {
     const { store } = this.deps;
     const team = store.getTeam(teamId);
     if (!team) throw new Error('팀이 없습니다');
-    store.addMessage({ team_id: teamId, from_label: '사용자', to_label: 'PM', kind: 'instruction', body: text });
+    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀에는 지시할 수 없습니다. 다시 시작하거나 새 업무로 맡기세요.');
+    const who = actor === 'user' ? '사용자' : 'PO';
+    store.addMessage({ team_id: teamId, from_label: who, to_label: 'PM', kind: 'instruction', body: text });
     const l = this.L(teamId);
-    if (l.loop) { l.pending.push(text); return 'delivered'; }
-    if (team.lifetime === 'standing') { this.wake(teamId, `사용자 지시: ${text}`); return 'delivered'; }
-    if (team.state === 'waiting_human') { this.answer(teamId, text); return 'delivered'; }
-    l.pending.push(`사용자 직접 지시: ${text}`);
-    store.addChecklistItem(teamId, `(사용자 지시) ${truncate(text, 200)}`);
+    if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
+    // 사람에게 온 질문(예산 포함)은 사람만 답할 수 있다
+    if (team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
+    if (team.lifetime === 'standing' && actor === 'user') { this.wake(teamId, `사용자 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
+    if (team.lifetime === 'standing') { l.pending.push(`PO 전달: ${text}`); return 'queued'; }
+    l.pending.push(`${who} 직접 지시: ${text}`);
+    store.addChecklistItem(teamId, `(${who} 지시) ${truncate(text, 200)}`);
     return 'queued';
   }
 
@@ -488,10 +539,19 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   wake(teamId: string, prompt: string): void {
     const { store } = this.deps;
     const team = store.getTeam(teamId);
-    if (!team || team.lifetime !== 'standing') return;
-    if (this.isRunning(teamId)) { this.L(teamId).pending.push(prompt); return; }
+    if (!team || team.lifetime !== 'standing' || team.state === 'archived') return;
+    const l = this.L(teamId);
+    if (this.isRunning(teamId) || team.state === 'paused') { l.pending.push(prompt); return; }
+    if (team.state === 'down') l.errors = 0;
     store.updateTeam(teamId, { state: 'running', started_at: team.started_at ?? nowIso(), question: null });
-    void this.ensureWorkspace(teamId).then(() => this.kick(teamId, prompt)).catch((e) => {
+    l.starting = true;
+    void this.ensureWorkspace(teamId).then(() => {
+      l.starting = false;
+      const t = store.getTeam(teamId);
+      if (!t || t.state !== 'running') { if (t?.state === 'paused') l.pending.push(prompt); return; }
+      this.kick(teamId, prompt);
+    }).catch((e) => {
+      l.starting = false;
       store.updateTeam(teamId, { state: 'down', error: String(e) });
       this.deps.notifier.send({ title: '직속 팀 시작 실패', body: `${team.name}: ${e}`, level: 'crit' });
     });
@@ -535,6 +595,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   async cancel(teamId: string): Promise<void> {
     const { store } = this.deps;
     const l = this.live.get(teamId);
+    this.deps.slots.cancelTeam(teamId);
+    if (l?.hardPaused) await this.continueTree(teamId, '중단을 위해 강한 멈춤 해제');
     if (l?.loop) { l.pausePending = true; await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]); await l.loop; }
     const t = store.getTeam(teamId);
     if (!t) return;
@@ -566,6 +628,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     }
     for (const t of store.listTeams("state = 'paused' AND pause_kind = 'engine-hard'")) store.updateTeam(t.id, { pause_kind: 'engine-soft' });
     store.db.prepare("UPDATE agents SET state = 'idle', current_step = '대기' WHERE state = 'busy'").run();
+    store.db.prepare("UPDATE runs SET status = 'error', ended_at = ? WHERE status = 'running'").run(nowIso());
   }
 }
 
