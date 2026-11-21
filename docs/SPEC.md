@@ -45,7 +45,7 @@
   - `ask_human(question, options[])`: 질문 등록, 팀 waiting_human, PM은 턴을 끝낸다. 답은 다음 사용자 메시지로 이어진다.
   - `report(status, summary)`: done/failed. 결과 요약은 work_summaries.
 - 턴 루프: query가 끝났는데 report도 ask_human도 없으면 「계속하거나 report」 재촉을 최대 3번, 그 뒤 waiting_human.
-- 업무별 예산: `maxBudgetUsd`(설정 기본값, 업무마다 변경). 초과 시 waiting_human(「예산 초과」).
+- 업무별 예산: `maxBudgetUsd`(설정 기본값, 기본 무제한=null, 업무마다 변경). 상한이 있을 때 초과 시 waiting_human(「예산 초과」).
 - 권한: `permissionMode: 'dontAsk'` + 역할별 `allowedTools`. `settingSources: ['project','local']`(CLAUDE.md 로드, 사용자 전역 설정은 제외).
 - 훅(PreToolUse/PostToolUse/PostToolUseFailure, 메인·서브에이전트 공통)
   - 일시정지 게이트: 멈춤 요청이 있으면 도구를 거부하고 `interrupt()`. 재개는 resume + 「이어서 진행」.
@@ -69,6 +69,8 @@
 - MCP 도구: `list_projects`, `list_templates`, `list_teams`, `get_task_status`, `find_changes`, `get_timeline`, `search_records`, `propose_team`, `system_status`, `send_to_team`, `set_priority`, `pause_team`, `resume_team`, `pin_team`.
 - 맥 진단: `system_status`(CPU·메모리, 출처별 합계 = 가까운 Claude Code 세션·앱·Hivelane 팀, 상위 프로세스, 작업 디렉토리) + 진단용 Bash. Bash 는 기본 막을 명령 + `kill/pkill/killall`·launchctl 변경·설치·tailscale 변경·`defaults write` 금지, 쓰기는 PO 폴더만, 무거운 명령은 슬롯 대기.
 - 프롬프트에 Hivelane 사용법(프로젝트·직속 팀·설정 위치)을 넣어 사용자 질문에 직접 안내한다.
+- 학습(po_knowledge): 사용자가 「배워」「기억해」「잊어」라고 하면 PO 가 `learn`/`recall`/`forget` 으로 관리. skill = 해 보고 확인한 절차(프롬프트엔 이름·언제만, 본문은 recall), note = 늘 기억할 사실(프롬프트에 본문, 6000자 상한). 검색 색인에도 들어간다. 학습은 권한·막힌 명령을 넓히지 못한다. 화면: PO 대화창 「배운 것」(보기·고치기·지우기). PO 는 WebFetch·WebSearch 로 문서를 읽어 배울 수 있다.
+- 자기 개선: 코드가 필요한 기능은 프로젝트 「Hivelane」에 개발팀을 제안한다. 반영(병합·재시작)은 사람.
 - 깨우는 사건(po_events): 사용자 메시지, 팀 report, ask_human, 정체(설정 분, 기본 20), 엔진 멈춤·재개, 팀 간 파일 겹침, 예산 초과, 직속 팀 장애.
 - 한 번에 하나의 PO 턴만 실행(큐). 맥락이 임계(입력 토큰 150k)를 넘으면 새 세션 + DB 요약으로 시작.
 - 팀 구성: `propose_team` → 제안 카드 → 사용자 승인(자동 승인 설정 가능) → 팀 생성.

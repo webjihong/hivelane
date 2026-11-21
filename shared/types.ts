@@ -61,7 +61,8 @@ export interface EngineSettings {
 export interface Settings {
   engine: EngineSettings;
   autoApprove: boolean;
-  defaultBudgetUsd: number;
+  /** null = 무제한 */
+  defaultBudgetUsd: number | null;
   poModel: Model;
   contextLimitTokens: number;
   ownerLogin: string | null;
@@ -77,7 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
     stallMin: 20, beatSec: 60,
   },
   autoApprove: false,
-  defaultBudgetUsd: 20,
+  defaultBudgetUsd: null,
   poModel: 'opus',
   contextLimitTokens: 150_000,
   ownerLogin: null,
@@ -173,6 +174,12 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** PO 가 배운 것. skill = 절차(필요할 때 꺼내 씀), note = 늘 기억할 사실·선호 */
+export interface KnowledgeView {
+  id: string; kind: 'skill' | 'note'; name: string; when_to_use: string; body: string; source: string;
+  uses: number; last_used_at: string | null; created_at: string; updated_at: string;
+}
+
 export interface StateSnapshot {
   version: string;
   access: 'local' | 'remote';
@@ -183,6 +190,7 @@ export interface StateSnapshot {
   teams: TeamView[];
   proposals: ProposalView[];
   poBusy: boolean;
+  knowledgeCount: number;
   vapidPublicKey: string | null;
 }
 

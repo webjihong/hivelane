@@ -3,7 +3,7 @@ import { bus, type AgentEventRow, type ChatRow } from './bus.ts';
 import { newId, nowIso, parseJson } from './util.ts';
 import {
   DEFAULT_SETTINGS,
-  type AgentDetail, type AgentState, type AgentView, type ChatView, type Model, type Priority, type Project,
+  type AgentDetail, type AgentState, type KnowledgeView, type AgentView, type ChatView, type Model, type Priority, type Project,
   type ProposalView, type RunMode, type Settings, type TeamDetail, type TeamState, type TeamTemplate, type TeamView, type TemplateRole,
 } from '../shared/types.ts';
 
@@ -364,6 +364,50 @@ export class Store {
     this.db.prepare('INSERT INTO fts_map (rowid, source_type, source_id, team_id) VALUES (?, ?, ?, ?)').run(r.lastInsertRowid, sourceType, sourceId, team?.id ?? null);
     bus.emit('indexed', { sourceType, sourceId, text, teamId: team?.id ?? null, projectId: team?.project_id ?? null });
   }
+
+  /* ---------- PO 학습 ---------- */
+  listKnowledge(): KnowledgeView[] {
+    return this.db.prepare("SELECT * FROM po_knowledge ORDER BY kind DESC, name").all() as KnowledgeView[];
+  }
+  knowledgeCount(): number { return (this.db.prepare('SELECT count(*) n FROM po_knowledge').get() as { n: number }).n; }
+  getKnowledge(idOrName: string): KnowledgeView | null {
+    return (this.db.prepare('SELECT * FROM po_knowledge WHERE id = ? OR name = ?').get(idOrName, idOrName) as KnowledgeView | undefined) ?? null;
+  }
+  /** 같은 이름이면 고쳐 쓴다. */
+  saveKnowledge(k: { kind: 'skill' | 'note'; name: string; when_to_use?: string; body: string; source?: string }): { row: KnowledgeView; created: boolean } {
+    const cur = this.getKnowledge(k.name);
+    const ts = nowIso();
+    if (cur) {
+      this.db.prepare('UPDATE po_knowledge SET kind = ?, when_to_use = ?, body = ?, source = ?, updated_at = ? WHERE id = ?').run(k.kind, k.when_to_use ?? cur.when_to_use, k.body, k.source ?? cur.source, ts, cur.id);
+    } else {
+      this.db.prepare('INSERT INTO po_knowledge (id, kind, name, when_to_use, body, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(newId('k'), k.kind, k.name, k.when_to_use ?? '', k.body, k.source ?? '', ts, ts);
+    }
+    const row = this.getKnowledge(k.name)!;
+    this.unindex('knowledge', row.id);
+    this.index('knowledge', row.id, `[PO ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
+    bus.changed('knowledge');
+    return { row, created: !cur };
+  }
+  updateKnowledge(id: string, patch: Partial<Pick<KnowledgeView, 'name' | 'when_to_use' | 'body' | 'kind'>>): KnowledgeView | null {
+    const cur = this.getKnowledge(id);
+    if (!cur) return null;
+    const n = { ...cur, ...patch };
+    this.db.prepare('UPDATE po_knowledge SET kind = ?, name = ?, when_to_use = ?, body = ?, updated_at = ? WHERE id = ?').run(n.kind, n.name, n.when_to_use, n.body, nowIso(), cur.id);
+    const row = this.getKnowledge(cur.id)!;
+    this.unindex('knowledge', row.id);
+    this.index('knowledge', row.id, `[PO ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
+    bus.changed('knowledge');
+    return row;
+  }
+  deleteKnowledge(idOrName: string): boolean {
+    const cur = this.getKnowledge(idOrName);
+    if (!cur) return false;
+    this.db.prepare('DELETE FROM po_knowledge WHERE id = ?').run(cur.id);
+    this.unindex('knowledge', cur.id);
+    bus.changed('knowledge');
+    return true;
+  }
+  touchKnowledge(id: string): void { this.db.prepare('UPDATE po_knowledge SET uses = uses + 1, last_used_at = ? WHERE id = ?').run(nowIso(), id); }
 
   /* ---------- PO ---------- */
   addPoEvent(type: string, teamId: string | null, payload: Record<string, unknown> = {}): number {

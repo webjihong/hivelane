@@ -258,4 +258,22 @@ CREATE INDEX runs_time ON runs(started_at);
 CREATE INDEX po_events_time ON po_events(created_at);
 `,
   },
+  {
+    id: 3,
+    name: 'po_knowledge',
+    sql: `
+CREATE TABLE po_knowledge (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('skill','note')),
+  name TEXT NOT NULL UNIQUE,
+  when_to_use TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  uses INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
+  },
 ];

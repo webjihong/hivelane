@@ -35,6 +35,7 @@ export interface PoTools {
   searchRecords(q: string, project?: string): Promise<string>;
   proposeTeam(p: { project: string | null; title: string; instruction: string; brief: string; template_id: string; roles?: TemplateRole[]; priority: Priority; budget_usd?: number | null; note?: string }): string;
   systemStatus(): Promise<string>;
+  learn(k: { kind: 'skill' | 'note'; name: string; when_to_use?: string; body: string; source?: string }): string; recall(name: string): string; forget(name: string): string;
   sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string;
 }
 
@@ -102,7 +103,7 @@ export class PoAgent {
     }
     if (userTexts.length) parts.push(`사용자: ${userTexts.join('\n사용자: ')}`);
     const prompt = parts.join('\n\n');
-    const prompted = poPrompt(projects);
+    const prompted = poPrompt(projects, store.listKnowledge());
     if (agent.system_prompt !== prompted) store.updateAgent(agent.id, { system_prompt: prompted });
     const impl = this.tools();
     this.busy = true;
@@ -113,7 +114,7 @@ export class PoAgent {
       const resume = agent.session_id;
       const res = await this.deps.runner.runTurn({
         agent: store.poAgent()!, team: null, prompt: resume ? prompt : this.bootstrap() + prompt, cwd: cfg.poDir, systemAppend: prompted,
-        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
         blockedPatterns: [...DEFAULT_BLOCKED, ...PO_BLOCKED], heavyPatterns: DEFAULT_HEAVY,
         mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, label: 'PO', priority: 'urgent', standing: true,
       }, handle);
@@ -212,6 +213,23 @@ ${chat}
         const first = diagnose(input);
         return diagnose({ ...input, cwdOf: await cwdsOf(first.origins) }).text;
       },
+      learn: (k) => {
+        const { row, created } = store.saveKnowledge(k);
+        store.addChat({ role: 'event', body: `PO가 ${created ? '배움' : '고쳐 배움'} · ${row.kind === 'skill' ? '스킬' : '메모'} 「${row.name}」`, tone: 'good' });
+        return `${created ? '저장' : '갱신'}했다: ${row.kind} 「${row.name}」 (${row.id})`;
+      },
+      recall: (name) => {
+        const k = store.getKnowledge(name);
+        if (!k) return `「${name}」 없음. 배운 목록: ${store.listKnowledge().map((x) => x.name).join(', ') || '(없음)'}`;
+        store.touchKnowledge(k.id);
+        return `# ${k.name} (${k.kind})\n언제: ${k.when_to_use}\n\n${k.body}`;
+      },
+      forget: (name) => {
+        const k = store.getKnowledge(name);
+        if (!k || !store.deleteKnowledge(k.id)) return `「${name}」 없음.`;
+        store.addChat({ role: 'event', body: `PO가 잊음 · 「${k.name}」`, tone: 'info' });
+        return `지웠다: 「${k.name}」`;
+      },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
       pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `PO: ${reason}`); return '멈췄다.'; },
@@ -221,7 +239,7 @@ ${chat}
   }
 }
 
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
 
 /** PO 의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
@@ -241,9 +259,15 @@ function poMcpServer(impl: PoTools) {
     T('propose_team', '팀 구성을 제안한다(사용자가 승인해야 생성)', {
       project: z.string().nullable().describe('프로젝트 id 또는 이름'), title: z.string(), instruction: z.string().describe('사용자 원문'), brief: z.string().describe('PM에게 줄 구체적 지시'),
       template_id: z.string(), roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'), priority: z.enum(['urgent', 'normal', 'low']).default('normal'),
-      budget_usd: z.number().optional(), note: z.string().optional().describe('사용자에게 보일 한두 문장'),
+      budget_usd: z.number().optional().describe('사용자가 상한을 말했을 때만. 없으면 설정 기본값(기본 무제한)'), note: z.string().optional().describe('사용자에게 보일 한두 문장'),
     }, async (a) => text(impl.proposeTeam({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
     T('system_status', '맥 전체 CPU·메모리와 누가 쓰고 있는지(출처별 합계: Claude Code 세션·앱·Hivelane 팀, CPU·메모리 상위 프로세스, 작업 디렉토리). 리소스 질문엔 먼저 이것', {}, async () => text(await impl.systemStatus())),
+    T('learn', '배운 것을 저장한다(같은 이름이면 고쳐 씀). skill = 해 보고 확인한 절차(언제 쓰는지 + 단계·명령·판단 기준), note = 늘 기억할 사실·선호. 비밀값은 저장 금지', {
+      kind: z.enum(['skill', 'note']), name: z.string().min(1).max(80).describe('짧은 이름(예: cpu-원인-찾기)'),
+      when_to_use: z.string().max(500).optional().describe('언제 꺼내 쓰는지 한 문장'), body: z.string().min(1).max(20000).describe('마크다운 본문'), source: z.string().max(500).optional().describe('출처(사용자 지시·문서 경로·URL)'),
+    }, async (a) => text(impl.learn(a))),
+    T('recall', '배운 스킬 본문을 꺼낸다. 해당 상황이면 일하기 전에 먼저', { name: z.string() }, async (a) => text(impl.recall(a.name))),
+    T('forget', '배운 것을 지운다(사용자가 잊으라고 할 때, 틀린 것으로 확인됐을 때)', { name: z.string() }, async (a) => text(impl.forget(a.name))),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
     T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
     T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),

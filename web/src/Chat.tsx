@@ -3,6 +3,7 @@ import type { ChatView, Model, Priority, ProposalView, RunMode, StateSnapshot, T
 import { MODEL_LABEL } from './art.ts';
 import { act, api, chat, proposalOutcome, refreshState, useBox } from './store.ts';
 import { MODE_LABEL, RichText, hhmm, safeHref } from './ui.tsx';
+import { KnowledgeDrawer } from './Knowledge.tsx';
 
 const HINTS = ['팀들 지금 어디까지 했어?', '어제 바뀐 파일 알려줘'];
 
@@ -10,7 +11,7 @@ function ProposalCard({ p, snap }: { p: ProposalView; snap: StateSnapshot }) {
   const [roles, setRoles] = useState<TemplateRole[]>(() => p.roles.map((r) => ({ ...r })));
   const [projectId, setProjectId] = useState<string>(p.project_id ?? '');
   const [priority, setPriority] = useState<Priority>(p.priority);
-  const [budget, setBudget] = useState<string>(p.budget_usd != null ? String(p.budget_usd) : String(snap.settings.defaultBudgetUsd));
+  const [budget, setBudget] = useState<string>(p.budget_usd != null ? String(p.budget_usd) : (snap.settings.defaultBudgetUsd != null ? String(snap.settings.defaultBudgetUsd) : ''));
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,7 @@ function ProposalCard({ p, snap }: { p: ProposalView; snap: StateSnapshot }) {
               <option value="urgent">긴급</option><option value="normal">보통</option><option value="low">낮음</option>
             </select>
           </label>
-          <label>예산 $<input className="num" type="number" min="0" step="1" value={budget} onChange={(e) => setBudget(e.target.value)} /></label>
+          <label>예산 $<input className="num" type="number" min="0" step="1" placeholder="무제한" value={budget} onChange={(e) => setBudget(e.target.value)} /></label>
         </div>
       ) : (
         <div className="muted pr-meta">{p.project_name ?? snap.projects.find((x) => x.id === projectId)?.name ?? '프로젝트 없음'} · 우선순위 {({ urgent: '긴급', normal: '보통', low: '낮음' } as const)[priority]} · 세션 {sessions}개 · 예산 {budget ? `$${budget}` : '없음'}</div>
@@ -118,6 +119,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const outcome = useBox(proposalOutcome);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [kn, setKn] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -138,7 +140,8 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
 
   return (
     <aside className="chat" aria-label="PO 대화창">
-      <div className="chat-h"><b>PO</b><span className={snap.poBusy ? 'po-busy' : ''}>{snap.poBusy ? 'PO 에이전트 · 생각 중…' : 'PO 에이전트 · 대기 (이벤트 때만 깨어남)'}</span></div>
+      <div className="chat-h"><b>PO</b><span className={snap.poBusy ? 'po-busy' : ''}>{snap.poBusy ? 'PO 에이전트 · 생각 중…' : 'PO 에이전트 · 대기 (이벤트 때만 깨어남)'}</span><button className="btn kn-btn" type="button" onClick={() => setKn(true)}>배운 것 {snap.knowledgeCount}</button></div>
+      {kn && <KnowledgeDrawer onClose={() => setKn(false)} />}
       <div className="chat-body" ref={bodyRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
         {rows.length === 0 && <div className="c ev">PO에게 할 일을 지시하거나 진행 상황을 물어보세요. PO가 팀 구성을 제안하면 여기서 승인합니다.</div>}
         {rows.map((c) => <Row key={c.id} c={c} snap={snap} outcome={outcome} />)}

@@ -508,7 +508,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     store.addDecision(teamId, 'user', 'answer', truncate(text, 200));
     if (q?.kind === 'budget') {
       if (text.includes('마무리')) { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'failed', summary: `예산 상한에서 사용자가 마무리를 선택했다. 지금까지 사용 $${team.cost_usd.toFixed(2)}` }); return; }
-      store.updateTeam(teamId, { budget_usd: Math.round((team.budget_usd ?? store.getSettings().defaultBudgetUsd) * 1.5 * 100) / 100 });
+      store.updateTeam(teamId, { budget_usd: Math.round((team.budget_usd ?? Math.max(1, team.cost_usd)) * 1.5 * 100) / 100 });
     }
     if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
     store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });

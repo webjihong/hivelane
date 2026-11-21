@@ -23,6 +23,21 @@ function NumField({ id, value, unit, disabled, onSave, step }: { id: string; val
   return <><input className="num" type="number" id={id} step={step ?? 1} value={v} disabled={disabled} onChange={(e) => setV(e.target.value)} onBlur={() => void commit()} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /> <span className="muted small">{unit}</span></>;
 }
 
+/** 비우면 무제한(null) */
+function BudgetField({ id, value, disabled, onSave }: { id: string; value: number | null; disabled: boolean; onSave: (v: number | null) => Promise<unknown> }) {
+  const show = (x: number | null) => (x == null ? '' : String(x));
+  const [v, setV] = useState(show(value));
+  useEffect(() => setV(show(value)), [value]);
+  const commit = async () => {
+    const n = v.trim() === '' ? null : Number(v);
+    if (n !== null && (!Number.isFinite(n) || n <= 0)) { setV(show(value)); return; }
+    if (n === value) return;
+    const r = await onSave(n);
+    if (r === undefined) setV(show(value));
+  };
+  return <><input className="num" type="number" id={id} step={0.5} min={0} placeholder="무제한" value={v} disabled={disabled} onChange={(e) => setV(e.target.value)} onBlur={() => void commit()} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /> <span className="muted small">$</span></>;
+}
+
 const ENGINE_ROWS: [keyof EngineSettings, string, string, string][] = [
   ['cpuY', 'CPU 노랑', '이 이상 지속되면 새 팀 시작 안 함', '%'],
   ['cpuR', 'CPU 빨강', '넘으면 낮은 우선순위 팀부터 멈춤', '%'],
@@ -293,7 +308,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
               <Row label="팀 구성 자동 승인" sub="켜면 PO 제안을 확인 없이 바로 시작" htmlFor="set-auto">
                 <input className="switch" type="checkbox" id="set-auto" disabled={ro} checked={s.autoApprove} onChange={(e) => void saveSettings({ autoApprove: e.target.checked }, e.target.checked ? '자동 승인을 켰습니다' : '자동 승인을 껐습니다')} />
               </Row>
-              <Row label="업무 기본 예산" sub="팀마다 승인할 때 바꿀 수 있음" htmlFor="set-budget"><NumField id="set-budget" value={s.defaultBudgetUsd} unit="$" step={0.5} disabled={ro} onSave={(v) => saveSettings({ defaultBudgetUsd: v })} /></Row>
+              <Row label="업무 기본 예산" sub="비우면 무제한 · 팀마다 승인할 때 바꿀 수 있음" htmlFor="set-budget"><BudgetField id="set-budget" value={s.defaultBudgetUsd} disabled={ro} onSave={(v) => saveSettings({ defaultBudgetUsd: v })} /></Row>
               <Row label="맥락 한도" sub="넘으면 새 PO 세션 + 요약으로 시작" htmlFor="set-ctx"><NumField id="set-ctx" value={s.contextLimitTokens} unit="토큰" step={1000} disabled={ro} onSave={(v) => saveSettings({ contextLimitTokens: v })} /></Row>
             </div>
           </div>
