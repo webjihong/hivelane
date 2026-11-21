@@ -12,6 +12,9 @@ import { parseJson, truncate } from '../util.ts';
 import { poPrompt } from '../agents/prompts.ts';
 import { TurnHandle } from '../agents/runner.ts';
 import type { Priority, TemplateRole } from '../../shared/types.ts';
+import { cpus, loadavg } from 'node:os';
+import { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } from './resources.ts';
+import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
 
 /** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
 const T: typeof tool = (n, d, s, h, x) => tool(n, d, s, h, { ...x, alwaysLoad: true });
@@ -31,6 +34,7 @@ export interface PoTools {
   findChanges(pathContains?: string, sinceHours?: number, project?: string): string; getTimeline(fromIso?: string, toIso?: string, project?: string): string;
   searchRecords(q: string, project?: string): Promise<string>;
   proposeTeam(p: { project: string | null; title: string; instruction: string; brief: string; template_id: string; roles?: TemplateRole[]; priority: Priority; budget_usd?: number | null; note?: string }): string;
+  systemStatus(): Promise<string>;
   sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string;
 }
 
@@ -109,7 +113,8 @@ export class PoAgent {
       const resume = agent.session_id;
       const res = await this.deps.runner.runTurn({
         agent: store.poAgent()!, team: null, prompt: resume ? prompt : this.bootstrap() + prompt, cwd: cfg.poDir, systemAppend: prompted,
-        allowedTools: ['Read', 'Glob', 'Grep', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
+        blockedPatterns: [...DEFAULT_BLOCKED, ...PO_BLOCKED], heavyPatterns: DEFAULT_HEAVY,
         mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, label: 'PO', priority: 'urgent', standing: true,
       }, handle);
       if (res.ok) store.markPoEventsHandled(events.map((e) => e.id));
@@ -195,6 +200,18 @@ ${chat}
         }
         return `제안 ${prop.id} 를 만들었다. 사용자가 화면에서 승인하면 팀이 생긴다.`;
       },
+      systemStatus: async () => {
+        const meter = new CpuMeter();
+        await new Promise((r) => setTimeout(r, 1000));
+        const cpu = meter.sample();
+        const [procs, mem] = await Promise.all([listProcDetails(), memPercent()]);
+        const teamRoots = new Map<number, string>();
+        for (const t of store.listTeams("state IN ('running','paused','reviving','idle','waiting_human')"))
+          for (const pid of orch.rootPids(t.id)) teamRoots.set(pid, `Hivelane 팀 ${t.id} 「${t.name}」`);
+        const input = { procs, cpu, mem, load: loadavg()[0] ?? 0, cores: cpus().length, teamRoots, hivelanePid: process.pid };
+        const first = diagnose(input);
+        return diagnose({ ...input, cwdOf: await cwdsOf(first.origins) }).text;
+      },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
       pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `PO: ${reason}`); return '멈췄다.'; },
@@ -204,7 +221,10 @@ ${chat}
   }
 }
 
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+
+/** PO 의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
+export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
 
 const roleSchema = z.object({ key: z.string(), name: z.string(), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().optional() });
 
@@ -223,6 +243,7 @@ function poMcpServer(impl: PoTools) {
       template_id: z.string(), roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'), priority: z.enum(['urgent', 'normal', 'low']).default('normal'),
       budget_usd: z.number().optional(), note: z.string().optional().describe('사용자에게 보일 한두 문장'),
     }, async (a) => text(impl.proposeTeam({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
+    T('system_status', '맥 전체 CPU·메모리와 누가 쓰고 있는지(출처별 합계: Claude Code 세션·앱·Hivelane 팀, CPU·메모리 상위 프로세스, 작업 디렉토리). 리소스 질문엔 먼저 이것', {}, async () => text(await impl.systemStatus())),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
     T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
     T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),

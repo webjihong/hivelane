@@ -66,7 +66,9 @@
 ## 6. PO 에이전트
 
 - cwd `~/.hivelane/po`, 프로젝트 경로는 additionalDirectories(읽기 도구만).
-- MCP 도구: `list_projects`, `list_templates`, `list_teams`, `get_task_status`, `find_changes`, `get_timeline`, `search_records`, `propose_team`, `send_to_team`, `set_priority`, `pause_team`, `resume_team`, `pin_team`.
+- MCP 도구: `list_projects`, `list_templates`, `list_teams`, `get_task_status`, `find_changes`, `get_timeline`, `search_records`, `propose_team`, `system_status`, `send_to_team`, `set_priority`, `pause_team`, `resume_team`, `pin_team`.
+- 맥 진단: `system_status`(CPU·메모리, 출처별 합계 = 가까운 Claude Code 세션·앱·Hivelane 팀, 상위 프로세스, 작업 디렉토리) + 진단용 Bash. Bash 는 기본 막을 명령 + `kill/pkill/killall`·launchctl 변경·설치·tailscale 변경·`defaults write` 금지, 쓰기는 PO 폴더만, 무거운 명령은 슬롯 대기.
+- 프롬프트에 Hivelane 사용법(프로젝트·직속 팀·설정 위치)을 넣어 사용자 질문에 직접 안내한다.
 - 깨우는 사건(po_events): 사용자 메시지, 팀 report, ask_human, 정체(설정 분, 기본 20), 엔진 멈춤·재개, 팀 간 파일 겹침, 예산 초과, 직속 팀 장애.
 - 한 번에 하나의 PO 턴만 실행(큐). 맥락이 임계(입력 토큰 150k)를 넘으면 새 세션 + DB 요약으로 시작.
 - 팀 구성: `propose_team` → 제안 카드 → 사용자 승인(자동 승인 설정 가능) → 팀 생성.
