@@ -36,6 +36,9 @@ export interface PoTools {
   proposeTeam(p: { project: string | null; title: string; instruction: string; brief: string; template_id: string; roles?: TemplateRole[]; priority: Priority; budget_usd?: number | null; note?: string }): string;
   systemStatus(): Promise<string>;
   learn(k: { kind: 'skill' | 'note'; name: string; when_to_use?: string; body: string; source?: string }): string; recall(name: string): string; forget(name: string): string;
+  createStanding(p: { name: string; project: string | null; template_id: string; brief: string; roles?: TemplateRole[]; check_command?: string | null; check_interval_sec?: number | null }): string;
+  updateStanding(teamId: string, p: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null }): string;
+  endStanding(teamId: string, reason: string): Promise<string>;
   sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string;
 }
 
@@ -45,6 +48,8 @@ export class PoAgent {
   private eventTimer: NodeJS.Timeout | null = null;
   private handle: TurnHandle | null = null;
   busy = false;
+  /** 이번 PO 턴에 사용자 메시지가 있는가(직속 팀 생성·종료는 사용자가 시킨 턴에만) */
+  private userTurn = false;
 
   constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier }) {
     mkdirSync(deps.cfg.poDir, { recursive: true });
@@ -106,6 +111,7 @@ export class PoAgent {
     const prompted = poPrompt(projects, store.listKnowledge());
     if (agent.system_prompt !== prompted) store.updateAgent(agent.id, { system_prompt: prompted });
     const impl = this.tools();
+    this.userTurn = userTexts.length > 0;
     this.busy = true;
     bus.changed('po');
     const handle = new TurnHandle();
@@ -132,6 +138,7 @@ export class PoAgent {
       store.addChat({ role: 'event', body: `PO 오류: ${e instanceof Error ? e.message : e}`, tone: 'warn' });
     } finally {
       this.busy = false;
+      this.userTurn = false;
       this.handle = null;
       bus.changed('po');
     }
@@ -230,6 +237,29 @@ ${chat}
         store.addChat({ role: 'event', body: `PO가 잊음 · 「${k.name}」`, tone: 'info' });
         return `지웠다: 「${k.name}」`;
       },
+      createStanding: (p) => {
+        if (!this.userTurn) return '거절: 직속 팀은 사용자가 이번 대화에서 만들라고 했을 때만 만든다.';
+        const pid = projectId(p.project);
+        if (p.project && !pid) return `거절: 프로젝트 「${p.project}」 없음. list_projects 로 확인해라.`;
+        if (!store.getTemplate(p.template_id)) return `거절: 템플릿 ${p.template_id} 없음.`;
+        const t = orch.createStanding({ name: p.name, project_id: pid, template_id: p.template_id, roles: p.roles, brief: p.brief, check_command: p.check_command ?? null, check_interval_sec: p.check_command ? (p.check_interval_sec ?? 300) : null });
+        store.addChat({ role: 'event', body: `직속 팀 생성 · 「${t.name}」 (PO가 사용자 지시로 만듦)`, team_id: t.id, tone: 'good' });
+        return `직속 팀 ${t.id} 「${t.name}」 를 만들었다. 평소 대기하다가 지시·점검 이상 때 깨어나고, 사용자가 끝내라고 할 때까지 유지된다.`;
+      },
+      updateStanding: (teamId, p) => {
+        const t = store.getTeam(teamId);
+        if (!t || t.lifetime !== 'standing') return '직속 팀이 아니다.';
+        orch.updateStanding(teamId, { ...p, ...(p.check_command ? { check_interval_sec: p.check_interval_sec ?? t.check_interval_sec ?? 300 } : {}) });
+        return '바꿨다.';
+      },
+      endStanding: async (teamId, reason) => {
+        if (!this.userTurn) return '거절: 직속 팀 종료는 사용자가 이번 대화에서 끝내라고 했을 때만 한다.';
+        const t = store.getTeam(teamId);
+        if (!t || t.lifetime !== 'standing') return '직속 팀이 아니다.';
+        await orch.endStanding(teamId, 'agent', `PO(사용자 지시): ${reason}`);
+        store.addChat({ role: 'event', body: `직속 팀 종료 · 「${t.name}」 (사용자 지시로 PO가 종료)`, team_id: teamId, tone: 'info' });
+        return `직속 팀 「${t.name}」 를 종료했다.`;
+      },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
       pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `PO: ${reason}`); return '멈췄다.'; },
@@ -239,7 +269,7 @@ ${chat}
   }
 }
 
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
 
 /** PO 의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
@@ -268,6 +298,16 @@ function poMcpServer(impl: PoTools) {
     }, async (a) => text(impl.learn(a))),
     T('recall', '배운 스킬 본문을 꺼낸다. 해당 상황이면 일하기 전에 먼저', { name: z.string() }, async (a) => text(impl.recall(a.name))),
     T('forget', '배운 것을 지운다(사용자가 잊으라고 할 때, 틀린 것으로 확인됐을 때)', { name: z.string() }, async (a) => text(impl.forget(a.name))),
+    T('create_standing_team', '직속 팀을 바로 만든다(승인 카드 없음). 사용자가 이번 대화에서 만들라고 했을 때만. 직속 팀은 평소 대기, 지시·점검 이상 때 깨어나며 사용자가 끝내라고 할 때까지 유지된다', {
+      name: z.string().min(1).max(60), project: z.string().nullable().describe('프로젝트 id 또는 이름. 없으면 null(모든 프로젝트 읽기)'),
+      template_id: z.string().describe('list_templates 에서. 운영·점검이면 tpl-ops'), brief: z.string().min(1).max(8000).describe('상시 지시서: 맡은 역할·평소 할 일·이상 시 대응·보고 기준'),
+      roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'),
+      check_command: z.string().max(2000).nullable().optional().describe('선택: 주기 점검 쉘 명령(종료 코드≠0 이면 팀을 깨움). 읽기 명령만'), check_interval_sec: z.number().int().min(30).max(86400).optional(),
+    }, async (a) => text(impl.createStanding({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
+    T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기를 바꾼다', { team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional() },
+      async (a) => { const { team_id, ...rest } = a; return text(impl.updateStanding(team_id, rest)); }),
+    T('end_standing_team', '직속 팀을 종료(보관)한다. 사용자가 이번 대화에서 그 팀을 끝내라고 명시했을 때만. 그 밖의 이유(한가함·오류·리소스)로는 절대 끝내지 않는다', { team_id: z.string(), reason: z.string().describe('사용자 요청 원문 요약') },
+      async (a) => text(await impl.endStanding(a.team_id, a.reason))),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
     T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
     T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),

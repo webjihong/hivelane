@@ -528,8 +528,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
     // 사람에게 온 질문(예산 포함)은 사람만 답할 수 있다
     if (team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
-    if (team.lifetime === 'standing' && actor === 'user') { this.wake(teamId, `사용자 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
-    if (team.lifetime === 'standing') { l.pending.push(`PO 전달: ${text}`); return 'queued'; }
+    if (team.lifetime === 'standing') { this.wake(teamId, `${who} 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
     l.pending.push(`${who} 직접 지시: ${text}`);
     store.addChecklistItem(teamId, `(${who} 지시) ${truncate(text, 200)}`);
     return 'queued';
@@ -590,6 +589,15 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   pin(teamId: string, on: boolean, actor: 'user' | 'agent' = 'user'): void {
     this.deps.store.updateTeam(teamId, { pinned: on ? 1 : 0 });
     this.deps.store.addDecision(teamId, actor, 'pin', on ? '멈추지 않음' : '멈추지 않음 해제');
+  }
+
+  /** 직속 팀 종료: 사용자가 직접 또는 PO 에게 시켰을 때만 호출된다. */
+  async endStanding(teamId: string, actor: 'user' | 'agent', reason: string): Promise<void> {
+    const t = this.deps.store.getTeam(teamId);
+    if (!t || t.lifetime !== 'standing') throw new ConflictError('직속 팀이 아닙니다');
+    if (t.state === 'archived') return;
+    await this.cancel(teamId);
+    this.deps.store.addDecision(teamId, actor, 'end', `직속 팀 종료: ${truncate(reason, 200)}`);
   }
 
   async cancel(teamId: string): Promise<void> {

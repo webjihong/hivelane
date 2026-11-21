@@ -214,12 +214,12 @@ function StandingItem({ t, snap, ro }: { t: TeamView; snap: StateSnapshot; ro: b
     const r = await act(() => api(`/api/standing/${encodeURIComponent(t.id)}`, 'PATCH', standingBody(f, false, touched)), '직속 팀을 저장했습니다');
     if (r !== undefined) { await refreshState(); setOpen(false); }
   };
-  const archive = async () => { const r = await act(() => api(`/api/teams/${encodeURIComponent(t.id)}/cancel`, 'POST', {}), '보관했습니다'); if (r !== undefined) await refreshState(); };
+  const archive = async () => { const r = await act(() => api(`/api/teams/${encodeURIComponent(t.id)}/cancel`, 'POST', {}), '직속 팀을 종료했습니다'); if (r !== undefined) await refreshState(); };
   return (
     <div className="item">
       <div className="item-h">
         <div style={{ minWidth: 0 }}><a className="link" href={`#team-${t.id}`}><b>{t.name}</b></a> <span className="muted small">{t.project_name ?? '프로젝트 없음'} · {t.check_command ? `${t.check_interval_sec ?? '?'}초마다 점검` : '점검 없음'}</span></div>
-        {!ro && <div className="row"><button className="btn" type="button" onClick={() => setOpen(!open)}>{open ? '닫기' : '수정'}</button><ConfirmButton label="보관" confirmLabel="보관할까요?" onConfirm={() => void archive()} /></div>}
+        {!ro && <div className="row"><button className="btn" type="button" onClick={() => setOpen(!open)}>{open ? '닫기' : '수정'}</button><ConfirmButton label="종료" confirmLabel="이 직속 팀을 종료할까요?" onConfirm={() => void archive()} /></div>}
       </div>
       {open && (
         <div className="form-grid">

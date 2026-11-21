@@ -83,6 +83,7 @@ export class Engine {
 
     this.watchStalls(teams, s.stallMin, now);
     this.heartbeat(teams, s.beatSec, now);
+    this.retryDown(teams, now);
     this.runChecks(teams, now);
 
     const st = slots.stats;
@@ -115,6 +116,26 @@ export class Engine {
         }
       } else this.stalled.delete(t.id);
     }
+  }
+
+  /** 장애(down)로 멈춘 직속 팀 자동 복구 시도 간격: 2·5·15분, 이후 30분마다 계속. 직속 팀은 사람이 끝낼 때까지 유지된다. */
+  private downRetry = new Map<string, { attempts: number; next: number }>();
+  static readonly DOWN_BACKOFF_MS = [120_000, 300_000, 900_000, 1_800_000];
+
+  private retryDown(teams: ReturnType<Store['listTeams']>, now: number): void {
+    const down = new Set<string>();
+    for (const t of teams) {
+      if (t.lifetime !== 'standing' || t.state !== 'down') continue;
+      down.add(t.id);
+      const r = this.downRetry.get(t.id) ?? { attempts: 0, next: now + Engine.DOWN_BACKOFF_MS[0]! };
+      if (!this.downRetry.has(t.id)) { this.downRetry.set(t.id, r); continue; }
+      if (now < r.next || this.deps.orch.isRunning(t.id)) continue;
+      r.attempts++;
+      r.next = now + Engine.DOWN_BACKOFF_MS[Math.min(r.attempts, Engine.DOWN_BACKOFF_MS.length - 1)]!;
+      this.deps.store.addDecision(t.id, 'engine', 'revive', `장애 상태 자동 복구 시도 ${r.attempts}회째`);
+      this.deps.orch.wake(t.id, '장애로 멈췄다가 자동으로 다시 시작되었다. 하던 일이 있으면 이어서 진행하고, 없으면 짧게 대기 상태라고 답해라.');
+    }
+    for (const id of [...this.downRetry.keys()]) if (!down.has(id)) this.downRetry.delete(id);
   }
 
   private heartbeat(teams: ReturnType<Store['listTeams']>, beatSec: number, now: number): void {
