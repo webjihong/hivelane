@@ -4,6 +4,7 @@ import { ensureDirs, loadConfig } from './config.ts';
 import { openDb } from './db/index.ts';
 import { initLog, logger } from './log.ts';
 import { AppNotifier } from './notify/index.ts';
+import { PrWatcher } from './projects/prs.ts';
 import { AgentRunner } from './agents/runner.ts';
 import { Engine, realSampler } from './po/engine.ts';
 import { PoAgent } from './po/agent.ts';
@@ -32,7 +33,11 @@ const po = new PoAgent({ cfg, store, runner, orch, search, notifier });
 orch.recover();
 engine.start();
 
-const app = createApp({ cfg, store, orch, engine, po, search, notifier });
+const prs = new PrWatcher({ store, notifier });
+void prs.refresh();
+const prTimer = setInterval(() => void prs.refresh(), 120_000);
+prTimer.unref();
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });

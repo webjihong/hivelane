@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Priority, StateSnapshot, TeamDetail, TeamView } from '../../shared/types.ts';
 import { MODEL_LABEL } from './art.ts';
 import { ChatInput } from './ChatInput.tsx';
+import { PrRow } from './Prs.tsx';
 import { act, api, clock, debounce, go, onLive, openAgent, refreshState, toast, useBox } from './store.ts';
 import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money } from './ui.tsx';
 
@@ -233,6 +234,12 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
           )}
         </div>
       </div>
+
+      {snap.prs.some((p) => p.team_id === t.id) && (
+        <div className="panel"><h3>이 팀이 만든 PR</h3>
+          <div className="pr-list">{snap.prs.filter((p) => p.team_id === t.id).map((p) => <PrRow key={p.url} pr={p} snap={snap} />)}</div>
+        </div>
+      )}
 
       {standing && (
         <div className="panel standing-info">

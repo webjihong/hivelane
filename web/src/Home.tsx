@@ -1,3 +1,4 @@
+import { PrSection } from './Prs.tsx';
 import { useState, type ReactElement } from 'react';
 import { STAGES, type StateSnapshot, type TeamState, type TeamView } from '../../shared/types.ts';
 import { GEAR, binSvg } from './art.ts';
@@ -187,6 +188,7 @@ export function Home({ snap }: { snap: StateSnapshot }) {
           </div>
         ) : <div className="empty-line">직속 팀이 없습니다. 설정 › 직속 팀에서 만들 수 있습니다.</div>}
       </Section>
+      <PrSection snap={snap} />
       <section>
         <div className="section-h">
           <h2>생산 라인{filter && <> · {STATE_LABEL[filter]}만 <button className="back" type="button" onClick={() => setFilter(null)}>전체 보기</button></>}</h2>

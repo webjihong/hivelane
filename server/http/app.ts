@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readUpload, saveUpload } from '../uploads.ts';
+import type { PrWatcher } from '../projects/prs.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -21,7 +22,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -89,7 +90,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
@@ -136,6 +137,7 @@ export function createApp(d: AppDeps): Hono<Env> {
 
   /* ---------- PO 대화 ---------- */
   app.get('/api/chat', (c) => c.json(store.chat(Number(c.req.query('limit') ?? 200), c.req.query('before') ? Number(c.req.query('before')) : undefined)));
+  app.post('/api/prs/refresh', async (c) => { await d.prs?.refresh(); return c.json({ ok: true, at: d.prs?.lastAt ?? null }); });
   app.post('/api/seen', async (c) => {
     const b = await body(c, z.object({ team_id: z.string().optional(), po: z.boolean().optional(), up_to: z.number().int().optional() }));
     if (b.team_id) store.markTeamSeen(b.team_id, b.up_to);

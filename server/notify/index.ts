@@ -42,7 +42,7 @@ export class AppNotifier implements Notifier {
     if (!url) return;
     const icon = { info: '🐝', warn: '🟠', crit: '🔴', good: '🟢' }[n.level ?? 'info'];
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `${icon} *${n.title}*\n${toSlack(n.body)}${n.url ? `\n<${this.baseUrl()}${n.url}|열기>` : ''}` }), signal: AbortSignal.timeout(8000) });
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `${icon} *${n.title}*\n${toSlack(n.body)}${n.url ? `\n<${/^https?:/.test(n.url) ? n.url : this.baseUrl() + n.url}|열기>` : ''}` }), signal: AbortSignal.timeout(8000) });
       if (!r.ok) log.warn(`슬랙 전송 실패 ${r.status}`);
     } catch (e) { log.warn('슬랙 전송 실패', e); }
   }

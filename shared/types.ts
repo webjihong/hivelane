@@ -193,6 +193,18 @@ export interface KnowledgeView {
   uses: number; last_used_at: string | null; created_at: string; updated_at: string;
 }
 
+/** 등록된 저장소의 PR(열린 것 + 최근 3일 안에 닫히거나 병합된 것) */
+export interface PrView {
+  project_id: string; project_name: string; number: number; title: string; url: string;
+  state: 'OPEN' | 'CLOSED' | 'MERGED'; draft: boolean; head: string; base: string; author: string;
+  created_at: string; updated_at: string; merged_at: string | null;
+  /** APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null */
+  review: string | null;
+  checks: 'pass' | 'fail' | 'pending' | 'none';
+  /** 이 PR 을 만든 Hivelane 팀 */
+  team_id: string | null;
+}
+
 export interface StateSnapshot {
   version: string;
   access: 'local' | 'remote';
@@ -206,6 +218,8 @@ export interface StateSnapshot {
   knowledgeCount: number;
   /** 내가 아직 안 본 PO 답변 수 */
   poUnread: number;
+  prs: PrView[];
+  prErrors: Record<string, string>;
   vapidPublicKey: string | null;
 }
 
