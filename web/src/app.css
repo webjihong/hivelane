@@ -180,3 +180,5 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 .qa-a .msg-body { max-height: 420px; }
 .qa-a.pending { color: var(--muted); }
 .link-btn { align-self: flex-start; font-size: 12px; padding: 3px 8px; }
+.rt .rt-sent > span { display: block; margin: 0 0 5px; }
+.rt .rt-sent br { display: none; }

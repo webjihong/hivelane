@@ -71,6 +71,16 @@ describe('직속 팀: PO 생성·종료와 유지', () => {
     expect(env.store.getTeam(st.id)!.state).toBe('idle');
   });
 
+  it('오래된 팀도 턴마다 현재 지시문(보고 형식 규칙)으로 갱신된다', async () => {
+    const env = setup();
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    for (const a of env.store.teamAgents(st.id)) env.store.updateAgent(a.id, { system_prompt: '옛 지시문' });
+    env.orch.message(st.id, '확인해', 'user');
+    await until(() => env.prompts.length > 0);
+    await env.orch.idle();
+    for (const a of env.store.teamAgents(st.id)) expect(a.system_prompt).toContain('**결론**');
+  });
+
   it('장애로 down 된 직속 팀은 엔진이 간격을 두고 계속 되살린다(끝내지 않음)', async () => {
     const env = setup();
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });

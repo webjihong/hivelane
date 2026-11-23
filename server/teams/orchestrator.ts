@@ -130,6 +130,20 @@ export class Orchestrator {
     store.setKv(`roles:${team.id}`, roles);
   }
 
+  /** 지시문은 만들 때 고정하지 않고 턴마다 현재 코드 기준으로 다시 만든다(오래 사는 직속 팀도 규칙 변경을 받는다). */
+  private refreshPrompts(team: TeamRow): void {
+    const { store } = this.deps;
+    const roles = this.rolesOf(team.id);
+    if (!roles.length) return;
+    const project = store.getProject(team.project_id);
+    for (const a of store.teamAgents(team.id)) {
+      const want = a.role_key === 'pm'
+        ? pmPrompt({ roles, project, standing: team.lifetime === 'standing', standingBrief: team.standing_brief ?? '' })
+        : (() => { const r = roles.find((x) => x.key === a.role_key); return r ? rolePrompt(r, project) : a.system_prompt; })();
+      if (want !== a.system_prompt) store.updateAgent(a.id, { system_prompt: want });
+    }
+  }
+
   rolesOf(teamId: string): TemplateRole[] {
     return this.deps.store.getKv<TemplateRole[]>(`roles:${teamId}`, []);
   }
@@ -307,8 +321,10 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
 `;
   }
 
-  private pmSpec(team: TeamRow, pm: AgentRow, prompt: string, resume: string | null): TurnSpec {
+  private pmSpec(team: TeamRow, pmIn: AgentRow, prompt: string, resume: string | null): TurnSpec {
     const { store, cfg } = this.deps;
+    this.refreshPrompts(team);
+    const pm = store.agentByRole(team.id, 'pm') ?? pmIn;
     const project = store.getProject(team.project_id);
     const roles = this.rolesOf(team.id);
     const sessionRoles = roles.filter((r) => r.key !== 'pm' && r.mode === 'session');

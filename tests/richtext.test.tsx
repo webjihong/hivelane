@@ -16,3 +16,15 @@ describe('보고 렌더링', () => {
     expect(html).toBe('<div class="rt"><p><span>질문 답변만 했고 코드는 고치지 않음. 주문이 앱 주문인지는…</span></p></div>');
   });
 });
+
+describe('긴 문단 문장 나누기', () => {
+  it('문장 끝에서 나누고 소수점·짧은 문단은 그대로', async () => {
+    const { splitSentences } = await import('../web/src/ui.tsx');
+    const long = '질문 답변만 했고 코드는 고치지 않음. 주문이 앱 주문인지는 결제 완료 때가 아니라 주문서를 만드는 요청(POST /orders, createOrder) 때 정해진다. 그 요청의 User-Agent 끝에 MyShopApp/<버전> 이 붙어 있으면 APP, 아니면 WEB 이다. 버전 1.5 처럼 소수점은 안 나눈다. 채널 없이 만든 주문은 미상으로 집계된다.';
+    const s = splitSentences(long);
+    expect(s).toHaveLength(5);
+    expect(s[0]).toBe('질문 답변만 했고 코드는 고치지 않음.');
+    expect(s[3]).toBe('버전 1.5 처럼 소수점은 안 나눈다.');
+    expect(splitSentences('짧다. 그대로다.')).toEqual(['짧다. 그대로다.']);
+  });
+});

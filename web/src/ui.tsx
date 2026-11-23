@@ -99,6 +99,13 @@ function inline(line: string): ReactNode[] {
   return line.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((seg, k) => seg.startsWith('**') && seg.endsWith('**') && seg.length > 4 ? <b key={k}>{seg.slice(2, -2)}</b> : seg.startsWith('`') && seg.endsWith('`') && seg.length > 2 ? <code key={k}>{seg.slice(1, -1)}</code> : seg);
 }
 
+/** 줄바꿈 없는 긴 문단(180자↑)은 문장 끝에서 나눠 한 줄씩 보여 준다. 소수점·약어는 나누지 않는다. */
+export function splitSentences(line: string): string[] {
+  if (line.length < 180) return [line];
+  const parts = line.split(/(?<=(?:[다요음함됨임죠니까]|[)」』"'])[.!?])\s+(?=\S)/u);
+  return parts.length > 1 ? parts : [line];
+}
+
 type Block = { t: 'p'; lines: string[] } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
 
 /** 가벼운 마크다운: 제목·목록·표·굵게·코드. 첫 줄이 「결론」이면 강조한다. */
@@ -118,6 +125,8 @@ export function RichText({ text }: { text: string }) {
       const b = last(); if (b?.t === 'table') b.rows.push(cells); else blocks.push({ t: 'table', rows: [cells] });
       continue;
     }
+    const split = splitSentences(line);
+    if (split.length > 1) { blocks.push({ t: 'p', lines: [] }); blocks.push({ t: 'p', lines: split }); blocks.push({ t: 'p', lines: [] }); continue; }
     const b = last(); if (b?.t === 'p' && b.lines.length) b.lines.push(line); else blocks.push({ t: 'p', lines: [line] });
   }
   const shown = blocks.filter((b) => b.t !== 'p' || b.lines.length);
@@ -129,7 +138,8 @@ export function RichText({ text }: { text: string }) {
         if (b.t === 'ol') return <ol key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ol>;
         if (b.t === 'table') return <div key={i} className="rt-table"><table><thead><tr>{b.rows[0]!.map((c, j) => <th key={j}>{inline(c)}</th>)}</tr></thead><tbody>{b.rows.slice(1).map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{inline(c)}</td>)}</tr>)}</tbody></table></div>;
         const lead = i === 0 && /^\**\s*결론/.test(b.lines[0]!);
-        return <p key={i} className={lead ? 'rt-lead' : undefined}>{b.lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l)}</span>)}</p>;
+        const sentences = b.lines.length > 2 && b.lines.every((l) => l.length < 400) && b.lines.join(' ').length >= 180;
+        return <p key={i} className={lead ? 'rt-lead' : sentences ? 'rt-sent' : undefined}>{b.lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l)}</span>)}</p>;
       })}
     </div>
   );
