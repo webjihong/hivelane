@@ -9,6 +9,7 @@ import type { Search } from '../search/index.ts';
 import type { Store, TeamRow } from '../store.ts';
 import type { Orchestrator, TurnRunner } from '../teams/orchestrator.ts';
 import { parseJson, truncate } from '../util.ts';
+import { forAgent } from '../uploads.ts';
 import { poPrompt } from '../agents/prompts.ts';
 import { TurnHandle } from '../agents/runner.ts';
 import type { Priority, TemplateRole } from '../../shared/types.ts';
@@ -50,6 +51,7 @@ export class PoAgent {
   busy = false;
   /** 이번 PO 턴에 사용자 메시지가 있는가(직속 팀 생성·종료는 사용자가 시킨 턴에만) */
   private userTurn = false;
+  private cancelled = false;
 
   constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier }) {
     mkdirSync(deps.cfg.poDir, { recursive: true });
@@ -106,7 +108,7 @@ export class PoAgent {
         return `[사건] ${EVENT_LABEL[e.type] ?? e.type} · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'}) · ${truncate(JSON.stringify(p), 400)}`;
       }).join('\n'));
     }
-    if (userTexts.length) parts.push(`사용자: ${userTexts.join('\n사용자: ')}`);
+    if (userTexts.length) parts.push(`사용자: ${userTexts.map((t) => forAgent(cfg, t)).join('\n사용자: ')}`);
     const prompt = parts.join('\n\n');
     const prompted = poPrompt(projects, store.listKnowledge());
     if (agent.system_prompt !== prompted) store.updateAgent(agent.id, { system_prompt: prompted });
@@ -120,10 +122,15 @@ export class PoAgent {
       const resume = agent.session_id;
       const res = await this.deps.runner.runTurn({
         agent: store.poAgent()!, team: null, prompt: resume ? prompt : this.bootstrap() + prompt, cwd: cfg.poDir, systemAppend: prompted,
-        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch', ...PO_TOOL_NAMES], additionalDirectories: projects.map((p) => p.path), writableRoots: [cfg.poDir],
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch', ...PO_TOOL_NAMES], additionalDirectories: [...projects.map((p) => p.path), cfg.uploadsDir], writableRoots: [cfg.poDir],
         blockedPatterns: [...DEFAULT_BLOCKED, ...PO_BLOCKED], heavyPatterns: DEFAULT_HEAVY,
         mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, label: 'PO', priority: 'urgent', standing: true,
       }, handle);
+      if (this.cancelled) {
+        this.cancelled = false;
+        store.addChat({ role: 'event', body: '사용자가 PO 응답을 취소함', tone: 'info' });
+        return;
+      }
       if (res.ok) store.markPoEventsHandled(events.map((e) => e.id));
       if (res.contextTokens > store.getSettings().contextLimitTokens) {
         store.updateAgent(agent.id, { session_id: null });
@@ -145,6 +152,16 @@ export class PoAgent {
   }
 
   async stop(): Promise<void> { await this.handle?.interrupt(); }
+
+  /** 사용자가 진행 중인 PO 응답을 취소: 대기 중인 메시지도 버린다. 돌고 있지 않으면 false. */
+  async cancel(): Promise<boolean> {
+    const had = this.busy || this.jobs.length > 0;
+    this.jobs = this.jobs.filter((j) => j.kind === 'events');
+    if (!this.handle) return had;
+    this.cancelled = true;
+    await this.handle.interrupt();
+    return true;
+  }
 
   /** 새 세션 시작 때 DB 에서 읽어 주는 현황 요약. */
   private bootstrap(): string {

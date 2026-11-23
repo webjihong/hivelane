@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Priority, StateSnapshot, TeamDetail, TeamView } from '../../shared/types.ts';
 import { MODEL_LABEL } from './art.ts';
+import { ChatInput } from './ChatInput.tsx';
 import { act, api, clock, debounce, go, onLive, openAgent, refreshState, toast, useBox } from './store.ts';
 import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money } from './ui.tsx';
 
@@ -26,23 +27,8 @@ function useTeamDetail(id: string): { detail: TeamDetail | null; missing: boolea
   return { detail, missing, reload: () => reloadRef.current() };
 }
 
-function Composer({ placeholder, label, button, onSend }: { placeholder: string; label: string; button: string; onSend: (text: string) => Promise<boolean> }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const v = text.trim();
-    if (!v || busy) return;
-    setBusy(true);
-    if (await onSend(v)) setText('');
-    setBusy(false);
-  };
-  return (
-    <form className="composer" onSubmit={(e) => void submit(e)}>
-      <input value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" placeholder={placeholder} aria-label={label} />
-      <button className="btn primary" type="submit" disabled={busy || !text.trim()}>{button}</button>
-    </form>
-  );
+function Composer({ placeholder, label, button, onSend, working, onCancel }: { placeholder: string; label: string; button: string; onSend: (text: string) => Promise<boolean>; working?: boolean; onCancel?: () => Promise<unknown> }) {
+  return <ChatInput placeholder={placeholder} label={label} button={button} onSend={onSend} working={working} onCancel={onCancel} cancelLabel="진행 취소" />;
 }
 
 function DiffModal({ teamId, path, onClose }: { teamId: string; path: string; onClose: () => void }) {
@@ -130,7 +116,7 @@ function QaBox({ msgs, working }: { msgs: Msg[]; working: boolean }) {
     <div className="qa-box">
       {shown.map(({ q, a }, i) => (
         <div key={q.id} className={`qa${i > 0 ? ' old' : ''}`}>
-          <div className="qa-q"><span className="k instruction">{q.kind === 'reply' ? '내 답' : '내 지시'}</span><time className="mono muted">{hhmm(q.created_at)}</time><span className="qa-qt">{q.body}</span></div>
+          <div className="qa-q"><span className="k instruction">{q.kind === 'reply' ? '내 답' : '내 지시'}</span><time className="mono muted">{hhmm(q.created_at)}</time><div className="qa-qt"><RichText text={q.body} /></div></div>
           {a ? (
             <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><span className="muted small">{a.to_label === '사용자' ? 'PM → 나' : `PM → ${a.to_label ?? ''} (기록용 보고)`}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
           ) : (
@@ -213,7 +199,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
         {canCompose && (
           <div>
             <div className="composer-h">{standing ? 'PO를 거치지 않고 이 팀에 바로 지시합니다' : '이 팀 PM에게 직접 지시합니다 · PO도 기록을 함께 봅니다'}{t.state === 'paused' || t.state === 'queued' ? ' · 지금은 멈춰 있어 재개될 때 반영' : ''}</div>
-            <Composer placeholder={standing ? '예: 지금 api 서버 에러율 확인해줘' : 'PM에게 직접 지시'} label="팀에 직접 지시" button="지시" onSend={message} />
+            <Composer placeholder={standing ? '예: 지금 api 서버 에러율 확인해줘' : 'PM에게 직접 지시'} label="팀에 직접 지시" button="지시" onSend={message} working={t.state === 'running'} onCancel={() => call('interrupt', {}, '진행 중이던 지시를 취소했습니다')} />
           </div>
         )}
         <QaBox msgs={msgs} working={t.state === 'running'} />

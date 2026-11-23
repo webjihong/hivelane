@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { readUpload, saveUpload } from '../uploads.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -132,6 +133,18 @@ export function createApp(d: AppDeps): Hono<Env> {
 
   /* ---------- PO 대화 ---------- */
   app.get('/api/chat', (c) => c.json(store.chat(Number(c.req.query('limit') ?? 200), c.req.query('before') ? Number(c.req.query('before')) : undefined)));
+  app.post('/api/po/cancel', async (c) => c.json({ ok: await po.cancel() }));
+  /* ---------- 이미지 첨부 ---------- */
+  app.post('/api/uploads', async (c) => {
+    const b = await body(c, z.object({ type: z.string(), data: z.string().max(14_500_000) }));
+    try { const id = saveUpload(cfg, b.type, b.data); return c.json({ id, url: `/api/uploads/${id}` }); }
+    catch (e) { throw new HttpError(400, e instanceof Error ? e.message : String(e)); }
+  });
+  app.get('/api/uploads/:id', (c) => {
+    const f = readUpload(cfg, c.req.param('id'));
+    if (!f) throw new HttpError(404, '없는 파일입니다');
+    return c.body(new Uint8Array(f.buf), 200, { 'content-type': f.type, 'cache-control': 'private, max-age=31536000, immutable' });
+  });
   app.post('/api/chat', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); po.say(b.text); return c.json({ ok: true }); });
 
   /* ---------- PO 가 배운 것 ---------- */
@@ -158,6 +171,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/teams/:id/priority', async (c) => { const b = await body(c, z.object({ priority: priorityZ })); team(c.req.param('id')); orch.setPriority(c.req.param('id'), b.priority as Priority); return c.json({ ok: true }); });
   app.post('/api/teams/:id/answer', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); orch.answer(c.req.param('id'), b.text); return c.json({ ok: true }); });
   app.post('/api/teams/:id/message', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); return c.json({ result: orch.message(c.req.param('id'), b.text) }); });
+  app.post('/api/teams/:id/interrupt', async (c) => { team(c.req.param('id')); return c.json({ ok: await orch.cancelTurn(c.req.param('id')) }); });
   app.post('/api/teams/:id/cancel', async (c) => { const t = team(c.req.param('id')); if (t.lifetime === 'standing') await orch.endStanding(t.id, 'user', '사용자가 화면에서 종료'); else await orch.cancel(t.id); return c.json({ ok: true }); });
   app.post('/api/teams/:id/archive', async (c) => { localOnly(c); team(c.req.param('id')); await orch.archive(c.req.param('id')); return c.json({ ok: true }); });
   app.post('/api/teams/:id/retry', async (c) => {

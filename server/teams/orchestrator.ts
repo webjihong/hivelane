@@ -1,3 +1,4 @@
+import { forAgent } from '../uploads.ts';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
@@ -38,6 +39,8 @@ interface Live {
   overlapsSent: Set<string>;
   /** worktree·의존성 준비 중(루프는 아직 없음) */
   starting: boolean;
+  /** 사용자가 진행 중인 지시를 취소함 */
+  cancelled: boolean;
 }
 
 const MAX_NUDGES = 3;
@@ -49,7 +52,7 @@ export class Orchestrator {
 
   private L(teamId: string): Live {
     let l = this.live.get(teamId);
-    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set(), starting: false }; this.live.set(teamId, l); }
+    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set(), starting: false, cancelled: false }; this.live.set(teamId, l); }
     return l;
   }
   isRunning(teamId: string): boolean { const l = this.live.get(teamId); return !!(l?.loop || l?.starting); }
@@ -242,6 +245,14 @@ export class Orchestrator {
       await this.collect(teamId);
       const after = store.getTeam(teamId)!;
 
+      if (l.cancelled) {
+        l.cancelled = false; l.reported = null; l.asked = null; l.pausePending = false;
+        store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: '사용자가 진행 중이던 지시를 취소함' });
+        if (after.lifetime === 'standing') store.updateTeam(teamId, { state: 'idle' });
+        else store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify({ text: '진행 중이던 지시를 취소했습니다. 새로 지시하거나 이어서 진행할지 골라 주세요.', options: ['계속 진행', '여기서 마무리'], asked_at: nowIso() }) });
+        return;
+      }
+
       if (handle.pauseRequested || l.pausePending) {
         l.pausePending = false;
         store.updateTeam(teamId, { state: 'paused' });
@@ -343,7 +354,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     return {
       agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote,
       allowedTools: [...presetTools('pm'), ...teamToolNames(sessionRoles.length > 0, readable)],
-      additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path)],
+      additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path), cfg.uploadsDir],
       writableRoots: [wt],
       heavyPatterns: project?.heavy_patterns ?? [],
       blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
@@ -393,7 +404,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     try {
       const res = await this.deps.runner.runTurn({
         agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt, allowedTools: presetTools(role.tools),
-        additionalDirectories: project?.memory_paths ?? [], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
+        additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
         resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
       }, handle);
@@ -537,8 +548,9 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     }
     if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
     store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });
-    if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.wake(teamId, `사용자 답변: ${text}`); return; }
-    this.kick(teamId, `사용자 답변: ${text}`);
+    const said = forAgent(this.deps.cfg, text);
+    if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.wake(teamId, `사용자 답변: ${said}`); return; }
+    this.kick(teamId, `사용자 답변: ${said}`);
   }
 
   /** 사람이 팀 PM 에게 직접 지시. 돌고 있으면 다음 도구 호출 때 끼워 넣는다. */
@@ -550,6 +562,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const who = actor === 'user' ? '사용자' : 'PO';
     store.addMessage({ team_id: teamId, from_label: who, to_label: 'PM', kind: 'instruction', body: text });
     const l = this.L(teamId);
+    text = forAgent(this.deps.cfg, text);
     if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
     // 사람에게 온 질문(예산 포함)은 사람만 답할 수 있다
     if (team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
@@ -623,6 +636,19 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (t.state === 'archived') return;
     await this.cancel(teamId);
     this.deps.store.addDecision(teamId, actor, 'end', `직속 팀 종료: ${truncate(reason, 200)}`);
+  }
+
+  /** 진행 중인 턴만 멈추고 쌓인 지시를 버린다(팀은 유지). 돌고 있지 않으면 false. */
+  async cancelTurn(teamId: string): Promise<boolean> {
+    const l = this.live.get(teamId);
+    if (!l?.loop) return false;
+    l.cancelled = true;
+    l.pending = [];
+    this.deps.slots.cancelTeam(teamId);
+    if (l.hardPaused) await this.continueTree(teamId, '취소를 위해 강한 멈춤 해제');
+    this.deps.store.addDecision(teamId, 'user', 'cancel_turn', '진행 중인 지시 취소');
+    await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]);
+    return true;
   }
 
   async cancel(teamId: string): Promise<void> {

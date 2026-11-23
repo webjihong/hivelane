@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatView, Model, Priority, ProposalView, RunMode, StateSnapshot, TemplateRole } from '../../shared/types.ts';
 import { MODEL_LABEL } from './art.ts';
 import { act, api, chat, proposalOutcome, refreshState, useBox } from './store.ts';
 import { MODE_LABEL, RichText, hhmm, safeHref } from './ui.tsx';
 import { KnowledgeDrawer } from './Knowledge.tsx';
+import { ChatInput } from './ChatInput.tsx';
 
 const HINTS = ['팀들 지금 어디까지 했어?', '어제 바뀐 파일 알려줘'];
 
@@ -136,7 +137,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
     setSending(false);
     if (r !== undefined) setText('');
   };
-  const submit = (e: FormEvent) => { e.preventDefault(); void send(text); };
+  const sendText = async (v: string) => { const r = await act(() => api('/api/chat', 'POST', { text: v })); stick.current = true; return r !== undefined; };
 
   return (
     <aside className="chat" aria-label="PO 대화창">
@@ -149,10 +150,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
       </div>
       <div className="chat-f">
         <div className="hints">{HINTS.map((h) => <button key={h} className="hint" type="button" disabled={sending} onClick={() => void send(h)}>{h}</button>)}</div>
-        <form onSubmit={submit}>
-          <input value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" placeholder="PO에게 지시하거나 질문하기" aria-label="PO에게 보낼 메시지" />
-          <button className="btn primary" type="submit" disabled={sending || !text.trim()}>보내기</button>
-        </form>
+        <ChatInput placeholder="PO에게 지시하거나 질문하기" label="PO에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
       </div>
     </aside>
   );

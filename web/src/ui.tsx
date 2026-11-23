@@ -106,7 +106,7 @@ export function splitSentences(line: string): string[] {
   return parts.length > 1 ? parts : [line];
 }
 
-type Block = { t: 'p'; lines: string[] } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
+type Block = { t: 'p'; lines: string[] } | { t: 'img'; src: string; alt: string } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
 
 /** 가벼운 마크다운: 제목·목록·표·굵게·코드. 첫 줄이 「결론」이면 강조한다. */
 export function RichText({ text }: { text: string }) {
@@ -116,6 +116,7 @@ export function RichText({ text }: { text: string }) {
     const line = raw.trimEnd();
     let m: RegExpMatchArray | null;
     if (!line.trim()) { blocks.push({ t: 'p', lines: [] }); continue; }
+    if ((m = line.match(/^\s*!\[([^\]]*)\]\((\/api\/uploads\/u-[a-z0-9]{12}\.(?:png|jpg|gif|webp))\)\s*$/))) { blocks.push({ t: 'img', alt: m[1]!, src: m[2]! }); continue; }
     if ((m = line.match(/^\s{0,3}#{1,4}\s+(.*)$/))) { blocks.push({ t: 'h', text: m[1]! }); continue; }
     if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) { const b = last(); if (b?.t === 'ul') b.items.push(m[1]!); else blocks.push({ t: 'ul', items: [m[1]!] }); continue; }
     if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { const b = last(); if (b?.t === 'ol') b.items.push(m[1]!); else blocks.push({ t: 'ol', items: [m[1]!] }); continue; }
@@ -133,6 +134,7 @@ export function RichText({ text }: { text: string }) {
   return (
     <div className="rt">
       {shown.map((b, i) => {
+        if (b.t === 'img') return <a key={i} href={b.src} target="_blank" rel="noreferrer"><img className="rt-img" src={b.src} alt={b.alt || '첨부 이미지'} loading="lazy" /></a>;
         if (b.t === 'h') return <div key={i} className="rt-h">{inline(b.text)}</div>;
         if (b.t === 'ul') return <ul key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ul>;
         if (b.t === 'ol') return <ol key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ol>;
