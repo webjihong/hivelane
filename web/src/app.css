@@ -210,3 +210,10 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 .push-doc li.ok b { color: var(--good, #2e7d32); }
 .push-doc li.bad b { color: var(--crit, #c0392b); }
 .push-doc li span { color: var(--muted); }
+
+/* 조치 필요 · 질문 카드: 선택지가 길면 본문을 밀어내지 않도록 선택지는 아래 줄에 */
+.alert.q { grid-template-columns: auto minmax(0, 1fr); }
+.alert.q .acts { grid-column: 2 / -1; justify-content: flex-start; }
+.alert.q .acts .btn { white-space: normal; text-align: left; max-width: 100%; height: auto; line-height: 1.35; padding-top: 5px; padding-bottom: 5px; }
+.alert .a-s.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.alert .a-t { overflow-wrap: anywhere; }

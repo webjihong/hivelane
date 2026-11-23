@@ -97,8 +97,8 @@ function Alerts({ snap }: { snap: StateSnapshot }) {
   const items: ReactElement[] = [];
   for (const t of teams.filter((x) => x.state === 'waiting_human')) {
     items.push(
-      <div key={`q-${t.id}`} className="alert crit"><span className="lamp waiting_human" />
-        <div style={{ minWidth: 0 }}><div className="a-t">{t.title}</div><div className="a-s">{t.question ? `PM의 질문: ${t.question.text}` : (t.paused_reason ?? '사람 확인 필요')}</div></div>
+      <div key={`q-${t.id}`} className="alert crit q"><span className="lamp waiting_human" />
+        <div style={{ minWidth: 0 }}><div className="a-t">{t.title}</div><div className="a-s clamp">{t.question ? `PM의 질문: ${t.question.text}` : (t.paused_reason ?? '사람 확인 필요')}</div></div>
         <div className="acts">
           {(t.question?.options ?? []).map((o) => <button key={o} className="btn" type="button" onClick={() => void post(`/api/teams/${t.id}/answer`, { text: o })}>{o}</button>)}
           <button className="btn primary" type="button" onClick={() => go(`team-${t.id}`)}>직접 답하기</button>
