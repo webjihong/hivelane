@@ -63,6 +63,7 @@ export function createApp(d: AppDeps): Hono<Env> {
       if (!login) return c.json({ error: '원격 접속은 Tailscale 사용자 기기에서만 할 수 있습니다' }, 403);
       const owner = store.getSettings().ownerLogin;
       store.setKv('last_remote_login', { login, at: new Date().toISOString() });
+      if (/\.ts\.net$/i.test(host) && store.getKv<string | null>('public_url', null) !== `https://${host}`) store.setKv('public_url', `https://${host}`);
       if (!owner) return c.json({ error: `원격 접속 주인이 아직 등록되지 않았습니다. 맥에서 설정 › 원격 접속에서 ${login} 을(를) 주인으로 등록하세요.` }, 403);
       if (owner.toLowerCase() !== login.toLowerCase()) return c.json({ error: `허용되지 않은 계정입니다: ${login}` }, 403);
       c.set('access', 'remote');

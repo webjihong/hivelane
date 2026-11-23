@@ -61,3 +61,10 @@ describe('읽지 않은 답변·알림', () => {
     expect(store.poUnread()).toBe(1);
   });
 });
+
+describe('슬랙 형식', () => {
+  it('**굵게** → *굵게*, 제목 → 굵게, 첨부 이미지 표시', async () => {
+    const { toSlack } = await import('../server/notify/index.ts');
+    expect(toSlack('**결론: 끝**\n## 근거\n- `a.ts` 수정\n![캡처](/api/uploads/u-abcdefabcdef.png)')).toBe('*결론: 끝*\n*근거*\n- `a.ts` 수정\n[이미지 캡처]');
+  });
+});
