@@ -1,5 +1,5 @@
 import type { StateSnapshot, TeamView } from '../../shared/types.ts';
-import { dotOf, nowCount } from './chan.ts';
+import { asks, dotOf, nowCount } from './chan.ts';
 import { PrRow } from './Prs.tsx';
 import { act, api, chat, clock, go, refreshState, useBox } from './store.ts';
 
@@ -29,7 +29,7 @@ function Need({ t, snap }: { t: TeamView; snap: StateSnapshot }) {
       <div className="nw-acts"><button className="btn primary" type="button" onClick={() => void act(async () => { await api(`/api/teams/${t.id}/retry`, 'POST', {}); await refreshState(); }, '대기열에 다시 넣었습니다')}>다시 시작</button><a className="btn" href={`#team-${t.id}`}>채널 열기</a></div>
     </article>
   );
-  if (t.state === 'down') return (
+  if (t.state === 'down' && !t.question) return (
     <article className="nw-card crit">
       <div className="nw-meta"><b>{t.name}</b> · 직속 팀 장애 · 자동으로 다시 살리는 중</div>
       <div className="nw-q">{t.error ?? '원인 확인 중'}</div>
@@ -52,9 +52,9 @@ export function Now({ snap }: { snap: StateSnapshot }) {
   const now = useBox(clock);
   const rows = useBox(chat);
   const live = snap.teams.filter((t) => t.state !== 'archived');
-  const needs = live.filter((t) => t.state === 'waiting_human' || t.state === 'failed' || t.state === 'down');
+  const needs = live.filter((t) => asks(t) || t.state === 'waiting_human' || t.state === 'failed' || t.state === 'down');
   const proposals = snap.proposals.filter((p) => p.status === 'pending');
-  const unread = live.filter((t) => t.unread > 0 && t.state !== 'waiting_human');
+  const unread = live.filter((t) => t.unread > 0 && !asks(t) && t.state !== 'waiting_human');
   const lastPo = snap.poUnread ? [...rows].reverse().find((c) => c.role === 'po') : undefined;
   const freshPrs = snap.prs.filter((p) => p.state === 'OPEN' && now - Date.parse(p.updated_at) < 86_400_000);
   const working = live.filter((t) => ['running', 'paused', 'queued', 'reviving'].includes(t.state));

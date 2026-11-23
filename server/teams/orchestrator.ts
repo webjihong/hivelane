@@ -608,12 +608,12 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (!team) throw new Error('팀이 없습니다');
     if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀에는 지시할 수 없습니다. 다시 시작하거나 새 업무로 맡기세요.');
     const who = actor === 'user' ? '사용자' : 'PO';
-    store.addMessage({ team_id: teamId, from_label: who, to_label: 'PM', kind: 'instruction', body: text });
     const l = this.L(teamId);
+    // 사람에게 온 질문(예산 포함)이 걸려 있으면 사람의 말은 그 질문의 답이다(답으로 한 번만 남긴다)
+    if (!l.loop && team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
+    store.addMessage({ team_id: teamId, from_label: who, to_label: 'PM', kind: 'instruction', body: text });
     text = forAgent(this.deps.cfg, text);
     if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
-    // 사람에게 온 질문(예산 포함)은 사람만 답할 수 있다
-    if (team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
     if (team.lifetime === 'standing') { this.wake(teamId, `${who} 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
     l.pending.push(`${who} 직접 지시: ${text}`);
     store.addChecklistItem(teamId, `(${who} 지시) ${truncate(text, 200)}`);

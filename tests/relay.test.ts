@@ -69,3 +69,15 @@ describe('직접 지시한 업무팀 완료는 PO 가 다시 전하지 않음', 
     expect(env.store.chat(50).some((c) => c.body.includes('답변이 왔습니다'))).toBe(false);
   });
 });
+
+describe('질문 걸린 팀에 보낸 말은 한 번만 남는다', () => {
+  it('직속 팀이 질문을 걸어 둔 상태(대기)에서 사용자가 보내면 답 1건만', async () => {
+    const env = setup(() => '-');
+    const st = env.orch.createStanding({ name: '전담', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    env.store.updateTeam(st.id, { state: 'idle', question: JSON.stringify({ text: '어떻게 할까요?', options: ['A', 'B'], asked_at: new Date().toISOString() }) });
+    env.orch.message(st.id, 'prod pr 생성까지 진행하자', 'user');
+    const rows = env.store.db.prepare("SELECT kind FROM messages WHERE team_id = ? AND from_label = '사용자'").all(st.id) as { kind: string }[];
+    expect(rows.map((r) => r.kind)).toEqual(['reply']);
+    await env.orch.idle();
+  });
+});

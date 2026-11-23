@@ -2,7 +2,11 @@ import type { StateSnapshot, TeamView } from '../../shared/types.ts';
 
 /** 채널 상태 점: 일하는 중 · 내 결정 · 멈춤 · 대기열 · 대기 */
 export type Dot = 'run' | 'ask' | 'pause' | 'queue' | 'idle';
+/** 사람의 답을 기다리는 질문이 걸려 있나(직속 팀은 상태가 「대기」여도 질문이 걸릴 수 있다) */
+export const asks = (t: TeamView) => !!t.question && ['waiting_human', 'idle', 'down', 'paused'].includes(t.state);
+
 export function dotOf(t: TeamView): Dot {
+  if (asks(t)) return 'ask';
   if (t.state === 'running' || t.state === 'reviving') return 'run';
   if (t.state === 'waiting_human' || t.state === 'failed' || t.state === 'down') return 'ask';
   if (t.state === 'paused') return 'pause';
@@ -14,7 +18,7 @@ const STAGE = ['기획', '구현', '검사', '보고'];
 
 /** 채널 이름 오른쪽에 붙는 짧은 상태 글 */
 export function sideNote(t: TeamView, _now: number): { text: string; cls: string } | null {
-  if (t.state === 'waiting_human') return { text: t.question?.options.includes('승인') ? '승인' : '결정', cls: 'b-ask' };
+  if (asks(t) || t.state === 'waiting_human') return { text: t.question?.options.includes('승인') ? '승인' : '결정', cls: 'b-ask' };
   if (t.state === 'failed') return { text: '실패', cls: 'b-ask' };
   if (t.state === 'down' || t.state === 'reviving') return { text: t.state === 'down' ? '장애' : '복구 중', cls: 'b-ask' };
   if (t.state === 'running') return { text: t.lifetime === 'standing' ? '일하는 중' : `${STAGE[Math.min(t.stage, 3)]} ${Math.min(t.stage, 3) + 1}/4`, cls: 't-run' };
@@ -30,7 +34,7 @@ export const isDoneTask = (t: TeamView) => t.lifetime === 'task' && t.state === 
 /** 「지금 볼 것」 수: 내 답이 필요한 것 + 안 읽은 것 */
 export function nowCount(snap: StateSnapshot): { need: number; news: number } {
   const live = snap.teams.filter((t) => t.state !== 'archived');
-  const need = live.filter((t) => t.state === 'waiting_human' || t.state === 'failed' || t.state === 'down').length + snap.proposals.filter((p) => p.status === 'pending').length;
-  const news = live.reduce((a, t) => a + (t.unread > 0 && t.state !== 'waiting_human' ? 1 : 0), 0) + (snap.poUnread > 0 ? 1 : 0);
+  const need = live.filter((t) => asks(t) || t.state === 'waiting_human' || t.state === 'failed' || t.state === 'down').length + snap.proposals.filter((p) => p.status === 'pending').length;
+  const news = live.reduce((a, t) => a + (t.unread > 0 && !asks(t) && t.state !== 'waiting_human' ? 1 : 0), 0) + (snap.poUnread > 0 ? 1 : 0);
   return { need, news };
 }

@@ -98,7 +98,8 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
   if (!t) return <div className="tc"><div className="tc-empty">{missing ? '팀을 찾을 수 없습니다.' : '불러오는 중…'}</div></div>;
 
   const finished = ['done', 'archived'].includes(t.state);
-  const asking = t.state === 'waiting_human' && t.question;
+  // 직속 팀은 질문을 걸어 두고도 상태가 「대기」라 상태 대신 질문 유무로 본다
+  const asking = !!t.question && ['waiting_human', 'idle', 'down', 'paused'].includes(t.state);
   const approval = !!asking && t.question!.options.includes('승인') && t.question!.options.includes('거절');
   const send = async (text: string) => {
     if (asking) { const r = await act(() => api(`/api/teams/${encodeURIComponent(t.id)}/answer`, 'POST', { text })); if (r === undefined) return false; await refreshState(); reload(); return true; }
