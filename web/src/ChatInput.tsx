@@ -70,16 +70,16 @@ export function ChatInput({ placeholder, label, button = '보내기', working = 
           {uploading > 0 && <div className="ci-att loading">올리는 중…</div>}
         </div>
       )}
-      <div className="ci-row">
-        <button type="button" className="btn ci-clip" title="이미지 첨부" aria-label="이미지 첨부" onClick={() => file.current?.click()}>＋</button>
+      <textarea ref={ta} rows={1} value={text} placeholder={placeholder} aria-label={label} onChange={(e) => { setText(e.target.value); grow(); }} onKeyDown={onKey} onPaste={onPaste} />
+      <div className="ci-bar">
+        <button type="button" className="ci-clip" title="이미지 첨부" onClick={() => file.current?.click()}>＋ 첨부</button>
         <input ref={file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ''; }} />
-        <textarea ref={ta} rows={1} value={text} placeholder={placeholder} aria-label={label} onChange={(e) => { setText(e.target.value); grow(); }} onKeyDown={onKey} onPaste={onPaste} />
-        {working && onCancel
+        <span className="ci-hint muted">Enter 보내기 · Shift+Enter 줄바꿈{onCancel ? ' · Esc 취소' : ''}</span>
+        {/* 진행 중이고 새로 쓴 게 없으면 보내기 자리에 취소. 쓰는 중이면 보내기(진행 중에도 추가 지시 가능) */}
+        {working && onCancel && !text.trim() && !atts.length
           ? <button className="btn ci-cancel" type="button" onClick={() => void cancel()} title="Esc">{cancelLabel}</button>
-          : null}
-        <button className="btn primary" type="button" disabled={sending || uploading > 0 || (!text.trim() && !atts.length)} onClick={() => void send()}>{button}</button>
+          : <button className="btn primary" type="button" disabled={sending || uploading > 0 || (!text.trim() && !atts.length)} onClick={() => void send()}>{button}</button>}
       </div>
-      <div className="ci-hint muted">Enter 보내기 · Shift+Enter 줄바꿈{onCancel ? ' · Esc 진행 중 취소' : ''} · 이미지 붙여넣기·끌어놓기</div>
     </div>
   );
 }
