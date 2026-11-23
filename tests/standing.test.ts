@@ -7,7 +7,10 @@ import { HeavySlots } from '../server/po/slots.ts';
 import { Search } from '../server/search/index.ts';
 import { Orchestrator, type TurnRunner } from '../server/teams/orchestrator.ts';
 import { sleep } from '../server/util.ts';
-import { testEnv } from './helpers.ts';
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { makeRepo, testEnv } from './helpers.ts';
 
 const until = async (f: () => boolean, ms = 5000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('timeout'); await sleep(20); } };
 
@@ -35,7 +38,7 @@ function setup(teamTurn: (spec: TurnSpec, h: TurnHandle) => Partial<TurnResult> 
     await until(() => !po.busy && store.chat(500).length > before + (user ? 1 : 0), 6000);
     await sleep(30);
   };
-  return { store, orch, po, engine, prompts, poTurn };
+  return { cfg, store, orch, po, engine, prompts, poTurn };
 }
 
 describe('직속 팀: PO 생성·종료와 유지', () => {
@@ -160,5 +163,37 @@ describe('작업 환경: 내 Claude Code 와 동일', () => {
     await until(() => env.prompts.length > 0);
     await env.orch.idle();
     expect(env.store.getTeam(st.id)!.env_mode).toBe('isolated');
+  });
+});
+
+describe('PO worktree 정리', () => {
+  it('Hivelane worktree 만 보고 · 사용자 지시 턴에만 · 커밋 안 한 변경은 확인 후 · 브랜치는 기본으로 남김', async () => {
+    const env = setup();
+    const repo = makeRepo();
+    env.store.insertProject({ name: 'app', path: repo, base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
+    const wt = join(env.cfg.worktreesDir, 'app', 't-old');
+    g('worktree', 'add', '-b', 'hivelane/t-old', wt, 'main');
+    writeFileSync(join(wt, 'README.md'), '# 바뀜\n');
+    const mine = join(repo, '..', `mine-${Date.now()}`);
+    g('worktree', 'add', '-b', 'my-branch', mine, 'main');
+
+    const out: string[] = [];
+    await env.poTurn(async (t) => { out.push(await t.listWorktrees()); out.push(await t.cleanupWorktree({ path: wt, reason: '정리' })); return '목록 봤음'; }, null);
+    expect(out[0]).toContain('[정리 후보]');
+    expect(out[0]).toContain('t-old');
+    expect(out[0]).toContain('README.md');
+    expect(out[0]).not.toContain('mine-');
+    expect(out[1]).toMatch(/거절/);
+
+    await env.poTurn(async (t) => { out.push(await t.cleanupWorktree({ path: wt, reason: '정리해' })); return '변경이 있어요'; }, 'worktree 정리해');
+    expect(out[2]).toMatch(/멈춤.*README\.md/);
+    expect(existsSync(wt)).toBe(true);
+
+    await env.poTurn(async (t) => { out.push(await t.cleanupWorktree({ path: wt, discard_changes: true, reason: '버려도 됨' })); return '정리했어요'; }, '버려도 돼');
+    expect(out[3]).toContain('worktree 를 지웠다');
+    expect(existsSync(wt)).toBe(false);
+    expect(g('branch', '--list', 'hivelane/t-old')).toContain('hivelane/t-old');
+    expect(existsSync(mine)).toBe(true);
   });
 });

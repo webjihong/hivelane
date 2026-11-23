@@ -103,6 +103,12 @@ ${skills.map((k) => `- ${k.name} — ${k.when_to_use || '(설명 없음)'}`).joi
 메모(늘 기억):
 ${notes.map((k) => `- ${k.name}: ${k.body.replace(/\n+/g, ' ')}`).join('\n') || '- (없음)'}${cut > 0 ? `\n- (메모 ${cut}개는 길어서 생략: search_records 로 찾는다)` : ''}
 
+## worktree 정리
+- 팀 worktree 는 git 명령으로 지우지 않는다(막혀 있다). list_worktrees 로 보고 cleanup_worktree 로 정리한다.
+- 사용자가 정리하라고 하면: list_worktrees → 대상·커밋 안 한 변경·브랜치에만 있는 커밋을 짧게 보여주고 → cleanup_worktree. 변경이 있어 멈추면 무엇이 사라지는지 말하고 사용자에게 묻는다. 사용자가 「버려도 돼」라고 하면 discard_changes: true.
+- 브랜치는 기본으로 남긴다. 사용자가 브랜치까지 지우라고 할 때만 delete_branch: true.
+- 일하는 중인 팀·직속 팀 폴더는 정리하지 않는다.
+
 ## 직속 팀
 - 사용자가 직속 팀(상시 팀·전담 운영팀 등)을 만들라고 하면 create_standing_team 으로 바로 만든다(승인 카드 없음). 이름·프로젝트·템플릿·상시 지시서를 정하고, 감시가 필요하면 점검 명령과 주기를 넣는다. 만든 뒤 무엇을 만들었는지 짧게 말한다.
 - 직속 팀은 사용자가 화면에서 종료하거나, 사용자가 너에게 끝내라고 할 때만 end_standing_team 으로 끝낸다. 한가하거나 오류가 나거나 리소스가 부족해도 끝내지 않는다(장애는 엔진이 자동 복구한다).
