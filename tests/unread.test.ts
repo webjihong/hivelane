@@ -68,3 +68,20 @@ describe('슬랙 형식', () => {
     expect(toSlack('**결론: 끝**\n## 근거\n- `a.ts` 수정\n![캡처](/api/uploads/u-abcdefabcdef.png)')).toBe('*결론: 끝*\n*근거*\n- `a.ts` 수정\n[이미지 캡처]');
   });
 });
+
+describe('보고 있는 대화는 알리지 않음', () => {
+  it('그 팀 채널을 띄운 기기가 있으면 그 팀 알림은 건너뛰고, 다른 팀·기한 지난 표시는 알림', async () => {
+    const { store, cfg } = testEnv();
+    const { AppNotifier } = await import('../server/notify/index.ts');
+    const n = new AppNotifier(store, cfg.home);
+    const sent: string[] = [];
+    (n as unknown as { push: (x: { title: string }) => Promise<void> }).push = async (x) => { sent.push(x.title); };
+    n.presence('d1', 'team:a');
+    await n.send({ title: 'A 답', body: '', scope: 'team:a' });
+    await n.send({ title: 'B 답', body: '', scope: 'team:b' });
+    await n.send({ title: '범위 없음', body: '' });
+    n.presence('d1', null);
+    await n.send({ title: 'A 답2', body: '', scope: 'team:a' });
+    expect(sent).toEqual(['B 답', '범위 없음', 'A 답2']);
+  });
+});

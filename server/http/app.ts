@@ -166,6 +166,11 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json(r);
   });
   app.post('/api/prs/refresh', async (c) => { await d.prs?.refresh(); return c.json({ ok: true, at: d.prs?.lastAt ?? null }); });
+  app.post('/api/presence', async (c) => {
+    const b = await body(c, z.object({ device: z.string().min(4).max(60), view: z.string().max(80).nullable() }));
+    notifier.presence?.(b.device, b.view);
+    return c.json({ ok: true });
+  });
   app.post('/api/seen', async (c) => {
     const b = await body(c, z.object({ team_id: z.string().optional(), po: z.boolean().optional(), up_to: z.number().int().optional() }));
     if (b.team_id) store.markTeamSeen(b.team_id, b.up_to);

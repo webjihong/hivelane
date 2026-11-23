@@ -284,7 +284,7 @@ export class Orchestrator {
         store.updateTeam(teamId, { state: after.lifetime === 'standing' ? 'idle' : 'waiting_human', question: JSON.stringify(q) });
         store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'question', body: l.asked.question + (l.asked.options.length ? `\n선택지: ${l.asked.options.join(' / ')}` : '') });
         store.addPoEvent('ask_human', teamId, { question: l.asked.question });
-        this.deps.notifier.send({ title: '사람 확인 필요', body: `${after.name}: ${l.asked.question}`, level: 'crit', url: `/#team-${teamId}`, tag: `ask-${teamId}` });
+        this.deps.notifier.send({ title: '사람 확인 필요', body: `${after.name}: ${l.asked.question}`, level: 'crit', url: `/#team-${teamId}`, tag: `ask-${teamId}`, scope: `team:${teamId}` });
         return;
       }
       if (res.subtype === 'error_max_budget_usd') {
@@ -319,7 +319,7 @@ export class Orchestrator {
           const asker = this.askerOf(teamId);
           store.addMessage({ team_id: teamId, from_label: 'PM', to_label: asker.from === 'PO' ? 'PO' : '사용자', kind: 'report', body: res.text.trim() });
           if (asker.from === 'PO') store.addPoEvent('team_reply', teamId, { status: 'done', asked: truncate(asker.body, 300), answer: truncate(res.text.trim(), 2500) });
-          this.deps.notifier.send({ title: `${after.name} 답변`, body: truncate(res.text.trim(), 300), level: 'good', url: `/#team-${teamId}`, tag: `ans-${teamId}` });
+          this.deps.notifier.send({ title: `${after.name} 답변`, body: truncate(res.text.trim(), 300), level: 'good', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
         }
         store.addSummary({ team_id: teamId, agent_id: pm.id, stage: '보고', body: truncate(res.text.trim() || '(내용 없음)', 4000) });
         return;
@@ -477,14 +477,14 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       store.updateTeam(teamId, { state: 'idle' });
       // PO 가 맡긴 일의 답은 PO 에게 사건으로 넘겨 사용자에게 전하게 한다
       if (asker.from === 'PO') store.addPoEvent('team_reply', teamId, { status: r.status, asked: truncate(asker.body, 300), answer: truncate(r.summary, 2500) });
-      this.deps.notifier.send({ title: `${team.name} 답변`, body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}` });
+      this.deps.notifier.send({ title: `${team.name} 답변`, body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
       return;
     }
     store.updateTeam(teamId, { state: r.status, stage: r.status === 'done' ? 4 : team.stage, finished_at: nowIso(), question: null });
     store.updateTask(team.task_id!, { status: r.status, finished_at: nowIso() });
     store.addDecision(teamId, 'agent', r.status, r.status === 'done' ? '업무 완료 보고' : '실패 보고');
     store.addPoEvent('report', teamId, { status: r.status, asked_by: asker.from, answer: truncate(r.summary, 2500) });
-    this.deps.notifier.send({ title: r.status === 'done' ? '업무 완료' : '업무 실패', body: `${team.name}\n${truncate(r.summary, 300)}`, level: r.status === 'done' ? 'good' : 'crit', url: `/#team-${teamId}` });
+    this.deps.notifier.send({ title: r.status === 'done' ? '업무 완료' : '업무 실패', body: `${team.name}\n${truncate(r.summary, 300)}`, level: r.status === 'done' ? 'good' : 'crit', url: `/#team-${teamId}`, scope: `team:${teamId}` });
   }
 
   /** 턴이 끝날 때마다 변경 파일 수집 + 같은 프로젝트 팀과 겹침 확인. */

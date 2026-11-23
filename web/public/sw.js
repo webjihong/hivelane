@@ -1,4 +1,4 @@
-/* Hivelane 서비스 워커: 웹 푸시만 처리한다(오프라인 캐시 없음). v4 */
+/* Hivelane 서비스 워커: 웹 푸시만 처리한다(오프라인 캐시 없음). v5 */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
@@ -19,6 +19,13 @@ self.addEventListener('push', (e) => {
     data: { url: d.url || '/' },
   };
   e.waitUntil((async () => {
+    // 그 대화를 지금 보고 있는 창이 있으면 띄우지 않는다(서버도 거르지만 한 번 더)
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const hash = (d.url || '').includes('#') ? '#' + d.url.split('#')[1] : '';
+    if (hash && (hash.startsWith('#team-') || hash === '#po') && wins.some((c) => c.focused && c.visibilityState === 'visible' && new URL(c.url).hash.split('/')[0] === hash)) {
+      wins.forEach((c) => c.postMessage({ type: 'hl-push', title, shown: 'skipped-viewing' }));
+      return;
+    }
     // 표시 옵션을 못 받아들이는 기기도 있어 실패하면 최소 옵션으로 다시 띄운다
     let shown = 'full';
     try { await self.registration.showNotification(title, full); }

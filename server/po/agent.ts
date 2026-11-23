@@ -149,7 +149,7 @@ export class PoAgent {
       if (spoke) {
         const links = replies.filter((e) => e.team_id).map((e) => ({ label: `${store.getTeam(e.team_id)?.name ?? '팀'} 채널`, href: `#team-${e.team_id}` }));
         store.addChat({ role: 'po', body: say, links: links.length ? links : undefined });
-        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? 'PO · 팀 답변 전달' : 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? 'PO · 팀 답변 전달' : 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
       } else {
         // PO 가 말하지 않았거나 실패했어도 팀 답은 그대로 전한다
         for (const e of replies) {
@@ -157,7 +157,7 @@ export class PoAgent {
           if (typeof p.answer !== 'string') continue;
           const t = store.getTeam(e.team_id);
           store.addChat({ role: 'po', body: `**「${t?.name ?? '팀'}」 답변이 왔습니다**\n\n${truncate(p.answer, 1500)}`, links: e.team_id ? [{ label: '팀 채널 열기', href: `#team-${e.team_id}` }] : undefined, team_id: e.team_id });
-          void this.deps.notifier.send({ title: `PO · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+          void this.deps.notifier.send({ title: `PO · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
         }
         // 이미 전했으니 다시 처리하지 않는다(실패로 남은 다른 사건은 다음 턴에)
         store.markPoEventsHandled(replies.map((e) => e.id));

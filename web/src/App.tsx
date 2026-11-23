@@ -9,7 +9,7 @@ import { Settings } from './Settings.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { TeamChannel } from './TeamChannel.tsx';
 import { Templates } from './Templates.tsx';
-import { conn, openAgent, route, snapshot, toasts, useBox, type Route } from './store.ts';
+import { api, conn, openAgent, route, snapshot, toasts, useBox, type Route } from './store.ts';
 
 const MOBILE = '(max-width: 760px)';
 function useMobile(): boolean {
@@ -58,6 +58,18 @@ export function App() {
   const mobile = useMobile();
 
   useEffect(() => { if (r.name !== 'team') openAgent.set(null); }, [r]);
+  // 지금 보고 있는 대화를 서버에 알린다 → 그 대화의 답은 알림을 울리지 않는다
+  const view = r.name === 'team' ? `team:${r.id}` : r.name === 'po' ? 'po' : null;
+  useEffect(() => {
+    let device = '';
+    try { device = localStorage.getItem('hl.device') ?? ''; if (!device) { device = `d-${Math.random().toString(36).slice(2, 10)}`; localStorage.setItem('hl.device', device); } } catch { device = 'd-nostore'; }
+    const tell = () => { void api('/api/presence', 'POST', { device, view: document.visibilityState === 'visible' && document.hasFocus() ? view : null }).catch(() => {}); };
+    tell();
+    const t = setInterval(tell, 25_000);
+    document.addEventListener('visibilitychange', tell);
+    addEventListener('focus', tell); addEventListener('blur', tell);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tell); removeEventListener('focus', tell); removeEventListener('blur', tell); };
+  }, [view]);
   // 읽지 않은 수: 탭 제목·앱 아이콘 배지
   const unreadTotal = snap ? snap.poUnread + snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
   useEffect(() => {

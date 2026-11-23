@@ -503,3 +503,8 @@ body { margin: 0; overflow: hidden; }
 .sb-pull.on { border-color: var(--sb-amber); color: var(--sb-amber); opacity: 1; }
 .sb-repo:hover .sb-pull { opacity: 1; }
 .sb-pull:disabled { opacity: .5; cursor: default; }
+
+/* 대화 스크롤 */
+.tc-scroll { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tc-scroll > .tc-body, .tc-scroll > .chat-body { flex: 1; min-height: 0; }
+.new-below { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); border: 0; border-radius: 16px; padding: 6px 14px; background: var(--accent); color: #FFFFFF; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }

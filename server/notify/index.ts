@@ -6,9 +6,10 @@ import type { Store } from '../store.ts';
 
 const log = logger('notify');
 
-export interface Notice { title: string; body: string; url?: string; level?: 'info' | 'warn' | 'crit' | 'good'; tag?: string }
+/** scope: 이 알림이 속한 대화('team:<id>' | 'po'). 누군가 그 대화를 화면에 띄워 보고 있으면 알리지 않는다. */
+export interface Notice { title: string; body: string; url?: string; level?: 'info' | 'warn' | 'crit' | 'good'; tag?: string; scope?: string }
 
-export interface Notifier { send(n: Notice): Promise<void>; vapidPublicKey(): string | null; sendTo?(endpoint: string, n: Notice): Promise<{ ok: boolean; status?: number; error?: string }> }
+export interface Notifier { send(n: Notice): Promise<void>; vapidPublicKey(): string | null; presence?(device: string, view: string | null): void; sendTo?(endpoint: string, n: Notice): Promise<{ ok: boolean; status?: number; error?: string }> }
 
 /** 마크다운 → 슬랙 mrkdwn: **굵게** → *굵게*, 제목 # → 굵게, 표는 그대로. */
 export function toSlack(md: string): string {
@@ -33,7 +34,13 @@ export class AppNotifier implements Notifier {
   /** 슬랙 「열기」 링크: 원격(Tailscale) 주소가 있으면 그것, 없으면 로컬 */
   private baseUrl(): string { return process.env.HIVELANE_PUBLIC_URL ?? this.store.getKv<string | null>('public_url', null) ?? `http://127.0.0.1:${process.env.HIVELANE_PORT ?? 4310}`; }
 
+  /** 기기별로 지금 화면에 띄운 대화(45초 안에 알린 것만 유효) */
+  private views = new Map<string, { view: string; at: number }>();
+  presence(device: string, view: string | null): void { if (view) this.views.set(device, { view, at: Date.now() }); else this.views.delete(device); }
+  viewing(scope: string): boolean { const now = Date.now(); return [...this.views.values()].some((v) => v.view === scope && now - v.at < 45_000); }
+
   async send(n: Notice): Promise<void> {
+    if (n.scope && this.viewing(n.scope)) { log.info(`알림 생략(보고 있는 대화) · ${n.title}`); return; }
     await Promise.allSettled([this.slack(n), this.push(n)]);
   }
 

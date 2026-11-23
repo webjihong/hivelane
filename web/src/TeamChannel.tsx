@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { NewBelow, useStickToBottom } from './stick.tsx';
 import type { StateSnapshot, TeamDetail, TeamView } from '../../shared/types.ts';
 import { ChatInput } from './ChatInput.tsx';
 import { DOT_LABEL, dotOf, sideNote } from './chan.ts';
@@ -79,12 +80,10 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
   const { detail: d, missing, reload } = useTeamDetail(id);
   const t = snap.teams.find((x) => x.id === id) ?? d?.team ?? null;
   const bodyRef = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
+  const sb = useStickToBottom(bodyRef, !!t);
   const msgs = d?.messages ?? [];
   const lastId = msgs.length ? msgs[msgs.length - 1]!.id : 0;
 
-  // 새 글이 오면 아래로(사용자가 위로 올려 읽는 중이면 그대로)
-  useEffect(() => { const el = bodyRef.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [lastId, t?.state]);
   // 보이는 동안 읽음으로
   const unread = t?.unread ?? 0;
   useEffect(() => {
@@ -106,7 +105,7 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
     const r = await act(() => api<{ result: 'delivered' | 'queued' }>(`/api/teams/${encodeURIComponent(t.id)}/message`, 'POST', { text }));
     if (!r) return false;
     if (r.result === 'queued') toast('받아 두었습니다 · 팀이 다시 돌면 반영', 'info');
-    stick.current = true;
+    sb.stickNow();
     reload();
     return true;
   };
@@ -115,12 +114,15 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
     <div className={`tc${detail ? ' with-detail' : ''}`}>
       <section className="tc-main">
         <Head t={t} snap={snap} detail={detail} />
-        <div className="tc-body" ref={bodyRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
+        <div className="tc-scroll">
+        <div className="tc-body" ref={bodyRef} onScroll={sb.onScroll}>
           {t.lifetime === 'standing' && msgs.length === 0 && <div className="tc-sys">상시 지시서에 따라 대기 중입니다. 아래에 바로 지시하세요.</div>}
           {msgs.map((m) => <Line key={m.id} m={m} />)}
           {t.state === 'running' && <div className="tc-typing"><span className="typing"><span /><span /><span /></span> {t.busy_note ?? 'PM 일하는 중'}</div>}
           {t.state === 'paused' && <div className="tc-sys warn">멈춤 · {t.paused_reason ?? ''}</div>}
           {t.state === 'failed' && <div className="tc-sys crit">실패 · {t.error ?? '이유 없음'}</div>}
+        </div>
+        <NewBelow show={sb.newBelow} onClick={sb.jump} />
         </div>
         {asking && (
           <div className={`tc-ask${approval ? ' approval' : ''}`}>

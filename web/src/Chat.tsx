@@ -5,6 +5,7 @@ import { act, api, chat, proposalOutcome, refreshState, useBox } from './store.t
 import { MODE_LABEL, RichText, hhmm, safeHref } from './ui.tsx';
 import { KnowledgeDrawer } from './Knowledge.tsx';
 import { ChatInput } from './ChatInput.tsx';
+import { NewBelow, useStickToBottom } from './stick.tsx';
 
 const HINTS = ['팀들 지금 어디까지 했어?', '어제 바뀐 파일 알려줘'];
 
@@ -122,12 +123,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const [sending, setSending] = useState(false);
   const [kn, setKn] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
-
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [rows.length, snap.poBusy]);
+  const sb = useStickToBottom(bodyRef);
   // 대화창이 실제로 보이는 동안(데스크톱 옆 칸·모바일 PO 탭) PO 답을 읽음으로
   const lastChat = rows.length ? rows[rows.length - 1]!.id : 0;
   useEffect(() => {
@@ -143,12 +139,12 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const send = async (v: string) => {
     if (!v.trim() || sending) return;
     setSending(true);
-    stick.current = true;
+    sb.stickNow();
     const r = await act(() => api('/api/chat', 'POST', { text: v.trim() }));
     setSending(false);
     if (r !== undefined) setText('');
   };
-  const sendText = async (v: string) => { const r = await act(() => api('/api/chat', 'POST', { text: v })); stick.current = true; return r !== undefined; };
+  const sendText = async (v: string) => { const r = await act(() => api('/api/chat', 'POST', { text: v })); sb.stickNow(); return r !== undefined; };
 
   return (
     <section className="chat po-chan" aria-label="PO 대화">
@@ -159,10 +155,13 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
         <button className="btn kn-btn" type="button" onClick={() => setKn(true)}>배운 것 {snap.knowledgeCount}</button>
       </div>
       {kn && <KnowledgeDrawer onClose={() => setKn(false)} />}
-      <div className="chat-body" ref={bodyRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
+      <div className="tc-scroll">
+      <div className="chat-body" ref={bodyRef} onScroll={sb.onScroll}>
         {rows.length === 0 && <div className="c ev">PO에게 할 일을 지시하거나 진행 상황을 물어보세요. PO가 팀 구성을 제안하면 여기서 승인합니다.</div>}
         {rows.map((c) => <Row key={c.id} c={c} snap={snap} outcome={outcome} />)}
         {snap.poBusy && <div className="c po thinking">생각 중 <span className="typing"><span /><span /><span /></span></div>}
+      </div>
+      <NewBelow show={sb.newBelow} onClick={sb.jump} />
       </div>
       <div className="chat-f">
         <div className="hints">{HINTS.map((h) => <button key={h} className="hint" type="button" disabled={sending} onClick={() => void send(h)}>{h}</button>)}</div>
