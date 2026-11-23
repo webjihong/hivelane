@@ -250,7 +250,9 @@ async function enablePush(vapid: string | null, fresh = false): Promise<void> {
   const j = sub.toJSON();
   if (!j.endpoint || !j.keys?.p256dh || !j.keys.auth) throw new Error('구독 정보를 만들지 못했습니다');
   const ua = navigator.userAgent;
-  const device = (/iPhone|iPad|Android|Macintosh|Windows|Linux/.exec(ua)?.[0] ?? 'browser') + ' · ' + (/Edg|Chrome|Firefox|Safari/.exec(ua)?.[0] ?? '');
+  const os = ['iPhone', 'iPad', 'Android', 'Macintosh', 'Windows', 'Linux'].find((k) => ua.includes(k)) ?? 'browser';
+  const br = ['SamsungBrowser', 'Edg', 'Firefox', 'Chrome', 'Safari'].find((k) => ua.includes(k)) ?? '';
+  const device = `${os} · ${br === 'SamsungBrowser' ? '삼성 인터넷' : br}`;
   await api('/api/push/subscribe', 'POST', { endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, device: device.slice(0, 100) });
 }
 
