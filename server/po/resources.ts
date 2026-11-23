@@ -188,3 +188,65 @@ export async function cwdsOf(pids: number[]): Promise<Map<number, string>> {
   }
   return out;
 }
+
+/* ---------- 화면용 구조화 진단 ---------- */
+
+export interface DiagGroup { pid: number; label: string; detail: string; kind: 'claude' | 'team' | 'hivelane' | 'app' | 'system' | 'other'; cpu: number; share: number; rssMb: number; count: number }
+export interface DiagProc { pid: number; name: string; cpu: number; share: number; rssMb: number; etime: string; origin: string; command: string }
+export interface DiagData { cpu: number; mem: number; load: number; cores: number; ownShare: number; groups: DiagGroup[]; top: DiagProc[] }
+
+const home = process.env.HOME ?? '';
+const shortPath = (p: string) => { const s = p.replace(home, '~'); const parts = s.split('/').filter(Boolean); return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : s; };
+const KNOWN = ['vitest', 'jest', 'tsc', 'next', 'nest', 'ts-node', 'tsx', 'vite', 'turbo', 'eslint', 'playwright', 'webpack', 'esbuild', 'docusaurus', 'prettier'];
+
+/** 프로세스 이름을 사람이 알아보게: 앱 이름, node 면 무엇을 돌리는지 */
+export function friendlyName(command: string): string {
+  const app = command.match(/\/([^/]+)\.app\//);
+  if (app) return /Helper[^/]*\.app\//.test(command) ? `${app[1]} (보조 프로세스)` : app[1]!;
+  const exe = (command.split(/\s+/)[0] ?? '').split('/').pop() ?? '';
+  if (/^(node|bun|deno|npm|npx|pnpm|yarn)$/.test(exe)) {
+    const words = command.split(/\s+/).slice(1);
+    const known = words.map((w) => w.split('/').pop() ?? '').find((w) => KNOWN.includes(w));
+    if (known) { const after = words.slice(words.findIndex((w) => w.endsWith(known)) + 1); const rest = after.filter((w, i) => !w.startsWith('-') && !/^(-r|--require|-p|--project|--reporter|-c|--config)$/.test(after[i - 1] ?? '')).slice(0, 2).map((w) => w.split('/').pop()).join(' '); return `${exe === 'node' ? '' : `${exe} `}${known}${rest ? ` ${rest}` : ''}`.trim(); }
+    if (exe === 'npm' || exe === 'pnpm' || exe === 'yarn') return words.filter((w) => !w.startsWith('-')).slice(0, 3).join(' ').replace(/^/, `${exe} `);
+    const script = words.find((w) => !w.startsWith('-') && /\.(m?[jt]s|cjs)$/.test(w));
+    return script ? `node ${script.split('/').pop()}` : 'node';
+  }
+  if (command.startsWith('/System/') || command.startsWith('/usr/libexec/') || command.startsWith('/usr/sbin/')) return `${exe} (macOS)`;
+  return exe || command.slice(0, 40);
+}
+
+function groupLabel(o: ProcDetail, team: string | undefined, cwd: string | undefined): { label: string; detail: string; kind: DiagGroup['kind'] } {
+  if (team) return { label: team, detail: cwd ? shortPath(cwd) : '', kind: team === 'Hivelane 서버' ? 'hivelane' : 'team' };
+  const exe = (o.command.split(/\s+/)[0] ?? '').split('/').pop() ?? '';
+  if (exe === 'claude') return { label: `Claude Code 세션`, detail: cwd ? shortPath(cwd) : `pid ${o.pid}`, kind: 'claude' };
+  const app = o.command.match(/\/([^/]+)\.app\//);
+  if (app) return { label: app[1]!, detail: '앱', kind: 'app' };
+  if (o.command.startsWith('/System/') || o.command.startsWith('/usr/')) return { label: friendlyName(o.command), detail: 'macOS 시스템', kind: 'system' };
+  return { label: friendlyName(o.command), detail: cwd ? shortPath(cwd) : '', kind: 'other' };
+}
+
+export function diagnoseData(d: DiagInput): { data: DiagData; origins: number[] } {
+  const byPid = new Map(d.procs.map((p) => [p.pid, p]));
+  const teamOf = new Map<number, string>();
+  for (const [root, name] of d.teamRoots) for (const p of descendants(d.procs, [root])) teamOf.set(p.pid, name);
+  for (const p of descendants(d.procs, [d.hivelanePid])) if (!teamOf.has(p.pid)) teamOf.set(p.pid, 'Hivelane 서버');
+  const total = Math.max(1, d.cores * 100);
+  const groups = new Map<number, { origin: ProcDetail; cpu: number; rss: number; n: number; team?: string }>();
+  for (const p of d.procs) {
+    if (p.pid === 0) continue;
+    const o = originOf(p, byPid);
+    const g = groups.get(o.pid) ?? { origin: o, cpu: 0, rss: 0, n: 0, team: teamOf.get(o.pid) ?? teamOf.get(p.pid) };
+    g.cpu += p.cpu; g.rss += p.rssMb; g.n++;
+    groups.set(o.pid, g);
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.cpu - a.cpu).slice(0, 8);
+  const out: DiagGroup[] = sorted.map((g) => ({ pid: g.origin.pid, ...groupLabel(g.origin, g.team, d.cwdOf?.get(g.origin.pid)), cpu: Math.round(g.cpu), share: Math.round((g.cpu / total) * 100), rssMb: Math.round(g.rss), count: g.n }));
+  const own = [...groups.values()].filter((g) => g.team).reduce((a, g) => a + g.cpu, 0);
+  const top: DiagProc[] = [...d.procs].sort((a, b) => b.cpu - a.cpu).slice(0, d.top ?? 12).map((p) => {
+    const o = originOf(p, byPid);
+    const gl = groupLabel(o, teamOf.get(o.pid) ?? teamOf.get(p.pid), d.cwdOf?.get(o.pid));
+    return { pid: p.pid, name: friendlyName(p.command), cpu: Math.round(p.cpu), share: Math.round((p.cpu / total) * 100), rssMb: Math.round(p.rssMb), etime: p.etime, origin: gl.detail ? `${gl.label} · ${gl.detail}` : gl.label, command: p.command.slice(0, 400) };
+  });
+  return { data: { cpu: Math.round(d.cpu), mem: Math.round(d.mem), load: Math.round(d.load * 10) / 10, cores: d.cores, ownShare: Math.round((own / total) * 100), groups: out, top }, origins: sorted.map((g) => g.origin.pid) };
+}

@@ -138,7 +138,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- PO 대화 ---------- */
   app.get('/api/chat', (c) => c.json(store.chat(Number(c.req.query('limit') ?? 200), c.req.query('before') ? Number(c.req.query('before')) : undefined)));
   app.get('/api/system/diag', async (c) => {
-    const { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } = await import('../po/resources.ts');
+    const { CpuMeter, cwdsOf, diagnoseData, listProcDetails, memPercent } = await import('../po/resources.ts');
     const { cpus, loadavg } = await import('node:os');
     const meter = new CpuMeter();
     await new Promise((r) => setTimeout(r, 800));
@@ -147,8 +147,8 @@ export function createApp(d: AppDeps): Hono<Env> {
     const teamRoots = new Map<number, string>();
     for (const t of store.listTeams("state IN ('running','paused','reviving','idle','waiting_human')")) for (const pid of orch.rootPids(t.id)) teamRoots.set(pid, `Hivelane 팀 「${t.name}」`);
     const input = { procs, cpu, mem, load: loadavg()[0] ?? 0, cores: cpus().length, teamRoots, hivelanePid: process.pid };
-    const first = diagnose(input);
-    return c.json({ text: diagnose({ ...input, cwdOf: await cwdsOf(first.origins) }).text });
+    const first = diagnoseData(input);
+    return c.json(diagnoseData({ ...input, cwdOf: await cwdsOf(first.origins) }).data);
   });
   app.post('/api/prs/merge', async (c) => {
     const b = await body(c, z.object({ project_id: z.string(), number: z.number().int().positive(), method: z.enum(['merge', 'squash', 'rebase']) }));

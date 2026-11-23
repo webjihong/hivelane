@@ -70,16 +70,20 @@ export function ChatInput({ placeholder, label, button = '보내기', working = 
           {uploading > 0 && <div className="ci-att loading">올리는 중…</div>}
         </div>
       )}
-      <textarea ref={ta} rows={1} value={text} placeholder={placeholder} aria-label={label} onChange={(e) => { setText(e.target.value); grow(); }} onKeyDown={onKey} onPaste={onPaste} />
-      <div className="ci-bar">
-        <button type="button" className="ci-clip" title="이미지 첨부" onClick={() => file.current?.click()}>＋ 첨부</button>
-        <input ref={file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ''; }} />
-        <span className="ci-hint muted">Enter 보내기 · Shift+Enter 줄바꿈{onCancel ? ' · Esc 취소' : ''}</span>
+      <div className="ci-row">
+        <div className="ci-box">
+          <textarea ref={ta} rows={1} value={text} placeholder={placeholder} aria-label={label} onChange={(e) => { setText(e.target.value); grow(); }} onKeyDown={onKey} onPaste={onPaste} />
+          <button type="button" className="ci-clip" title="이미지 첨부 (붙여넣기·끌어놓기도 됨)" aria-label="이미지 첨부" onClick={() => file.current?.click()}>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          <input ref={file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ''; }} />
+        </div>
         {/* 진행 중이고 새로 쓴 게 없으면 보내기 자리에 취소. 쓰는 중이면 보내기(진행 중에도 추가 지시 가능) */}
         {working && onCancel && !text.trim() && !atts.length
-          ? <button className="btn ci-cancel" type="button" onClick={() => void cancel()} title="Esc">{cancelLabel}</button>
-          : <button className="btn primary" type="button" disabled={sending || uploading > 0 || (!text.trim() && !atts.length)} onClick={() => void send()}>{button}</button>}
+          ? <button className="btn ci-send ci-cancel" type="button" onClick={() => void cancel()} title="Esc">{cancelLabel}</button>
+          : <button className="btn primary ci-send" type="button" disabled={sending || uploading > 0 || (!text.trim() && !atts.length)} onClick={() => void send()}>{button}</button>}
       </div>
+      <div className="ci-hint muted">Enter 보내기 · Shift+Enter 줄바꿈{onCancel ? ' · Esc 진행 취소' : ''} · 이미지 붙여넣기·끌어놓기</div>
     </div>
   );
 }

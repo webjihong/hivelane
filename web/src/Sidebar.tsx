@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import type { StateSnapshot, TeamView } from '../../shared/types.ts';
 import { DOT_LABEL, dotOf, isActiveTask, isDoneTask, isStandingCh, nowCount, sideNote } from './chan.ts';
 import { api, clock, conn, route, useBox, type Route } from './store.ts';
-import { RichText } from './ui.tsx';
 
 const ZONE = { green: '여유', yellow: '주의', red: '과부하' } as const;
 
@@ -12,17 +11,69 @@ function Bar({ v, y, r }: { v: number; y: number; r: number }) {
   return <span className="sb-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(2, v))}%`, background: c }} /></span>;
 }
 
+type DiagData = {
+  cpu: number; mem: number; load: number; cores: number; ownShare: number;
+  groups: { pid: number; label: string; detail: string; kind: string; cpu: number; share: number; rssMb: number; count: number }[];
+  top: { pid: number; name: string; cpu: number; share: number; rssMb: number; etime: string; origin: string; command: string }[];
+};
+const KIND: Record<string, string> = { claude: 'Claude', team: 'Hivelane 팀', hivelane: 'Hivelane', app: '앱', system: 'macOS', other: '기타' };
+const gb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)}GB` : `${mb}MB`);
+const etime = (e: string) => e.replace(/^(\d+)-/, '$1일 ').replace(/^00:/, '').replace(/^0(\d)/, '$1');
+
 function ResourceModal({ onClose }: { onClose: () => void }) {
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => { void api<{ text: string }>('/api/system/diag').then((r) => setText(r.text)).catch((e) => setText(`불러오지 못했습니다: ${e instanceof Error ? e.message : e}`)); }, []);
+  const [d, setD] = useState<DiagData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => { setD(null); void api<DiagData>('/api/system/diag').then(setD).catch((e) => setErr(e instanceof Error ? e.message : String(e))); };
+  useEffect(load, []);
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', h); return () => removeEventListener('keydown', h); }, [onClose]);
+  const max = d ? Math.max(1, ...d.groups.map((g) => g.share)) : 1;
   // 사이드바(어두운 칸) 밖, 문서 맨 위에 띄운다
   return createPortal(
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" aria-label="맥 리소스 상세">
-        <div className="drawer-h"><div><h2>맥 리소스 · 누가 쓰나</h2><div className="drawer-sub muted">출처별 합계(Claude Code 세션·앱·Hivelane 팀)와 상위 프로세스</div></div><button className="btn" type="button" onClick={onClose}>닫기</button></div>
-        <div className="drawer-b">{text ? <div className="diag"><RichText text={text} /></div> : <div className="muted">재는 중…</div>}</div>
+        <div className="drawer-h"><div><h2>맥 리소스 · 누가 쓰나</h2><div className="drawer-sub muted">지금 이 순간 기준 · 코어 {d?.cores ?? '—'}개 전체를 100%로 환산</div></div><div className="row"><button className="btn" type="button" onClick={load} disabled={!d}>다시 재기</button><button className="btn" type="button" onClick={onClose}>닫기</button></div></div>
+        <div className="drawer-b">
+          {err && <div className="muted">불러오지 못했습니다: {err}</div>}
+          {!d && !err && <div className="muted">재는 중…</div>}
+          {d && (
+            <>
+              <div className="rs-sum">
+                <div><small>CPU</small><b className={d.cpu > 85 ? 'crit-t' : d.cpu >= 70 ? 'warn-t' : ''}>{d.cpu}%</b><span className="rs-bar"><i style={{ width: `${d.cpu}%` }} /></span></div>
+                <div><small>메모리 압박</small><b className={d.mem > 85 ? 'crit-t' : d.mem >= 75 ? 'warn-t' : ''}>{d.mem}%</b><span className="rs-bar"><i style={{ width: `${d.mem}%` }} /></span></div>
+                <div><small>부하(load)</small><b>{d.load}</b><span className="muted small">코어 {d.cores}개 기준 {Math.round((d.load / d.cores) * 100)}%</span></div>
+                <div><small>Hivelane 몫</small><b>{d.ownShare}%</b><span className="muted small">{d.ownShare < 25 ? '대부분 다른 프로그램' : 'Hivelane 팀이 큰 몫'}</span></div>
+              </div>
+
+              <h3 className="rs-h">누가 쓰나 <small className="muted">비슷한 것끼리 묶음</small></h3>
+              <div className="rs-groups">
+                {d.groups.map((g) => (
+                  <div key={g.pid} className={`rs-g k-${g.kind}`}>
+                    <span className="rs-kind">{KIND[g.kind] ?? g.kind}</span>
+                    <div className="rs-gm">
+                      <div className="rs-gl"><b>{g.label}</b>{g.detail && <span className="muted mono"> {g.detail}</span>}</div>
+                      <span className="rs-bar wide"><i style={{ width: `${Math.max(2, (g.share / max) * 100)}%` }} /></span>
+                    </div>
+                    <div className="rs-gn"><b>{g.share}%</b><span className="muted">{gb(g.rssMb)} · {g.count}개</span></div>
+                  </div>
+                ))}
+              </div>
+
+              <details className="rs-top">
+                <summary>프로세스 상위 {d.top.length}개 보기</summary>
+                <div className="rs-procs">
+                  {d.top.map((p) => (
+                    <div key={p.pid} className="rs-p" title={p.command}>
+                      <div className="rs-pm"><b>{p.name}</b><span className="muted"> · {p.origin}</span></div>
+                      <div className="rs-pn mono"><b>{p.share}%</b> <span className="muted">{gb(p.rssMb)} · {etime(p.etime)} · pid {p.pid}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <p className="muted small">PO에게 「CPU 왜 높아?」라고 물으면 같은 자료로 원인과 조치를 정리해 줍니다.</p>
+            </>
+          )}
+        </div>
       </aside>
     </>,
     document.body,
