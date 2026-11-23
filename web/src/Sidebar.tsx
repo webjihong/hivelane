@@ -91,7 +91,7 @@ function RepoItem({ r }: { r: RepoView }) {
         {r.ahead > 0 && <span className="sb-rb" aria-label={`안 올린 커밋 ${r.ahead}개`}>↑{r.ahead}</span>}
         {r.dirty > 0 && <span className="sb-rb" aria-label={`로컬 변경 ${r.dirty}개`}>✎{r.dirty}</span>}
       </>}
-      {r.upstream && <button type="button" className={`sb-pull${r.behind > 0 ? ' on' : ''}`} disabled={r.pulling} onClick={() => void pull()} title="git pull --ff-only (로컬 변경·커밋은 건드리지 않음)">{r.pulling ? '받는 중' : '받기'}</button>}
+      {r.upstream && <button type="button" className={`sb-pull${r.behind > 0 ? ' on' : ''}`} disabled={r.pulling} onClick={() => void pull()} title={`${r.upstream} → ${r.path.replace(/^\/Users\/[^/]+/, '~')} (${r.branch}) 받기\n빨리 감기만 · 로컬 변경·커밋은 건드리지 않음`}>{r.pulling ? '받는 중' : '받기'}</button>}
     </div>
   );
 }
