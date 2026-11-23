@@ -138,6 +138,18 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
   const t = snap.teams.find((x) => x.id === id) ?? detail?.team ?? null;
   const remote = snap.access === 'remote';
 
+  // 화면에 보이는 동안 이 팀의 답을 읽음으로(훅은 이른 반환보다 앞에)
+  const msgList = detail?.messages ?? [];
+  const lastId = msgList.length ? msgList[msgList.length - 1]!.id : 0;
+  const unreadNow = t?.unread ?? 0;
+  useEffect(() => {
+    if (!lastId || !unreadNow) return;
+    const mark = () => { if (document.visibilityState === 'visible') void api('/api/seen', 'POST', { team_id: id, up_to: lastId }).then(() => refreshState()).catch(() => {}); };
+    mark();
+    document.addEventListener('visibilitychange', mark);
+    return () => document.removeEventListener('visibilitychange', mark);
+  }, [lastId, id, unreadNow]);
+
   if (!t) return (
     <div className="stack">
       <div><button className="back" type="button" onClick={() => go('home')}>← 업무 목록</button></div>

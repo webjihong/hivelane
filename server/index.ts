@@ -21,11 +21,12 @@ const log = logger('main');
 const store = new Store(openDb(cfg.dbPath));
 seedTemplates(store);
 const notifier = new AppNotifier(store, cfg.home);
+store.initSeenBaseline();
 const slots = new HeavySlots(store.getSettings().engine.slotsGreen);
 const runner = new AgentRunner({ store, slots });
 const orch = new Orchestrator({ cfg, store, runner, slots, notifier });
 const search = new Search(store);
-const engine = new Engine({ store, orch, slots, sampler: realSampler() });
+const engine = new Engine({ store, orch, slots, sampler: realSampler(), notifier });
 const po = new PoAgent({ cfg, store, runner, orch, search, notifier });
 
 orch.recover();

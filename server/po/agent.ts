@@ -138,7 +138,10 @@ export class PoAgent {
       }
       const say = res.text.trim();
       if (!res.ok) store.addChat({ role: 'event', body: `PO 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
-      else if (say && say !== '-') store.addChat({ role: 'po', body: say });
+      else if (say && say !== '-') {
+        store.addChat({ role: 'po', body: say });
+        if (userTexts.length) void this.deps.notifier.send({ title: 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+      }
       if (!res.ok && agent.session_id && /session|resume/i.test(res.error ?? '')) store.updateAgent(agent.id, { session_id: null });
     } catch (e) {
       log.error('PO 턴 실패', e);

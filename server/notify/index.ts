@@ -45,6 +45,7 @@ export class AppNotifier implements Notifier {
     for (const s of this.store.pushSubs()) {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 3600 });
+        log.info(`푸시 보냄 · ${s.device} · ${n.title}`);
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode;
         if (code === 404 || code === 410) this.store.removePushSub(s.endpoint);

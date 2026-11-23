@@ -35,7 +35,7 @@ function RowLine({ t, now }: { t: TeamView; now: number }) {
       <span className="lamp" />
       <span className="tagc"><span className={`tag ${t.state}`}>{STATE_LABEL[t.state]}</span></span>
       <div className="tt" style={{ minWidth: 0 }}>
-        <div className="t1">{t.priority !== 'normal' && <><span className={`chip ${t.priority}`}>{PRI[t.priority]}</span> </>}{t.title}</div>
+        <div className="t1">{t.unread > 0 && <span className="unread" title="읽지 않은 답변">새 답변 {t.unread}</span>}{t.priority !== 'normal' && <><span className={`chip ${t.priority}`}>{PRI[t.priority]}</span> </>}{t.title}</div>
         <div className={`t2 ${sub.cls}`}>{t.project_name ? `${t.project_name} · ` : ''}{sub.text}</div>
       </div>
       <div className="sg">
@@ -58,7 +58,7 @@ function LineCard({ t, now }: { t: TeamView; now: number }) {
   return (
     <button className={`line s-${t.state}`} type="button" onClick={() => go(`team-${t.id}`)}>
       <div className="line-h"><span className="lamp" />
-        <div className="ttl"><span className={`tag ${t.state}`}>{STATE_LABEL[t.state]}</span>{t.priority !== 'normal' && <span className={`chip ${t.priority}`}>{PRI[t.priority]}</span>}<span>{t.title}</span></div>
+        <div className="ttl"><span className={`tag ${t.state}`}>{STATE_LABEL[t.state]}</span>{t.priority !== 'normal' && <span className={`chip ${t.priority}`}>{PRI[t.priority]}</span>}{t.unread > 0 && <span className="unread" title="읽지 않은 답변">새 답변 {t.unread}</span>}<span>{t.title}</span></div>
         <div className="rt"><div className="mono">{money(t.cost_usd)}</div><div>{elapsed(t, now)}</div></div>
       </div>
       <div className="floor" style={{ ['--to' as string]: to }}>
@@ -131,6 +131,22 @@ function Alerts({ snap }: { snap: StateSnapshot }) {
       </div>,
     );
   }
+  for (const t of teams.filter((x) => x.unread > 0 && x.state !== 'waiting_human')) {
+    items.push(
+      <div key={`u-${t.id}`} className="alert info"><span className="lamp done" />
+        <div style={{ minWidth: 0 }}><div className="a-t">{t.title}</div><div className="a-s">읽지 않은 답변 {t.unread}건</div></div>
+        <div className="acts"><button className="btn primary" type="button" onClick={() => go(`team-${t.id}`)}>읽기</button></div>
+      </div>,
+    );
+  }
+  if (snap.poUnread > 0) {
+    items.push(
+      <div key="u-po" className="alert info"><span className="lamp done" />
+        <div style={{ minWidth: 0 }}><div className="a-t">PO</div><div className="a-s">읽지 않은 PO 답변 {snap.poUnread}건</div></div>
+        <div className="acts"><button className="btn primary" type="button" onClick={() => go('po')}>읽기</button></div>
+      </div>,
+    );
+  }
   return items.length ? <div className="alerts">{items}</div> : <div className="all-clear">지금 사람이 확인할 일은 없습니다. 모든 라인이 알아서 돌고 있습니다.</div>;
 }
 
@@ -164,7 +180,7 @@ export function Home({ snap }: { snap: StateSnapshot }) {
           <div className="st-row">
             {standing.map((t) => (
               <button key={t.id} className="st-pill st" type="button" onClick={() => go(`team-${t.id}`)}>
-                <span className={facility(t)} /><b>{t.name}</b>
+                <span className={facility(t)} /><b>{t.name}</b>{t.unread > 0 && <span className="unread" title="읽지 않은 답변">새 답변 {t.unread}</span>}
                 <span className="mono muted">{STATE_LABEL[t.state]} · 생존 확인 {agoSec(t.last_heartbeat_at, now)}</span>
               </button>
             ))}

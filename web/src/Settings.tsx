@@ -332,6 +332,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
       <div className="set-grid">
         <Section title="알림" sub="사람 확인 필요·완료·실패·장애">
           <div className="panel stack-s">
+            <Row label="읽지 않은 답변 다시 알림" sub="답을 안 읽으면 이 간격(분)마다 다시 알림 · 0이면 끔" htmlFor="set-remind"><NumField id="set-remind" value={s.remindUnreadMin} unit="분" step={5} disabled={ro} onSave={(v) => saveSettings({ remindUnreadMin: Math.max(0, Math.round(v)) })} /></Row>
             <TextSetting label="슬랙 웹훅" sub="비우면 끔" value={s.slackWebhook ?? ''} placeholder="https://hooks.slack.com/services/…" mono disabled={ro} onSave={(v) => saveSettings({ slackWebhook: v.trim() || null })} />
             <div className="set-col">
               <label>웹 푸시 (이 기기)<small>{pushState === 'on' ? '이 기기는 구독 중입니다' : '이 기기에서 알림을 받으려면 켜세요'}</small></label>

@@ -109,7 +109,8 @@
 - 모든 API: Host 허용 목록(리바인딩 차단). 변경 요청: `Content-Type: application/json` + `X-Hivelane: 1` + Origin 일치(CSRF 차단).
 - Tailscale(`Tailscale-User-Login` 헤더): 설정의 owner_login과 같아야 함. 원격 제한: 템플릿·설정·프로젝트 변경·worktree 정리 불가. 팀 구성 승인은 확인 단계 1번 더.
 - PWA(manifest + service worker), 웹 푸시(VAPID, `web-push`). 슬랙 웹훅(설정).
-- 알림 사건: 사람 확인 필요, 팀 완료·실패, 예산 초과, 직속 팀 장애·복구.
+- 알림 사건: 사람 확인 필요, 팀 완료·실패, 직속 팀 답변, PO 답변(사용자 메시지에 대한), 예산 초과, 직속 팀 장애·복구, 읽지 않은 답변 다시 알림(설정 간격, 기본 30분, 0=끔).
+- 읽음: 팀별·PO 마지막 본 id(kv `seen:*`). 팀 화면·PO 대화창이 실제로 보일 때 읽음 처리. 안 읽은 수는 목록 배지·조치 필요·하단 탭·탭 제목·앱 배지. 처음 켤 때 옛 기록은 읽음으로.
 
 ## 11. 화면
 

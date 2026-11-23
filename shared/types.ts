@@ -67,6 +67,8 @@ export interface Settings {
   contextLimitTokens: number;
   ownerLogin: string | null;
   slackWebhook: string | null;
+  /** 읽지 않은 답변이 있으면 이 간격(분)마다 다시 알림. 0 = 끔 */
+  remindUnreadMin: number;
   embedding: { provider: 'off' | 'ollama' | 'voyage'; model: string; url: string };
 }
 
@@ -79,6 +81,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   autoApprove: false,
   defaultBudgetUsd: null,
+  remindUnreadMin: 30,
   poModel: 'opus',
   contextLimitTokens: 150_000,
   ownerLogin: null,
@@ -119,6 +122,8 @@ export interface TeamView {
   pause_kind: string | null;
   /** 사람이 재개해서 자동 멈춤에서 보호되는 시각(이때까지) */
   resume_grace_until?: string | null;
+  /** 내가 아직 안 본 PM 답변·보고·질문 수 */
+  unread: number;
   question: { text: string; options: string[]; asked_at: string } | null;
   cost_usd: number;
   budget_usd: number | null;
@@ -195,6 +200,8 @@ export interface StateSnapshot {
   proposals: ProposalView[];
   poBusy: boolean;
   knowledgeCount: number;
+  /** 내가 아직 안 본 PO 답변 수 */
+  poUnread: number;
   vapidPublicKey: string | null;
 }
 

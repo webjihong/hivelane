@@ -86,7 +86,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
@@ -133,6 +133,12 @@ export function createApp(d: AppDeps): Hono<Env> {
 
   /* ---------- PO 대화 ---------- */
   app.get('/api/chat', (c) => c.json(store.chat(Number(c.req.query('limit') ?? 200), c.req.query('before') ? Number(c.req.query('before')) : undefined)));
+  app.post('/api/seen', async (c) => {
+    const b = await body(c, z.object({ team_id: z.string().optional(), po: z.boolean().optional(), up_to: z.number().int().optional() }));
+    if (b.team_id) store.markTeamSeen(b.team_id, b.up_to);
+    if (b.po) store.markPoSeen(b.up_to);
+    return c.json({ ok: true });
+  });
   app.post('/api/po/cancel', async (c) => c.json({ ok: await po.cancel() }));
   /* ---------- 이미지 첨부 ---------- */
   app.post('/api/uploads', async (c) => {
@@ -231,7 +237,7 @@ export function createApp(d: AppDeps): Hono<Env> {
       stallMin: z.number().int().min(1).max(600), beatSec: z.number().int().min(10).max(3600),
     }).partial(),
     autoApprove: z.boolean(), defaultBudgetUsd: z.number().positive().max(10000).nullable(), poModel: z.enum(['opus', 'sonnet', 'haiku']), contextLimitTokens: z.number().int().min(20000).max(1_000_000),
-    ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
+    remindUnreadMin: z.number().int().min(0).max(1440), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
   }).partial();
   app.put('/api/settings', async (c) => { localOnly(c); const b = await body(c, settingsZ); return c.json(store.saveSettings(b as Parameters<Store['saveSettings']>[0])); });

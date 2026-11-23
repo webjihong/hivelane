@@ -447,6 +447,44 @@ export class Store {
   agentView(a: AgentRow): AgentView {
     return { id: a.id, team_id: a.team_id, role_key: a.role_key, role_name: a.role_name, model: a.model, run_mode: a.run_mode, state: a.state, current_step: a.current_step, cost_usd: a.cost_usd, tokens_in: a.tokens_in, tokens_out: a.tokens_out, session_id: a.session_id };
   }
+  /* ---------- 읽음 표시 ---------- */
+  /** 읽음 기능이 처음 생길 때: 그전 기록은 모두 읽은 것으로 둔다(옛 답변으로 알림 폭탄 방지). */
+  initSeenBaseline(): void {
+    if (this.getKv<boolean>('seen:init', false)) return;
+    for (const t of this.listTeams()) this.markTeamSeen(t.id);
+    this.markPoSeen();
+    this.setKv('seen:init', true);
+  }
+  teamUnread(teamId: string): number {
+    const seen = this.getKv<number>(`seen:team:${teamId}`, 0);
+    return (this.db.prepare("SELECT count(*) n FROM messages WHERE team_id = ? AND id > ? AND kind IN ('report','question') AND from_label = 'PM'").get(teamId, seen) as { n: number }).n;
+  }
+  poUnread(): number {
+    const seen = this.getKv<number>('seen:po', 0);
+    return (this.db.prepare("SELECT count(*) n FROM po_chat WHERE id > ? AND role = 'po'").get(seen) as { n: number }).n;
+  }
+  markTeamSeen(teamId: string, upToId?: number): void {
+    const max = upToId ?? ((this.db.prepare('SELECT max(id) m FROM messages WHERE team_id = ?').get(teamId) as { m: number | null }).m ?? 0);
+    if (max > this.getKv<number>(`seen:team:${teamId}`, 0)) { this.setKv(`seen:team:${teamId}`, max); bus.changed('seen'); }
+  }
+  markPoSeen(upToId?: number): void {
+    const max = upToId ?? ((this.db.prepare('SELECT max(id) m FROM po_chat').get() as { m: number | null }).m ?? 0);
+    if (max > this.getKv<number>('seen:po', 0)) { this.setKv('seen:po', max); bus.changed('seen'); }
+  }
+  /** 알림 다시 보낼 목록: 안 본 답변 중 가장 오래된 시각 포함 */
+  unreadDigest(): { items: { kind: 'team' | 'po'; id: string | null; name: string; count: number; oldest: string }[] } {
+    const items: { kind: 'team' | 'po'; id: string | null; name: string; count: number; oldest: string }[] = [];
+    for (const t of this.listTeams("state != 'archived'")) {
+      const seen = this.getKv<number>(`seen:team:${t.id}`, 0);
+      const r = this.db.prepare("SELECT count(*) n, min(created_at) o FROM messages WHERE team_id = ? AND id > ? AND kind IN ('report','question') AND from_label = 'PM'").get(t.id, seen) as { n: number; o: string | null };
+      if (r.n) items.push({ kind: 'team', id: t.id, name: this.getTask(t.task_id)?.title ?? t.name, count: r.n, oldest: r.o! });
+    }
+    const seenPo = this.getKv<number>('seen:po', 0);
+    const p = this.db.prepare("SELECT count(*) n, min(created_at) o FROM po_chat WHERE id > ? AND role = 'po'").get(seenPo) as { n: number; o: string | null };
+    if (p.n) items.push({ kind: 'po', id: null, name: 'PO', count: p.n, oldest: p.o! });
+    return { items };
+  }
+
   teamView(t: TeamRow): TeamView {
     const task = this.getTask(t.task_id);
     const agents = this.teamAgents(t.id).map((a) => this.agentView(a));
@@ -459,6 +497,7 @@ export class Store {
       revived_count: t.revived_count, standing_brief: t.standing_brief, check_command: t.check_command, check_interval_sec: t.check_interval_sec,
       last_check_at: t.last_check_at, last_check_ok: t.last_check_ok == null ? null : !!t.last_check_ok, readable_team_ids: parseJson<string[]>(t.readable_team_ids, []), agents,
       busy_note: busy ? `${busy.role_name}: ${busy.current_step}` : null,
+      unread: this.teamUnread(t.id),
     };
   }
   teamDetail(id: string): TeamDetail | null {
@@ -487,8 +526,8 @@ export class Store {
   addPushSub(endpoint: string, keys: unknown, device: string): void {
     this.db.prepare('INSERT INTO push_subscriptions (endpoint, keys, device, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys, device = excluded.device').run(endpoint, JSON.stringify(keys), device, nowIso());
   }
-  pushSubs(): { endpoint: string; keys: string }[] {
-    return this.db.prepare('SELECT endpoint, keys FROM push_subscriptions').all() as { endpoint: string; keys: string }[];
+  pushSubs(): { endpoint: string; keys: string; device: string }[] {
+    return this.db.prepare('SELECT endpoint, keys, device FROM push_subscriptions').all() as { endpoint: string; keys: string; device: string }[];
   }
   removePushSub(endpoint: string): void {
     this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);

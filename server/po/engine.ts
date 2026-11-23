@@ -7,6 +7,7 @@ import { nowIso, runShell, truncate } from '../util.ts';
 import { decide, slotsFor, ZoneTracker, type PolicyTeam } from './policy.ts';
 import { CpuMeter, descendants, listProcs, load1, memPercent, signalTree, sumUsage, type Proc } from './resources.ts';
 import type { HeavySlots } from './slots.ts';
+import type { Notifier } from '../notify/index.ts';
 import type { Zone } from '../../shared/types.ts';
 
 const log = logger('engine');
@@ -28,7 +29,7 @@ export class Engine {
   private lastPrune = 0;
   last: ResourceSnapshot = { cpu: 0, mem: 0, zone: 'green', heavyRunning: 0, heavyWaiting: 0, takenAt: nowIso() };
 
-  constructor(private deps: { store: Store; orch: Orchestrator; slots: HeavySlots; sampler: Sampler; intervalMs?: number }) {
+  constructor(private deps: { store: Store; orch: Orchestrator; slots: HeavySlots; sampler: Sampler; intervalMs?: number; notifier?: Notifier }) {
     deps.slots.onChange = () => { const s = deps.slots.stats; this.last = { ...this.last, heavyRunning: s.running, heavyWaiting: s.waiting }; bus.emitEvent({ type: 'resource', sample: this.last }); };
   }
 
@@ -97,6 +98,7 @@ export class Engine {
     this.heartbeat(teams, s.beatSec, now);
     this.retryDown(teams, now);
     this.runChecks(teams, now);
+    this.remindUnread(now);
 
     const st = slots.stats;
     this.last = { cpu: Math.round(cpu), mem: Math.round(mem), zone: z.zone, heavyRunning: st.running, heavyWaiting: st.waiting, takenAt: nowIso() };
@@ -148,6 +150,24 @@ export class Engine {
       this.deps.orch.wake(t.id, '장애로 멈췄다가 자동으로 다시 시작되었다. 하던 일이 있으면 이어서 진행하고, 없으면 짧게 대기 상태라고 답해라.');
     }
     for (const id of [...this.downRetry.keys()]) if (!down.has(id)) this.downRetry.delete(id);
+  }
+
+  /** 안 본 답변이 남아 있으면 remindUnreadMin 마다 다시 알린다(처음 알림 뒤 그 간격이 지나야 첫 재알림). */
+  private remindUnread(now: number): void {
+    const min = this.deps.store.getSettings().remindUnreadMin;
+    if (!min) return;
+    const last = this.deps.store.getKv<number>('remind:last', 0);
+    if (now - last < min * 60_000) return;
+    const due = this.deps.store.unreadDigest().items.filter((i) => now - Date.parse(i.oldest) >= min * 60_000);
+    if (!due.length) return;
+    this.deps.store.setKv('remind:last', now);
+    const total = due.reduce((a, i) => a + i.count, 0);
+    const first = due[0]!;
+    void this.deps.notifier?.send({
+      title: `읽지 않은 답변 ${total}건`,
+      body: due.slice(0, 5).map((i) => `· ${i.name} ${i.count}건`).join('\n') + (due.length > 5 ? `\n· 외 ${due.length - 5}곳` : ''),
+      level: 'warn', tag: 'unread-remind', url: first.kind === 'po' ? '/#po' : `/#team-${first.id}`,
+    });
   }
 
   private heartbeat(teams: ReturnType<Store['listTeams']>, beatSec: number, now: number): void {

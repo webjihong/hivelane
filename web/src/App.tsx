@@ -61,11 +61,12 @@ function Top({ snap, routeName }: { snap: StateSnapshot | null; routeName: strin
 
 function BottomNav({ snap, routeName }: { snap: StateSnapshot | null; routeName: string }) {
   const need = snap ? snap.teams.filter((t) => (isLine(t) && (t.state === 'waiting_human' || t.state === 'paused' || t.state === 'failed')) || (isStanding(t) && (t.state === 'down' || t.state === 'reviving' || t.state === 'waiting_human'))).length : 0;
+  const unread = snap ? snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
   const home = routeName !== 'templates' && routeName !== 'settings' && routeName !== 'po';
   return (
     <nav className="bnav" aria-label="화면">
-      <a href="#home" className={home ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 20V9l5 3V9l5 3V6l8 4v10z" /><path d="M3 20h18" /></svg>현황{need > 0 && <span className="badge">{need}</span>}</a>
-      <a href="#po" className={routeName === 'po' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>PO{snap?.poBusy && <span className="badge dot" />}</a>
+      <a href="#home" className={home ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 20V9l5 3V9l5 3V6l8 4v10z" /><path d="M3 20h18" /></svg>현황{need + unread > 0 && <span className="badge">{need + unread}</span>}</a>
+      <a href="#po" className={routeName === 'po' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>PO{snap?.poUnread ? <span className="badge">{snap.poUnread}</span> : snap?.poBusy && <span className="badge dot" />}</a>
       <a href="#templates" className={routeName === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><path d="M3 19c0-3 2.5-5 5-5s5 2 5 5M11 19c0-3 2.5-5 5-5s5 2 5 5" /></svg>템플릿</a>
       <a href="#settings" className={routeName === 'settings' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>설정</a>
     </nav>
@@ -87,6 +88,13 @@ export function App() {
   const agent = useBox(openAgent);
 
   useEffect(() => { document.body.classList.toggle('r-po', r.name === 'po'); }, [r.name]);
+  // 읽지 않은 수: 탭 제목·앱 아이콘 배지
+  const unreadTotal = snap ? snap.poUnread + snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
+  useEffect(() => {
+    document.title = unreadTotal ? `(${unreadTotal}) Hivelane 관제실` : 'Hivelane 관제실';
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    try { void (unreadTotal ? nav.setAppBadge?.(unreadTotal) : nav.clearAppBadge?.())?.catch(() => {}); } catch { /* 지원 안 함 */ }
+  }, [unreadTotal]);
   useEffect(() => { if (r.name !== 'team') openAgent.set(null); }, [r]);
 
   let main: ReactElement;

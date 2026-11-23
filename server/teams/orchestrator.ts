@@ -299,7 +299,10 @@ export class Orchestrator {
       if (l.pending.length) { prompt = l.pending.splice(0).join('\n\n'); continue; }
       if (after.lifetime === 'standing') {
         store.updateTeam(teamId, { state: 'idle' });
-        if (res.text.trim()) store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'report', body: res.text.trim() });
+        if (res.text.trim()) {
+          store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'report', body: res.text.trim() });
+          this.deps.notifier.send({ title: `${after.name} 답변`, body: truncate(res.text.trim(), 300), level: 'good', url: `/#team-${teamId}`, tag: `ans-${teamId}` });
+        }
         store.addSummary({ team_id: teamId, agent_id: pm.id, stage: '보고', body: truncate(res.text.trim() || '(내용 없음)', 4000) });
         return;
       }
@@ -437,7 +440,11 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     // 보고 받는 쪽: 이번 일을 시킨 쪽(사용자가 직접 지시했으면 사용자, 아니면 PO)
     const last = store.db.prepare("SELECT from_label FROM messages WHERE team_id = ? AND to_label = 'PM' AND kind IN ('instruction','reply') ORDER BY id DESC LIMIT 1").get(teamId) as { from_label: string } | undefined;
     store.addMessage({ team_id: teamId, from_label: 'PM', to_label: last?.from_label === '사용자' ? '사용자' : 'PO', kind: 'report', body: r.summary });
-    if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); return; }
+    if (team.lifetime === 'standing') {
+      store.updateTeam(teamId, { state: 'idle' });
+      this.deps.notifier.send({ title: `${team.name} 답변`, body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}` });
+      return;
+    }
     store.updateTeam(teamId, { state: r.status, stage: r.status === 'done' ? 4 : team.stage, finished_at: nowIso(), question: null });
     store.updateTask(team.task_id!, { status: r.status, finished_at: nowIso() });
     store.addDecision(teamId, 'agent', r.status, r.status === 'done' ? '업무 완료 보고' : '실패 보고');

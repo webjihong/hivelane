@@ -128,6 +128,17 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
     const el = bodyRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [rows.length, snap.poBusy]);
+  // 대화창이 실제로 보이는 동안(데스크톱 옆 칸·모바일 PO 탭) PO 답을 읽음으로
+  const lastChat = rows.length ? rows[rows.length - 1]!.id : 0;
+  useEffect(() => {
+    if (!snap.poUnread || !lastChat) return;
+    const mark = () => { if (document.visibilityState === 'visible' && bodyRef.current?.offsetParent) void api('/api/seen', 'POST', { po: true, up_to: lastChat }).then(() => refreshState()).catch(() => {}); };
+    mark();
+    document.addEventListener('visibilitychange', mark);
+    addEventListener('resize', mark);
+    addEventListener('hashchange', mark);
+    return () => { document.removeEventListener('visibilitychange', mark); removeEventListener('resize', mark); removeEventListener('hashchange', mark); };
+  }, [lastChat, snap.poUnread]);
 
   const send = async (v: string) => {
     if (!v.trim() || sending) return;
