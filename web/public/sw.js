@@ -1,4 +1,4 @@
-/* Hivelane 서비스 워커: 웹 푸시만 처리한다(오프라인 캐시 없음). v3 */
+/* Hivelane 서비스 워커: 웹 푸시만 처리한다(오프라인 캐시 없음). v4 */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
@@ -15,7 +15,7 @@ self.addEventListener('push', (e) => {
     // 사람 확인 필요·실패는 직접 닫을 때까지 남김
     requireInteraction: d.level === 'crit',
     icon: '/icon-192.png',
-    badge: '/badge-96.png',
+    badge: '/badge-mono-96.png',
     data: { url: d.url || '/' },
   };
   e.waitUntil((async () => {
