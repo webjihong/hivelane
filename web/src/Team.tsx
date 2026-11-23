@@ -253,9 +253,9 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
 
       <div className="team-grid">
         <div className="stack">
-          <div className="panel"><h3>팀 대화</h3>
+          <div className="panel"><h3>팀 대화 <small className="muted">최신이 위</small></h3>
             <div className="timeline">
-              {msgs.length ? msgs.map((m) => (
+              {msgs.length ? [...msgs].reverse().map((m) => (
                 <div key={m.id} className="msg"><time className="mono">{hhmm(m.created_at)}</time>
                   <div className={`bubble ${m.kind}`}>
                     <div className="who"><span className={`k ${m.kind}`}>{KIND_LABEL[m.kind] ?? m.kind}</span><b>{m.from_label}</b>{m.to_label && <span className="muted">→ {m.to_label}</span>}</div>
