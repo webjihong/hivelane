@@ -106,6 +106,7 @@ export class PoAgent {
         const t = store.getTeam(e.team_id);
         const p = parseJson<Record<string, unknown>>(e.payload, {});
         if ((e.type === 'team_reply' || e.type === 'report') && typeof p.answer === 'string') {
+          if (p.asked_by === '사용자') return `[사건] 팀 보고(사용자가 팀 채널에서 직접 시킨 일 · 사용자는 이미 답을 받음) · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'}) · ${String(p.status ?? '')}\n팀 답(참고):\n${truncate(String(p.answer), 800)}`;
           return `[사건] ${EVENT_LABEL[e.type]} · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'})${p.status ? ` · ${String(p.status)}` : ''}${p.asked ? `\n맡긴 일: ${String(p.asked)}` : ''}\n팀 답:\n${p.answer}`;
         }
         return `[사건] ${EVENT_LABEL[e.type] ?? e.type} · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'}) · ${truncate(JSON.stringify(p), 400)}`;
@@ -141,7 +142,8 @@ export class PoAgent {
       }
       const say = res.text.trim();
       // 팀이 보낸 답(PO 가 맡긴 일의 결과·업무 완료)은 사용자에게 반드시 전해져야 한다
-      const replies = events.filter((e) => e.type === 'team_reply' || e.type === 'report');
+      // 사용자가 팀 채널에서 직접 시킨 일의 완료 보고는 사용자가 이미 받았으니 제외
+      const replies = events.filter((e) => e.type === 'team_reply' || (e.type === 'report' && parseJson<Record<string, unknown>>(e.payload, {}).asked_by !== '사용자'));
       const spoke = res.ok && !!say && say !== '-';
       if (!res.ok) store.addChat({ role: 'event', body: `PO 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
       if (spoke) {

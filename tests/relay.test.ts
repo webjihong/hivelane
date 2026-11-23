@@ -55,3 +55,17 @@ describe('PO 가 맡긴 일의 답을 사용자에게 전함', () => {
     expect(env.store.db.prepare("SELECT count(*) n FROM po_events WHERE type = 'team_reply'").get()).toEqual({ n: 0 });
   });
 });
+
+describe('직접 지시한 업무팀 완료는 PO 가 다시 전하지 않음', () => {
+  it('사용자가 업무팀 채널에서 지시해 끝나면 report 사건은 가도(asked_by=사용자) 대화창 대신 전달은 없음', async () => {
+    const env = setup(() => '-');
+    const prop = env.store.insertProposal({ project_id: null, title: '조사', instruction: 'x', brief: 'x', template_id: 'tpl-research', roles: env.store.getTemplate('tpl-research')!.roles, priority: 'normal', budget_usd: null, note: '' });
+    const team = env.orch.createFromProposal(prop.id);
+    env.store.addMessage({ team_id: team.id, from_label: '사용자', to_label: 'PM', kind: 'instruction', body: '직접 지시' });
+    await env.orch.start(team.id);
+    await until(() => env.store.getTeam(team.id)!.state === 'done');
+    await until(() => env.store.pendingPoEvents().length === 0, 8000);
+    expect(env.poPrompts.at(-1)).toContain('사용자가 팀 채널에서 직접 시킨 일');
+    expect(env.store.chat(50).some((c) => c.body.includes('답변이 왔습니다'))).toBe(false);
+  });
+});
