@@ -27,7 +27,7 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
 type Job = { kind: 'user'; text: string } | { kind: 'events' };
 
 const EVENT_LABEL: Record<string, string> = {
-  report: '팀 보고', ask_human: '사람 확인 필요', stall: '정체', paused: '일시정지', overlap: '파일 겹침', budget: '예산 상한', error: '팀 오류', standing_down: '직속 팀 장애',
+  team_reply: '팀 답변(PO가 맡긴 일)', report: '팀 보고', ask_human: '사람 확인 필요', stall: '정체', paused: '일시정지', overlap: '파일 겹침', budget: '예산 상한', error: '팀 오류', standing_down: '직속 팀 장애',
 };
 
 export interface PoTools {
@@ -105,6 +105,9 @@ export class PoAgent {
       parts.push(events.map((e) => {
         const t = store.getTeam(e.team_id);
         const p = parseJson<Record<string, unknown>>(e.payload, {});
+        if ((e.type === 'team_reply' || e.type === 'report') && typeof p.answer === 'string') {
+          return `[사건] ${EVENT_LABEL[e.type]} · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'})${p.status ? ` · ${String(p.status)}` : ''}${p.asked ? `\n맡긴 일: ${String(p.asked)}` : ''}\n팀 답:\n${p.answer}`;
+        }
         return `[사건] ${EVENT_LABEL[e.type] ?? e.type} · 팀 ${t?.name ?? '-'} (${e.team_id ?? '-'}) · ${truncate(JSON.stringify(p), 400)}`;
       }).join('\n'));
     }
@@ -137,10 +140,25 @@ export class PoAgent {
         log.info(`PO 맥락 ${Math.round(res.contextTokens / 1000)}k → 다음 턴 새 세션`);
       }
       const say = res.text.trim();
+      // 팀이 보낸 답(PO 가 맡긴 일의 결과·업무 완료)은 사용자에게 반드시 전해져야 한다
+      const replies = events.filter((e) => e.type === 'team_reply' || e.type === 'report');
+      const spoke = res.ok && !!say && say !== '-';
       if (!res.ok) store.addChat({ role: 'event', body: `PO 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
-      else if (say && say !== '-') {
-        store.addChat({ role: 'po', body: say });
-        if (userTexts.length) void this.deps.notifier.send({ title: 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+      if (spoke) {
+        const links = replies.filter((e) => e.team_id).map((e) => ({ label: `${store.getTeam(e.team_id)?.name ?? '팀'} 채널`, href: `#team-${e.team_id}` }));
+        store.addChat({ role: 'po', body: say, links: links.length ? links : undefined });
+        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? 'PO · 팀 답변 전달' : 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+      } else {
+        // PO 가 말하지 않았거나 실패했어도 팀 답은 그대로 전한다
+        for (const e of replies) {
+          const p = parseJson<Record<string, unknown>>(e.payload, {});
+          if (typeof p.answer !== 'string') continue;
+          const t = store.getTeam(e.team_id);
+          store.addChat({ role: 'po', body: `**「${t?.name ?? '팀'}」 답변이 왔습니다**\n\n${truncate(p.answer, 1500)}`, links: e.team_id ? [{ label: '팀 채널 열기', href: `#team-${e.team_id}` }] : undefined, team_id: e.team_id });
+          void this.deps.notifier.send({ title: `PO · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer' });
+        }
+        // 이미 전했으니 다시 처리하지 않는다(실패로 남은 다른 사건은 다음 턴에)
+        store.markPoEventsHandled(replies.map((e) => e.id));
       }
       if (!res.ok && agent.session_id && /session|resume/i.test(res.error ?? '')) store.updateAgent(agent.id, { session_id: null });
     } catch (e) {
