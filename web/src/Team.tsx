@@ -105,6 +105,44 @@ function Workshop({ t }: { t: TeamView }) {
   );
 }
 
+type Msg = { id: number; from_label: string; to_label: string | null; kind: string; body: string; created_at: string };
+
+/** 사용자가 이 팀에 직접 한 지시·답과 그에 대한 PM 의 답. 최신이 위. */
+function qaPairs(msgs: Msg[]): { q: Msg; a: Msg | null }[] {
+  const sorted = [...msgs].sort((x, y) => x.id - y.id);
+  const out: { q: Msg; a: Msg | null }[] = [];
+  sorted.forEach((m, i) => {
+    if (m.from_label !== '사용자' || (m.kind !== 'instruction' && m.kind !== 'reply')) return;
+    const next = sorted.slice(i + 1);
+    const stop = next.findIndex((n) => n.from_label === '사용자');
+    const window = stop === -1 ? next : next.slice(0, stop);
+    out.push({ q: m, a: window.find((n) => n.from_label === 'PM' && (n.kind === 'report' || n.kind === 'question')) ?? null });
+  });
+  return out.reverse();
+}
+
+function QaBox({ msgs, working }: { msgs: Msg[]; working: boolean }) {
+  const [more, setMore] = useState(false);
+  const pairs = qaPairs(msgs);
+  if (!pairs.length) return null;
+  const shown = more ? pairs.slice(0, 10) : pairs.slice(0, 1);
+  return (
+    <div className="qa-box">
+      {shown.map(({ q, a }, i) => (
+        <div key={q.id} className={`qa${i > 0 ? ' old' : ''}`}>
+          <div className="qa-q"><span className="k instruction">{q.kind === 'reply' ? '내 답' : '내 지시'}</span><time className="mono muted">{hhmm(q.created_at)}</time><span className="qa-qt">{q.body}</span></div>
+          {a ? (
+            <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
+          ) : (
+            <div className="qa-a pending">{i === 0 && working ? <>처리 중 <span className="typing"><span /><span /><span /></span></> : '아직 답이 없습니다'}</div>
+          )}
+        </div>
+      ))}
+      {pairs.length > 1 && <button className="btn link-btn" type="button" onClick={() => setMore(!more)}>{more ? '최근 것만 보기' : `이전 문답 ${pairs.length - 1}개 보기`}</button>}
+    </div>
+  );
+}
+
 export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
   const { detail, missing, reload } = useTeamDetail(id);
   const now = useBox(clock);
@@ -177,6 +215,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
             <Composer placeholder={standing ? '예: 지금 api 서버 에러율 확인해줘' : 'PM에게 직접 지시'} label="팀에 직접 지시" button="지시" onSend={message} />
           </div>
         )}
+        <QaBox msgs={msgs} working={t.state === 'running'} />
         <div className="row">
           {t.state === 'running' && !standing && <button className="btn" type="button" onClick={() => void call('pause', {}, '멈춤 요청을 보냈습니다')}>멈춤</button>}
           {t.state === 'paused' && <button className="btn primary" type="button" onClick={() => void call('resume', {}, '재개했습니다')}>재개</button>}

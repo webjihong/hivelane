@@ -168,3 +168,15 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 .rt-table table { border-collapse: collapse; font-size: 12px; }
 .rt-table th, .rt-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 .rt-table th { background: color-mix(in srgb, var(--line) 35%, transparent); font-weight: 600; }
+
+/* 직접 지시 → 답변 */
+.qa-box { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+.qa { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.qa.old { opacity: .85; }
+.qa-q { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; background: color-mix(in srgb, var(--line) 25%, transparent); font-size: 13px; }
+.qa-qt { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.qa-a { padding: 8px 10px; font-size: 13px; }
+.qa-ah { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
+.qa-a .msg-body { max-height: 420px; }
+.qa-a.pending { color: var(--muted); }
+.link-btn { align-self: flex-start; font-size: 12px; padding: 3px 8px; }
