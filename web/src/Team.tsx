@@ -132,7 +132,7 @@ function QaBox({ msgs, working }: { msgs: Msg[]; working: boolean }) {
         <div key={q.id} className={`qa${i > 0 ? ' old' : ''}`}>
           <div className="qa-q"><span className="k instruction">{q.kind === 'reply' ? '내 답' : '내 지시'}</span><time className="mono muted">{hhmm(q.created_at)}</time><span className="qa-qt">{q.body}</span></div>
           {a ? (
-            <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
+            <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><span className="muted small">{a.to_label === '사용자' ? 'PM → 나' : `PM → ${a.to_label ?? ''} (기록용 보고)`}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
           ) : (
             <div className="qa-a pending">{i === 0 && working ? <>처리 중 <span className="typing"><span /><span /><span /></span></> : '아직 답이 없습니다'}</div>
           )}

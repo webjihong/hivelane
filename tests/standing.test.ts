@@ -81,6 +81,18 @@ describe('직속 팀: PO 생성·종료와 유지', () => {
     for (const a of env.store.teamAgents(st.id)) expect(a.system_prompt).toContain('**결론**');
   });
 
+  it('사용자가 직접 지시한 일의 보고는 사용자에게, PO 가 전한 일은 PO 에게', async () => {
+    const env = setup((spec) => { (spec.toolsImpl as { report: (s: string, t: string) => void }).report('done', '**결론: 끝**'); return {}; });
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    env.orch.message(st.id, '확인해', 'user');
+    await until(() => env.prompts.length > 0); await env.orch.idle();
+    const rep = () => env.store.db.prepare("SELECT to_label FROM messages WHERE team_id = ? AND kind = 'report' AND from_label = 'PM' ORDER BY id DESC LIMIT 1").get(st.id) as { to_label: string };
+    expect(rep().to_label).toBe('사용자');
+    env.orch.message(st.id, '디스크 봐', 'po');
+    await until(() => env.prompts.length > 1); await env.orch.idle();
+    expect(rep().to_label).toBe('PO');
+  });
+
   it('장애로 down 된 직속 팀은 엔진이 간격을 두고 계속 되살린다(끝내지 않음)', async () => {
     const env = setup();
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });

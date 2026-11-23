@@ -423,7 +423,9 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const team = store.getTeam(teamId)!;
     store.addSummary({ team_id: teamId, stage: '최종', body: r.summary });
-    store.addMessage({ team_id: teamId, from_label: 'PM', to_label: 'PO', kind: 'report', body: r.summary });
+    // 보고 받는 쪽: 이번 일을 시킨 쪽(사용자가 직접 지시했으면 사용자, 아니면 PO)
+    const last = store.db.prepare("SELECT from_label FROM messages WHERE team_id = ? AND to_label = 'PM' AND kind IN ('instruction','reply') ORDER BY id DESC LIMIT 1").get(teamId) as { from_label: string } | undefined;
+    store.addMessage({ team_id: teamId, from_label: 'PM', to_label: last?.from_label === '사용자' ? '사용자' : 'PO', kind: 'report', body: r.summary });
     if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); return; }
     store.updateTeam(teamId, { state: r.status, stage: r.status === 'done' ? 4 : team.stage, finished_at: nowIso(), question: null });
     store.updateTask(team.task_id!, { status: r.status, finished_at: nowIso() });

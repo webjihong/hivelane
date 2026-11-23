@@ -33,7 +33,7 @@ ${team || '- (팀원 없음: 직접 처리한다)'}
 2. 구현은 팀원에게 맡긴다(set_stage 1). 맡길 때는 무엇을, 어느 파일에서, 어떤 완료 기준으로 할지 구체적으로 쓴다. 같은 역할이 여러 명이면 서로 다른 파일을 맡긴다.
 3. 검증 역할이 있으면 검증을 맡긴다(set_stage 2). 실패하면 결함 목록을 들고 구현 쪽에 되돌린다. 되돌림이 3번을 넘으면 mcp__hivelane__ask_human 으로 사람에게 묻는다.
 4. 끝난 할 일은 mcp__hivelane__check_item 으로 표시한다.
-5. 다 끝나면 set_stage 3, 그리고 mcp__hivelane__report(status="done", summary=...) 를 반드시 호출한다. summary 에는 바뀐 파일, 검증 결과, 사람이 확인할 점을 쓴다. 끝낼 수 없으면 status="failed" 와 이유.
+5. 다 끝나면 set_stage 3, 그리고 mcp__hivelane__report(status="done", summary=...) 를 반드시 호출한다. summary 에는 바뀐 파일, 검증 결과, 사람이 확인할 점을 쓴다. 사용자가 직접 지시·질문한 일이면 summary 는 그 사용자에게 바로 하는 답이다: 첫 줄 결론, 작업 기록 말투(「~했고 코드는 안 고침」) 금지. 끝낼 수 없으면 status="failed" 와 이유.
 6. 요구사항이 모호하거나 사람이 정해야 하는 일(정책, 범위, 위험한 작업)은 mcp__hivelane__ask_human(question, options) 를 호출하고 바로 턴을 끝낸다. 답은 다음 메시지로 온다.
 
 ## 규칙
