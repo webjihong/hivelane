@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readUpload, saveUpload } from '../uploads.ts';
 import type { PrWatcher } from '../projects/prs.ts';
+import type { RepoWatcher } from '../projects/repos.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -22,7 +23,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -90,7 +91,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
@@ -149,6 +150,13 @@ export function createApp(d: AppDeps): Hono<Env> {
     const input = { procs, cpu, mem, load: loadavg()[0] ?? 0, cores: cpus().length, teamRoots, hivelanePid: process.pid };
     const first = diagnoseData(input);
     return c.json(diagnoseData({ ...input, cwdOf: await cwdsOf(first.origins) }).data);
+  });
+  app.post('/api/repos/refresh', async (c) => { await d.repos?.refresh(true); return c.json({ ok: true }); });
+  app.post('/api/repos/:id/pull', async (c) => {
+    if (!d.repos) throw new HttpError(409, '저장소 감시가 꺼져 있습니다');
+    const r = await d.repos.pull(c.req.param('id'));
+    if (!r.ok) throw new HttpError(409, `받지 못했습니다: ${r.message}`);
+    return c.json(r);
   });
   app.post('/api/prs/merge', async (c) => {
     const b = await body(c, z.object({ project_id: z.string(), number: z.number().int().positive(), method: z.enum(['merge', 'squash', 'rebase']) }));

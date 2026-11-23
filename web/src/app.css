@@ -492,3 +492,14 @@ body { margin: 0; overflow: hidden; }
 .ci-box > .ci-clip:hover { color: var(--accent); background: var(--surface-2); }
 .ci-send { flex: none; min-width: 72px; height: 40px; }
 .ci .ci-hint { font-size: 11px; padding-left: 2px; }
+
+/* 사이드바 · 저장소 */
+.sb-add { border: 0; background: none; font: inherit; cursor: pointer; }
+.sb-repo { padding-left: 12px; }
+.sb-branch { margin-left: 6px; font-family: var(--font-mono); font-size: 10.5px; color: var(--sb-muted); }
+.sb-rb { font-size: 10.5px; color: var(--sb-muted); font-family: var(--font-mono); }
+.sb-rb.behind { color: var(--sb-amber); font-weight: 700; }
+.sb-pull { border: 1px solid #2B5C58; background: none; color: var(--sb-muted); font-size: 11px; padding: 1px 7px; border-radius: 5px; opacity: .55; }
+.sb-pull.on { border-color: var(--sb-amber); color: var(--sb-amber); opacity: 1; }
+.sb-repo:hover .sb-pull { opacity: 1; }
+.sb-pull:disabled { opacity: .5; cursor: default; }

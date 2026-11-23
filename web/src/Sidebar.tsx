@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { RepoView, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { DOT_LABEL, dotOf, isActiveTask, isDoneTask, isStandingCh, nowCount, sideNote } from './chan.ts';
-import { api, clock, conn, route, useBox, type Route } from './store.ts';
+import { act, api, clock, conn, refreshState, route, useBox, type Route } from './store.ts';
 
 const ZONE = { green: '여유', yellow: '주의', red: '과부하' } as const;
 
@@ -80,6 +80,22 @@ function ResourceModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function RepoItem({ r }: { r: RepoView }) {
+  const pull = () => act(async () => { const x = await api<{ message: string }>(`/api/repos/${encodeURIComponent(r.project_id)}/pull`, 'POST', {}); await refreshState(); return x; }, `${r.project_name}: 받았습니다`);
+  const tip = [r.path, r.branch ? `브랜치 ${r.branch}${r.upstream ? ` ← ${r.upstream}` : ' (원격 연결 없음)'}` : '', r.behind ? `원격보다 ${r.behind}개 뒤처짐` : '', r.ahead ? `안 올린 커밋 ${r.ahead}개` : '', r.dirty ? `커밋 안 한 변경 ${r.dirty}개` : '', r.error ?? ''].filter(Boolean).join('\n');
+  return (
+    <div className="sb-item sb-repo" title={tip}>
+      <span className="sb-name">{r.project_name}<span className="sb-branch">{r.branch ?? '?'}</span></span>
+      {r.error ? <span className="sb-note t-pause">오류</span> : <>
+        {r.behind > 0 && <span className="sb-rb behind" aria-label={`${r.behind}개 뒤처짐`}>↓{r.behind}</span>}
+        {r.ahead > 0 && <span className="sb-rb" aria-label={`안 올린 커밋 ${r.ahead}개`}>↑{r.ahead}</span>}
+        {r.dirty > 0 && <span className="sb-rb" aria-label={`로컬 변경 ${r.dirty}개`}>✎{r.dirty}</span>}
+      </>}
+      {r.upstream && <button type="button" className={`sb-pull${r.behind > 0 ? ' on' : ''}`} disabled={r.pulling} onClick={() => void pull()} title="git pull --ff-only (로컬 변경·커밋은 건드리지 않음)">{r.pulling ? '받는 중' : '받기'}</button>}
+    </div>
+  );
+}
+
 function TeamItem({ t, r, now }: { t: TeamView; r: Route; now: number }) {
   const dot = dotOf(t);
   const note = sideNote(t, now);
@@ -153,6 +169,9 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
             <span className="sb-note t-muted">↗</span>
           </a>
         )) : <div className="sb-empty">열린 PR 없음</div>}
+
+        <div className="sb-h">저장소<button type="button" className="sb-add" title="원격에서 새로 확인(fetch)" onClick={() => void act(async () => { await api('/api/repos/refresh', 'POST', {}); await refreshState(); }, '저장소 상태를 다시 확인했습니다')}>↻</button></div>
+        {snap.repos.length ? snap.repos.map((r) => <RepoItem key={r.project_id} r={r} />) : <div className="sb-empty">확인 중…</div>}
       </div>
 
       <button type="button" className="sb-res" onClick={() => setDiag(true)} title={`${ZONE[res.zone]} · 무거운 명령 ${res.heavyRunning} 실행 · ${res.heavyWaiting} 대기 · ${c === 'down' ? '서버 연결 끊김' : '서버 연결됨'} — 누르면 누가 쓰는지 보기`}>

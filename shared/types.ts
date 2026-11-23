@@ -215,6 +215,17 @@ export interface PrView {
   team_id: string | null;
 }
 
+/** 등록된 저장소(메인 폴더) 상태 */
+export interface RepoView {
+  project_id: string; project_name: string; path: string;
+  branch: string | null; upstream: string | null;
+  /** 원격보다 앞선/뒤처진 커밋 수 */
+  ahead: number; behind: number;
+  /** 커밋 안 된 로컬 변경 파일 수 */
+  dirty: number;
+  fetched_at: string | null; error: string | null; pulling: boolean;
+}
+
 export interface StateSnapshot {
   version: string;
   access: 'local' | 'remote';
@@ -229,6 +240,7 @@ export interface StateSnapshot {
   /** 내가 아직 안 본 PO 답변 수 */
   poUnread: number;
   prs: PrView[];
+  repos: RepoView[];
   prErrors: Record<string, string>;
   vapidPublicKey: string | null;
 }
