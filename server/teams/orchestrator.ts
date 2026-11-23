@@ -494,10 +494,17 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     this.deps.store.addDecision(teamId, 'engine', on ? 'hard-pause' : 'hard-resume', reason);
   }
 
+  /** 사람이 직접 재개한 팀은 15분 동안 엔진이 자동으로 멈추지 않는다(메모리 한계 제외). */
+  private grace = new Map<string, number>();
+  static readonly RESUME_GRACE_MS = 15 * 60_000;
+  inGrace(teamId: string, now = Date.now()): boolean { const g = this.grace.get(teamId); return g !== undefined && now < g; }
+  graceUntil(teamId: string): string | null { const g = this.grace.get(teamId); return g && Date.now() < g ? new Date(g).toISOString() : null; }
+
   async resume(teamId: string, by: 'engine' | 'user', reason = ''): Promise<void> {
     const { store } = this.deps;
     const team = store.getTeam(teamId);
     if (!team) return;
+    if (by === 'user') this.grace.set(teamId, Date.now() + Orchestrator.RESUME_GRACE_MS);
     const l = this.L(teamId);
     store.addDecision(teamId, by, 'resume', reason || '재개');
     store.updateTeam(teamId, { paused_reason: null, pause_kind: null });

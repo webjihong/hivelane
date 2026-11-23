@@ -453,7 +453,7 @@ export class Store {
     const busy = agents.find((a) => a.state === 'busy');
     return {
       id: t.id, task_id: t.task_id, project_id: t.project_id, project_name: this.getProject(t.project_id)?.name ?? null, name: t.name, title: task?.title ?? t.name,
-      managed_by: t.managed_by, lifetime: t.lifetime, state: t.state, stage: t.stage, priority: t.priority, pinned: !!t.pinned, paused_reason: t.paused_reason,
+      managed_by: t.managed_by, lifetime: t.lifetime, state: t.state, stage: t.stage, priority: t.priority, pinned: !!t.pinned, paused_reason: t.paused_reason, pause_kind: t.pause_kind,
       question: parseJson(t.question, null), cost_usd: t.cost_usd, budget_usd: t.budget_usd, branch: t.branch, worktree_path: t.worktree_path, error: t.error,
       started_at: t.started_at, finished_at: t.finished_at, created_at: t.created_at, last_activity_at: t.last_activity_at, last_heartbeat_at: t.last_heartbeat_at,
       revived_count: t.revived_count, standing_brief: t.standing_brief, check_command: t.check_command, check_interval_sec: t.check_interval_sec,

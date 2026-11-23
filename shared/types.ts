@@ -115,6 +115,10 @@ export interface TeamView {
   priority: Priority;
   pinned: boolean;
   paused_reason: string | null;
+  /** engine-soft | engine-hard | user | null */
+  pause_kind: string | null;
+  /** 사람이 재개해서 자동 멈춤에서 보호되는 시각(이때까지) */
+  resume_grace_until?: string | null;
   question: { text: string; options: string[]; asked_at: string } | null;
   cost_usd: number;
   budget_usd: number | null;

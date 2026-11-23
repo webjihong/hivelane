@@ -16,7 +16,7 @@ function sessions(t: TeamView): number { return t.agents.filter((a) => a.run_mod
 
 function subText(t: TeamView): { text: string; cls: string } {
   if (t.state === 'waiting_human') return { text: t.question ? `PM의 질문: ${t.question.text}` : (t.paused_reason ?? '사람 확인 필요'), cls: 'crit' };
-  if (t.state === 'paused') return { text: t.paused_reason ?? '일시정지', cls: 'warn' };
+  if (t.state === 'paused') return { text: t.pause_kind?.startsWith('engine') ? `리소스 회복 시 자동 재개 · ${t.paused_reason ?? ''}` : (t.paused_reason ?? '일시정지'), cls: 'warn' };
   if (t.state === 'failed') return { text: t.error ?? '실패', cls: 'crit' };
   if (t.busy_note) return { text: t.busy_note, cls: '' };
   if (t.state === 'queued') return { text: t.paused_reason ?? '투입 대기', cls: '' };
@@ -114,7 +114,8 @@ function Alerts({ snap }: { snap: StateSnapshot }) {
       </div>,
     );
   }
-  for (const t of teams.filter((x) => x.state === 'paused' && x.lifetime === 'task')) {
+  // 엔진이 멈춘 팀은 리소스가 돌아오면 엔진이 알아서 재개하므로 사람이 할 일이 아니다
+  for (const t of teams.filter((x) => x.state === 'paused' && x.lifetime === 'task' && !x.pause_kind?.startsWith('engine'))) {
     items.push(
       <div key={`p-${t.id}`} className="alert warn"><span className="lamp paused" />
         <div style={{ minWidth: 0 }}><div className="a-t">{t.title}</div><div className="a-s">{t.paused_reason ?? '일시정지'}</div></div>

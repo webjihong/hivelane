@@ -1,3 +1,4 @@
+import { cpus } from 'node:os';
 import { bus, type ResourceSnapshot } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Store } from '../store.ts';
@@ -17,6 +18,7 @@ export const realSampler = (): Sampler => { const m = new CpuMeter(); return { c
 export class Engine {
   private zones = new ZoneTracker();
   private lastPauseAt = 0;
+  private lastHoldNote = 0;
   private lastResumeAt = 0;
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
@@ -58,13 +60,23 @@ export class Engine {
       const u = sumUsage(descendants(procs, orch.rootPids(t.id)));
       perTeam[t.id] = { cpu: Math.round(u.cpu), rss: Math.round(u.rss) };
       return {
-        id: t.id, state: t.state, standing: t.lifetime === 'standing', priority: t.priority, pinned: !!t.pinned, pauseKind: t.pause_kind,
+        id: t.id, state: t.state, standing: t.lifetime === 'standing', priority: t.priority, pinned: !!t.pinned || orch.inGrace(t.id, now), pauseKind: t.pause_kind,
         pausePending: orch.isPausePending(t.id) && orch.isRunning(t.id), cpu: u.cpu, rss: u.rss, createdAt: Date.parse(t.created_at),
       };
     });
 
-    const actions = decide({ s, zone: z.zone, redFor: z.redFor, greenFor: z.greenFor, mem, cpu, now, lastPauseAt: this.lastPauseAt, lastResumeAt: this.lastResumeAt, teams: policyTeams });
+    const actions = decide({ s, zone: z.zone, redFor: z.redFor, greenFor: z.greenFor, mem, cpu, now, lastPauseAt: this.lastPauseAt, lastResumeAt: this.lastResumeAt, teams: policyTeams,
+      // 도는 팀의 프로세스를 잴 수 있을 때만 외부 부하를 판단한다
+      cores: (() => { const run = teams.filter((t) => t.state === 'running' && t.lifetime === 'task'); return !run.length || run.some((t) => orch.rootPids(t.id).length) ? cpus().length : undefined; })() });
     for (const a of actions) {
+      if (a.type === 'hold') {
+        if (now - this.lastHoldNote >= 600_000) {
+          this.lastHoldNote = now;
+          log.info('외부 부하 · 팀 유지', a.reason);
+          for (const t of teams.filter((x) => x.state === 'running' && x.lifetime === 'task')) store.addDecision(t.id, 'engine', 'hold', a.reason);
+        }
+        continue;
+      }
       const team = store.getTeam(a.teamId);
       if (!team) continue;
       if (a.type === 'start') { log.info(`시작 ${team.name}`, a.reason); store.addDecision(team.id, 'engine', 'start', a.reason); void orch.start(team.id); }

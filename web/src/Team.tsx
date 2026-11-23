@@ -198,7 +198,8 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
           <span className="muted">{money(t.cost_usd)}{t.budget_usd != null ? ` / 상한 ${money(t.budget_usd)}` : ''}</span>
           <span className="muted">· 만듦 {hhmm(t.created_at)}{t.started_at ? ` · 시작 ${hhmm(t.started_at)} · ${elapsed(t, now)}` : ''}{t.finished_at ? ` · 끝 ${hhmm(t.finished_at)}` : ''}</span>
         </div>
-        {(t.state === 'paused' || t.state === 'queued') && t.paused_reason && <div className="task-note warn">{t.paused_reason}</div>}
+        {(t.state === 'paused' || t.state === 'queued') && t.paused_reason && <div className="task-note warn">{t.state === 'paused' && t.pause_kind?.startsWith('engine') ? `PO 엔진이 멈춤 · 리소스가 회복되면 자동으로 재개합니다 · ${t.paused_reason}` : t.paused_reason}</div>}
+        {t.resume_grace_until && t.state === 'running' && <div className="task-note">직접 재개함 · {hhmm(t.resume_grace_until)}까지 자동 멈춤 안 함</div>}
         {t.state === 'failed' && <div className="task-note crit">실패: {t.error ?? '이유 없음'}</div>}
         {t.error && t.state !== 'failed' && <div className="task-note warn">{t.error}</div>}
         {t.state === 'waiting_human' && (
@@ -218,7 +219,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
         <QaBox msgs={msgs} working={t.state === 'running'} />
         <div className="row">
           {t.state === 'running' && !standing && <button className="btn" type="button" onClick={() => void call('pause', {}, '멈춤 요청을 보냈습니다')}>멈춤</button>}
-          {t.state === 'paused' && <button className="btn primary" type="button" onClick={() => void call('resume', {}, '재개했습니다')}>재개</button>}
+          {t.state === 'paused' && <button className="btn primary" type="button" title="15분 동안 엔진이 자동으로 멈추지 않습니다" onClick={() => void call('resume', {}, '재개했습니다 · 15분 동안 자동 멈춤 안 함')}>{t.pause_kind?.startsWith('engine') ? '지금 재개 (15분 보호)' : '재개'}</button>}
           {!standing && !finished && <button className="btn" type="button" aria-pressed={t.pinned} onClick={() => void call('pin', { on: !t.pinned })}>{t.pinned ? '멈추지 않음 해제' : '멈추지 않음'}</button>}
           {!standing && !finished && (
             <label className="inline-sel">우선순위

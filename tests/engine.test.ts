@@ -83,7 +83,7 @@ const base = { s: S, redFor: 0, greenFor: 0, mem: 50, cpu: 50, now: 1_000_000, l
 describe('엔진 결정', () => {
   it('초록: 상한까지 우선순위 순으로 시작', () => {
     const a = decide({ ...base, zone: 'green', teams: [T({ id: 'r1' }), T({ id: 'q-low', state: 'queued', priority: 'low' }), T({ id: 'q-urg', state: 'queued', priority: 'urgent', createdAt: 5 }), T({ id: 'q-norm', state: 'queued' })] });
-    expect(a.map((x) => x.type + ':' + x.teamId)).toEqual(['start:q-urg', 'start:q-norm']);
+    expect(a.map((x) => x.type + ':' + ('teamId' in x ? x.teamId : ''))).toEqual(['start:q-urg', 'start:q-norm']);
   });
   it('노랑: 아무것도 시작하지 않음', () => {
     expect(decide({ ...base, zone: 'yellow', teams: [T({ id: 'q', state: 'queued' })] })).toEqual([]);
@@ -146,5 +146,33 @@ describe('프로세스 트리', () => {
     const d = descendants(procs, [10]);
     expect(d.map((p) => p.pid).sort()).toEqual([10, 11]);
     expect(sumUsage(d)).toEqual({ cpu: 70, rss: 300, count: 2 });
+  });
+});
+
+describe('외부 부하·직접 재개 보호', () => {
+  const teams = [T({ id: 'a', cpu: 30 }), T({ id: 'b', cpu: 20 })];
+  it('CPU 빨강이 다른 프로그램 때문이면(팀 몫 작음) 멈추지 않고 유지', () => {
+    const a = decide({ ...base, zone: 'red', cpu: 90, mem: 40, cores: 10, teams });
+    expect(a).toEqual([expect.objectContaining({ type: 'hold' })]);
+  });
+  it('팀이 CPU 대부분을 쓰면 평소처럼 멈춤', () => {
+    const heavy = [T({ id: 'a', cpu: 500 }), T({ id: 'b', cpu: 300 })];
+    expect(decide({ ...base, zone: 'red', cpu: 90, mem: 40, cores: 10, teams: heavy })[0]).toMatchObject({ type: 'pause' });
+  });
+  it('메모리 빨강이면 외부 부하여도 멈춤, 팀 측정이 없으면(cores 없음) 예전대로', () => {
+    expect(decide({ ...base, zone: 'red', cpu: 90, mem: 90, cores: 10, teams })[0]).toMatchObject({ type: 'pause' });
+    expect(decide({ ...base, zone: 'red', cpu: 90, mem: 40, teams })[0]).toMatchObject({ type: 'pause' });
+  });
+  it('직접 재개한 팀(보호 = pinned 취급)은 멈춤 대상에서 빠진다', () => {
+    const a = decide({ ...base, zone: 'red', teams: [T({ id: 'mine', pinned: true, priority: 'low' }), T({ id: 'other' })] });
+    expect(a[0]).toMatchObject({ type: 'pause', teamId: 'other' });
+  });
+});
+
+describe('외부 부하로 멈춘 팀 되돌리기', () => {
+  it('모두 멈춰 있고 CPU 가 외부 부하면 resumeSec 간격으로 하나씩 재개', () => {
+    const teams = [T({ id: 'p1', state: 'paused', pauseKind: 'engine-soft', priority: 'urgent' }), T({ id: 'p2', state: 'paused', pauseKind: 'engine-soft' })];
+    expect(decide({ ...base, zone: 'red', cpu: 90, mem: 40, cores: 10, teams })).toEqual([expect.objectContaining({ type: 'resume', teamId: 'p1' })]);
+    expect(decide({ ...base, zone: 'red', cpu: 90, mem: 40, cores: 10, lastResumeAt: base.now - 1000, teams })).toEqual([]);
   });
 });

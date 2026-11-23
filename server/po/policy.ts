@@ -41,7 +41,8 @@ export type Action =
   | { type: 'start'; teamId: string; reason: string }
   | { type: 'pause'; teamId: string; reason: string }
   | { type: 'hardPause'; teamId: string; reason: string }
-  | { type: 'resume'; teamId: string; reason: string };
+  | { type: 'resume'; teamId: string; reason: string }
+  | { type: 'hold'; reason: string };
 
 export interface PolicyInput {
   s: EngineSettings;
@@ -54,7 +55,12 @@ export interface PolicyInput {
   lastPauseAt: number;
   lastResumeAt: number;
   teams: PolicyTeam[];
+  /** CPU 코어 수(팀 %CPU 는 코어 하나=100%). 없으면 외부 부하 판단을 안 한다 */
+  cores?: number;
 }
+
+/** 외부 부하 기준: 빨강이 CPU 때문만이고 Hivelane 팀이 쓰는 몫이 이 비율보다 작으면 멈춰도 소용없다. */
+export const OWN_SHARE_MIN = 0.25;
 
 const RANK: Record<Priority, number> = { urgent: 0, normal: 1, low: 2 };
 
@@ -72,6 +78,20 @@ export function decide(i: PolicyInput): Action[] {
 
   if (zone === 'red') {
     const memHard = i.mem >= s.memHard;
+    // 메모리는 정상인데 CPU 만 높고, 그 CPU 를 Hivelane 팀이 거의 안 쓰면(다른 터미널·앱의 부하) 멈춰도 내려가지 않는다 → 새 팀만 막고 유지
+    if (i.cores && i.mem <= s.memR && (running.length || enginePaused.length)) {
+      const own = running.reduce((a, t) => a + t.cpu, 0) / i.cores;
+      if (own < i.cpu * OWN_SHARE_MIN) {
+        const out: Action[] = [];
+        if (running.length) out.push({ type: 'hold', reason: `CPU ${Math.round(i.cpu)}% 중 Hivelane 팀 몫 ${Math.round(own)}% · 외부 부하라 멈추지 않음(새 팀만 대기)` });
+        // 외부 부하 때문에 멈춰 둔 팀도 하나씩 되돌린다(멈춰 봐야 CPU 가 안 내려간다)
+        if (enginePaused.length && now - i.lastResumeAt >= s.resumeSec * 1000 && running.length < s.cap) {
+          const t = [...enginePaused].sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.createdAt - b.createdAt)[0]!;
+          out.push({ type: 'resume', teamId: t.id, reason: `외부 부하(Hivelane 팀 몫 ${Math.round(own)}%) · 멈춰도 CPU 가 안 내려가 재개` });
+        }
+        return out;
+      }
+    }
     // 1) 강한 멈춤: 빨강이 hardPauseSec 이상 이어졌는데 멈춤 요청 뒤에도 아직 도는 팀
     if (i.redFor >= s.hardPauseSec * 1000) {
       for (const t of running.filter((t) => t.pausePending)) actions.push({ type: 'hardPause', teamId: t.id, reason: `빨강 ${Math.round(i.redFor / 1000)}초 지속 · 부드러운 멈춤이 안 끝남` });

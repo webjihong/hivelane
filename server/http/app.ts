@@ -85,7 +85,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => store.teamView(t)), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
