@@ -97,6 +97,7 @@
 - 점검: 엔진이 쉘 명령 실행(타임아웃 60초). 종료 코드≠0이면 출력과 함께 팀을 깨운다(토큰은 이상 때만).
 - 되살리기: 실행 중 query가 오류로 끝나면 resume 재시도(3회) → 실패 시 새 세션(지시서+최근 요약). 매번 슬랙·푸시 알림.
 - 기록 범위: 자기 팀 + 사용자가 허용한 팀.
+- 작업 환경(팀별 `env_mode`, 모든 팀 공통): `isolated`(기본, 저장소 규칙만) | `mine`(사용자 전역 설정·플러그인·스킬·MCP 로드(settingSources user), 역할 도구 제한 해제, 가드 통과 도구는 허용, 프로젝트 메모리 폴더 쓰기). `mine` 에서 운영 명령(db:prod·prod:sync·--profile <운영 프로필>·terraform apply/destroy·npm publish)은 막는 대신 `request_approval` → 사람 「승인」 → 그 명령 그대로 한 번만 실행. sudo·rm -rf /·git 보호 규칙은 그대로.
 
 ## 9. 기록과 검색
 

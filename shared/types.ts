@@ -128,6 +128,8 @@ export interface TeamView {
   resume_grace_until?: string | null;
   /** 내가 아직 안 본 PM 답변·보고·질문 수 */
   unread: number;
+  /** isolated: 저장소 규칙만 · mine: 내 Claude Code 설정·플러그인·MCP·메모리 쓰기 + 운영 명령은 승인 후 실행 */
+  env_mode: 'isolated' | 'mine';
   question: { text: string; options: string[]; asked_at: string } | null;
   cost_usd: number;
   budget_usd: number | null;

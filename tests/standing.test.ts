@@ -114,3 +114,51 @@ describe('직속 팀: PO 생성·종료와 유지', () => {
     expect(env.prompts.length).toBe(n);
   });
 });
+
+describe('작업 환경: 내 Claude Code 와 동일', () => {
+  it('사용자 설정·역할 제한 해제·메모리 쓰기, 운영 명령은 승인 요청 → 승인 → 한 번만 실행', async () => {
+    const { cfg, store } = (await import('./helpers.ts')).testEnv();
+    const { Orchestrator } = await import('../server/teams/orchestrator.ts');
+    const { HeavySlots } = await import('../server/po/slots.ts');
+    const { NullNotifier } = await import('../server/notify/index.ts');
+    const { DEFAULT_BLOCKED } = await import('../server/store.ts');
+    const { makeRepo } = await import('./helpers.ts');
+    const project = store.insertProject({ name: 'hv', path: makeRepo(), base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: DEFAULT_BLOCKED, memory_paths: ['/mem/hv'], default_template_id: null });
+    const specs: TurnSpec[] = [];
+    let step = 0;
+    const runner: TurnRunner = { async runTurn(spec) {
+      specs.push(spec);
+      const t = spec.toolsImpl as { requestApproval: (c: string, r: string) => string };
+      if (step++ === 0) t.requestApproval('npm run db:prod:sync', '스키마 반영');
+      return { ok: true, subtype: 'success', text: '', costUsd: 0, sessionId: 's', interrupted: false, error: null, contextTokens: 10 };
+    } };
+    const orch = new Orchestrator({ cfg, store, runner, slots: new HeavySlots(2), notifier: new NullNotifier() });
+    const st = orch.createStanding({ name: 'hiveline', project_id: project.id, template_id: 'tpl-ops', brief: 'b' });
+    store.updateTeam(st.id, { env_mode: 'mine' });
+    orch.message(st.id, '운영 DB 반영해', 'user');
+    await until(() => !!store.getTeam(st.id)!.question);
+    await orch.idle();
+    const s0 = specs[0]!;
+    expect(s0.envMine).toBe(true);
+    expect(s0.writableRoots).toContain('/mem/hv');
+    expect(s0.blockedPatterns).not.toContain('db:prod');
+    expect(s0.approval!.patterns).toContain('db:prod');
+    expect(s0.allowedTools).toContain('mcp__hivelane__request_approval');
+    expect(s0.approval!.take('npm run db:prod:sync')).toBe(false);
+    expect(store.getTeam(st.id)!.question).toContain('"kind":"approval"');
+    orch.message(st.id, '승인', 'user');
+    await until(() => specs.length > 1);
+    await orch.idle();
+    expect(specs[1]!.prompt).toContain('승인됨');
+    expect(specs[1]!.approval!.take('npm run db:prod:sync')).toBe(true);
+    expect(specs[1]!.approval!.take('npm run db:prod:sync')).toBe(false);
+  });
+  it('격리 팀은 예전대로(운영 명령은 막힘, 승인 도구 없음)', async () => {
+    const env = setup();
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    env.orch.message(st.id, '확인', 'user');
+    await until(() => env.prompts.length > 0);
+    await env.orch.idle();
+    expect(env.store.getTeam(st.id)!.env_mode).toBe('isolated');
+  });
+});

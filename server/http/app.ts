@@ -182,6 +182,14 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/teams/:id/priority', async (c) => { const b = await body(c, z.object({ priority: priorityZ })); team(c.req.param('id')); orch.setPriority(c.req.param('id'), b.priority as Priority); return c.json({ ok: true }); });
   app.post('/api/teams/:id/answer', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); orch.answer(c.req.param('id'), b.text); return c.json({ ok: true }); });
   app.post('/api/teams/:id/message', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); return c.json({ result: orch.message(c.req.param('id'), b.text) }); });
+  app.patch('/api/teams/:id/env', async (c) => {
+    localOnly(c);
+    const t = team(c.req.param('id'));
+    const b = await body(c, z.object({ env_mode: z.enum(['isolated', 'mine']) }));
+    store.updateTeam(t.id, { env_mode: b.env_mode });
+    store.addDecision(t.id, 'user', 'env', b.env_mode === 'mine' ? '작업 환경: 내 Claude Code 와 동일' : '작업 환경: 격리');
+    return c.json({ ok: true });
+  });
   app.post('/api/teams/:id/interrupt', async (c) => { team(c.req.param('id')); return c.json({ ok: await orch.cancelTurn(c.req.param('id')) }); });
   app.post('/api/teams/:id/cancel', async (c) => { const t = team(c.req.param('id')); if (t.lifetime === 'standing') await orch.endStanding(t.id, 'user', '사용자가 화면에서 종료'); else await orch.cancel(t.id); return c.json({ ok: true }); });
   app.post('/api/teams/:id/archive', async (c) => { localOnly(c); team(c.req.param('id')); await orch.archive(c.req.param('id')); return c.json({ ok: true }); });

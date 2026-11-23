@@ -241,6 +241,15 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
         </div>
       )}
 
+      <div className="panel env-box">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div style={{ minWidth: 0 }}><b>작업 환경</b> <small className="muted">{t.env_mode === 'mine' ? '내 Claude Code 와 동일: 내 설정·플러그인·스킬·MCP 도구, 메모리 쓰기 · 운영 DB·배포·인프라 명령은 승인 뒤 실행' : '격리: 저장소 규칙(CLAUDE.md·AGENTS.md)만 · 운영 명령은 막힘'}</small></div>
+          <select value={t.env_mode} disabled={remote || t.state === 'running'} title={t.state === 'running' ? '일하는 중에는 못 바꿈' : remote ? '맥에서만 바꿀 수 있음' : ''} onChange={(e) => void act(async () => { await api(`/api/teams/${encodeURIComponent(t.id)}/env`, 'PATCH', { env_mode: e.target.value }); await refreshState(); }, '작업 환경을 바꿨습니다 · 다음 지시부터 적용')}>
+            <option value="isolated">격리 (기본)</option><option value="mine">내 Claude Code 와 동일</option>
+          </select>
+        </div>
+      </div>
+
       {standing && (
         <div className="panel standing-info">
           <h3>상시 지시서</h3>

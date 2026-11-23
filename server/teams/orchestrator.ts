@@ -7,7 +7,7 @@ import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
 import { addWorktree, collectChanges, prepareDeps, removeWorktree, slug } from '../projects/git.ts';
-import { effectiveBlocked, type AgentRow, type Store, type TeamRow } from '../store.ts';
+import { effectiveBlocked, splitApproval, type AgentRow, type Store, type TeamRow } from '../store.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
 import { descendants, listProcs, signalTree } from '../po/resources.ts';
 import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
@@ -32,7 +32,9 @@ interface Live {
   loop: Promise<void> | null;
   pending: string[];
   reported: { status: 'done' | 'failed'; summary: string } | null;
-  asked: { question: string; options: string[] } | null;
+  asked: { question: string; options: string[]; kind?: 'approval'; command?: string } | null;
+  /** 사람이 승인한 명령(한 번 실행하면 소진) */
+  approved: Set<string>;
   pausePending: boolean;
   hardPaused: boolean;
   errors: number;
@@ -52,7 +54,7 @@ export class Orchestrator {
 
   private L(teamId: string): Live {
     let l = this.live.get(teamId);
-    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set(), starting: false, cancelled: false }; this.live.set(teamId, l); }
+    if (!l) { l = { handle: null, subHandles: new Set(), loop: null, pending: [], reported: null, asked: null, pausePending: false, hardPaused: false, errors: 0, overlapsSent: new Set(), starting: false, cancelled: false, approved: new Set() }; this.live.set(teamId, l); }
     return l;
   }
   isRunning(teamId: string): boolean { const l = this.live.get(teamId); return !!(l?.loop || l?.starting); }
@@ -145,6 +147,20 @@ export class Orchestrator {
         : (() => { const r = roles.find((x) => x.key === a.role_key); return r ? rolePrompt(r, project) : a.system_prompt; })();
       if (want !== a.system_prompt) store.updateAgent(a.id, { system_prompt: want });
     }
+  }
+
+  /** 팀 작업 환경: 격리(기본) / 내 Claude Code 와 동일 */
+  private envFor(team: TeamRow, project: Project | null): { envMine: boolean; blocked: string[]; approval?: TurnSpec['approval']; extraWritable: string[]; note: string } {
+    const base = [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])];
+    if (team.env_mode !== 'mine') return { envMine: false, blocked: base, extraWritable: [], note: '' };
+    const { hard, approval } = splitApproval(base);
+    const l = this.L(team.id);
+    const memories = project ? project.memory_paths : this.deps.store.listProjects().flatMap((p) => p.memory_paths);
+    return {
+      envMine: true, blocked: hard, extraWritable: memories,
+      approval: { patterns: approval, take: (cmd) => l.approved.delete(cmd) },
+      note: `\n\n## 작업 환경: 사용자의 Claude Code 와 동일\n- 사용자 전역 설정·플러그인·스킬·MCP 도구를 쓸 수 있다. 프로젝트 메모리 폴더(${memories.join(', ') || '없음'})에 기억을 쓸 수 있다.\n- 운영 DB·배포·인프라 명령(${approval.join(' · ') || '없음'})은 mcp__hivelane__request_approval 로 사람 승인을 받은 뒤에만 실행된다. 승인 없이 실행하면 거부된다.\n- 외부 서비스(슬랙·노션·GitHub 등)에 글을 쓰거나 보내는 일은 사용자가 시켰을 때만 한다.`,
+    };
   }
 
   rolesOf(teamId: string): TemplateRole[] {
@@ -264,7 +280,7 @@ export class Orchestrator {
         return;
       }
       if (l.asked) {
-        const q = { text: l.asked.question, options: l.asked.options, asked_at: nowIso() };
+        const q = { text: l.asked.question, options: l.asked.options, asked_at: nowIso(), ...(l.asked.kind ? { kind: l.asked.kind, command: l.asked.command } : {}) };
         store.updateTeam(teamId, { state: after.lifetime === 'standing' ? 'idle' : 'waiting_human', question: JSON.stringify(q) });
         store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'question', body: l.asked.question + (l.asked.options.length ? `\n선택지: ${l.asked.options.join(' / ')}` : '') });
         store.addPoEvent('ask_human', teamId, { question: l.asked.question });
@@ -354,14 +370,17 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     // 프로젝트 없는 직속 팀은 등록된 프로젝트를 모두 읽을 수 있다(쓰기는 자기 폴더만)
     const readAll = team.lifetime === 'standing' && !project ? store.listProjects() : [];
     const readNote = readAll.length ? `\n\n## 읽을 수 있는 프로젝트(읽기 전용)\n${readAll.map((p) => `- ${p.name}: ${p.path}`).join('\n')}` : '';
+    const env = this.envFor(team, project);
     return {
-      agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote,
-      allowedTools: [...presetTools('pm'), ...teamToolNames(sessionRoles.length > 0, readable)],
+      agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote + env.note,
+      allowedTools: [...presetTools(env.envMine ? 'write' : 'pm'), ...teamToolNames(sessionRoles.length > 0, readable, !!env.approval)],
       additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path), cfg.uploadsDir],
-      writableRoots: [wt],
+      writableRoots: [wt, ...env.extraWritable],
       heavyPatterns: project?.heavy_patterns ?? [],
-      blockedPatterns: [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
-      mcpServers: { hivelane: teamMcpServer(impl, { sessionRoles: sessionRoles.map((r) => ({ key: r.key, name: r.name })), readableTeams: readable }) },
+      blockedPatterns: env.blocked,
+      envMine: env.envMine,
+      approval: env.approval,
+      mcpServers: { hivelane: teamMcpServer(impl, { sessionRoles: sessionRoles.map((r) => ({ key: r.key, name: r.name })), readableTeams: readable, approval: !!env.approval }) },
       toolsImpl: impl,
       subagents,
       resume,
@@ -385,6 +404,10 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       checkItem: (index, done) => (store.checkItem(teamId, index, done) ? `${index}번을 ${done ? '완료' : '미완료'}로 표시했다.` : `${index}번 할 일이 없다.`),
       setStage: (stage) => { store.updateTeam(teamId, { stage }); return `단계를 ${['기획', '구현', '검사', '보고'][stage]}(으)로 바꿨다.`; },
       askHuman: (question, options) => { l.asked = { question, options }; return '질문을 올렸다. 지금 턴을 끝내라. 답은 다음 메시지로 온다.'; },
+      requestApproval: (command, reason) => {
+        l.asked = { question: `이 명령을 실행해도 될까요?\n\n\`${command.trim()}\`\n\n이유: ${reason}`, options: ['승인', '거절'], kind: 'approval', command: command.trim() };
+        return '승인을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지로 알려 주니 같은 명령을 그대로 실행해라.';
+      },
       report: (status, summary) => { l.reported = { status, summary }; return '보고를 받았다. 턴을 끝내라.'; },
       delegate: (roleKey, instruction) => this.delegate(teamId, roleKey, instruction),
       readTeamRecords: (otherId, q) => this.readTeamRecords(teamId, otherId, q),
@@ -405,9 +428,11 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const handle = new TurnHandle();
     l.subHandles.add(handle);
     try {
+      const env = this.envFor(team, project);
       const res = await this.deps.runner.runTurn({
-        agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt, allowedTools: presetTools(role.tools),
-        additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
+        agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt + env.note, allowedTools: presetTools(role.tools),
+        additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt, ...env.extraWritable], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: env.blocked,
+        envMine: env.envMine, approval: env.approval,
         resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
       }, handle);
@@ -545,13 +570,19 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const team = store.getTeam(teamId);
     if (!team) throw new Error('팀이 없습니다');
     if (!team.question || !['waiting_human', 'paused', 'idle', 'down'].includes(team.state) || this.isRunning(teamId)) throw new ConflictError('지금은 답할 질문이 없습니다');
-    const q = parseJson<{ kind?: string } | null>(team.question, null);
+    const q = parseJson<{ kind?: string; command?: string } | null>(team.question, null);
     this.L(teamId).errors = 0;
     store.addMessage({ team_id: teamId, from_label: '사용자', to_label: 'PM', kind: 'reply', body: text });
     store.addDecision(teamId, 'user', 'answer', truncate(text, 200));
     if (q?.kind === 'budget') {
       if (text.includes('마무리')) { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'failed', summary: `예산 상한에서 사용자가 마무리를 선택했다. 지금까지 사용 $${team.cost_usd.toFixed(2)}` }); return; }
       store.updateTeam(teamId, { budget_usd: Math.round((team.budget_usd ?? Math.max(1, team.cost_usd)) * 1.5 * 100) / 100 });
+    }
+    if (q?.kind === 'approval' && q.command) {
+      const ok = /승인|허용|yes|ok|진행/i.test(text) && !/거절|안\s*돼|no\b|취소/i.test(text);
+      if (ok) this.L(teamId).approved.add(q.command);
+      store.addDecision(teamId, 'user', ok ? 'approve' : 'reject', `${ok ? '명령 승인' : '명령 거절'}: ${truncate(q.command, 200)}`);
+      text = ok ? `승인됨. 이 명령을 그대로(한 글자도 바꾸지 말고) 한 번 실행해라: ${q.command}` : `거절됨: ${text}. 그 명령은 실행하지 말고 다른 방법을 찾거나 report 해라.`;
     }
     if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
     store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });

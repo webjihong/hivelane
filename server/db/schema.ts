@@ -284,4 +284,9 @@ ALTER TABLE projects ADD COLUMN git_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE projects ADD COLUMN protected_branches TEXT NOT NULL DEFAULT '["prod","main","master"]';
 `,
   },
+  {
+    id: 5,
+    name: 'team_env_mode',
+    sql: `ALTER TABLE teams ADD COLUMN env_mode TEXT NOT NULL DEFAULT 'isolated';`,
+  },
 ];

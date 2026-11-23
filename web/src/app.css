@@ -239,3 +239,4 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 .pr-b.pending, .pr-b.r-review_required { color: #9a6700; border-color: #d4a72c; }
 .pr-go { color: var(--muted); font-size: 14px; }
 @media (max-width: 640px) { .pr-row { grid-template-columns: auto minmax(0, 1fr); } .pr-badges { grid-column: 2; justify-content: flex-start; } }
+.env-box small { margin-left: 6px; }

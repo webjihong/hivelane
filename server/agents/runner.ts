@@ -26,6 +26,10 @@ export interface TurnSpec {
   mcpServers?: Record<string, McpServerConfig>;
   subagents?: Record<string, AgentDefinition & { roleAgentId: string; roleName: string }>;
   settingSources?: Options['settingSources'];
+  /** 내 Claude Code 와 같은 환경: 사용자 설정·플러그인·MCP 를 불러오고 역할별 도구 제한 없이 */
+  envMine?: boolean;
+  /** 사람 승인 뒤에만 실행하는 명령 패턴과 승인된 명령 확인(한 번 쓰면 소진) */
+  approval?: { patterns: string[]; take(command: string): boolean };
   resume?: string | null;
   maxBudgetUsd?: number | null;
   priority?: Priority;
@@ -126,7 +130,7 @@ export class AgentRunner {
       };
       if (handle.pauseRequested) return deny('팀이 일시정지되었습니다. 지금 하던 일을 멈추고 기다려라.');
       const mine = toolsOf(input);
-      if (!tool.startsWith('mcp__') && tool !== 'ToolSearch' && !mine.includes(tool)) {
+      if (!spec.envMine && !tool.startsWith('mcp__') && tool !== 'ToolSearch' && !mine.includes(tool)) {
         return deny(`이 역할은 ${tool} 도구를 쓸 수 없습니다(쓸 수 있는 도구: ${mine.join(', ')}). ${tool in WRITE_TOOLS || tool === 'Bash' ? '구현·실행은 팀원에게 맡겨라.' : ''}`);
       }
       if (tool === 'Agent' || tool === 'Task') {
@@ -145,6 +149,11 @@ export class AgentRunner {
         const cmd = String((input.tool_input as { command?: unknown })?.command ?? '');
         const r = checkBash(cmd, input.cwd || spec.cwd, writable, spec.blockedPatterns ?? []);
         if (r) return deny(r);
+        const needs = spec.approval?.patterns.find((p) => { try { return new RegExp(p).test(cmd); } catch { return false; } });
+        if (needs) {
+          if (!spec.approval!.take(cmd.trim())) return deny(`사람 승인이 필요한 명령입니다(패턴: ${needs}). mcp__hivelane__request_approval(command=이 명령 그대로, reason=이유) 로 승인을 요청하고 턴을 끝내라. 승인되면 같은 명령을 그대로 다시 실행한다.`);
+          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'note', name: 'Bash', body: `사람 승인된 명령 실행: ${truncate(cmd, 200)}` });
+        }
         if (isHeavy(cmd, spec.heavyPatterns ?? [])) {
           const started = Date.now();
           store.updateAgent(owner, { current_step: `무거운 명령 대기 (${this.deps.slots.waitingPosition(teamId ?? '') || '…'}번째)`, state: 'busy' });
@@ -167,6 +176,8 @@ export class AgentRunner {
       // 사람 지시는 PM(메인 스레드)에게만 끼워 넣는다. 서브에이전트가 가져가면 PM 이 못 본다.
       const inj = (input as { agent_type?: string }).agent_type ? null : spec.injectContext?.();
       if (inj) extra = inj;
+      // 내 환경 모드: 가드를 통과한 도구는 권한 목록과 상관없이 허용(사용자 MCP·플러그인 도구 포함)
+      if (spec.envMine) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', ...(extra ? { additionalContext: extra } : {}) } };
       return extra ? { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: extra } } : {};
     };
     const postTool = async (input: HookInput, toolUseId: string | undefined): Promise<HookJSONOutput> => {
@@ -197,10 +208,10 @@ export class AgentRunner {
       cwd: spec.cwd,
       model: spec.agent.model,
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.systemAppend },
-      settingSources: spec.settingSources ?? ['project', 'local'],
+      settingSources: spec.settingSources ?? (spec.envMine ? ['user', 'project', 'local'] : ['project', 'local']),
       permissionMode: 'dontAsk',
       allowedTools: [...union],
-      tools: [...union].filter((t) => !t.startsWith('mcp__')),
+      tools: spec.envMine ? undefined : [...union].filter((t) => !t.startsWith('mcp__')),
       additionalDirectories: spec.additionalDirectories,
       mcpServers: spec.mcpServers,
       agents: Object.keys(agents).length ? agents : undefined,

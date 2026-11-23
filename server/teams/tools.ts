@@ -11,6 +11,7 @@ export interface TeamTools {
   setStage(stage: number): string;
   delegate(roleKey: string, instruction: string): Promise<string>;
   askHuman(question: string, options: string[]): string;
+  requestApproval(command: string, reason: string): string;
   report(status: 'done' | 'failed', summary: string): string;
   readTeamRecords(teamId: string, query: string): string;
 }
@@ -18,7 +19,7 @@ export interface TeamTools {
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
 
 /** PM 세션에 붙이는 인프로세스 MCP 서버(이름 hivelane). */
-export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: string; name: string }[]; readableTeams: boolean }) {
+export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: string; name: string }[]; readableTeams: boolean; approval?: boolean }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK 가 도구 배열을 any 스키마로 받는다
   const tools: SdkMcpToolDefinition<any>[] = [
     T('set_plan', '할 일 목록(완료 기준 포함)을 정한다. 기존 목록을 바꾼다.', { items: z.array(z.string()).min(1).describe('할 일. 완료 기준이 보이게 쓴다') }, async (a) => text(impl.setPlan(a.items))),
@@ -27,6 +28,9 @@ export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: stri
     T('ask_human', '사람의 결정이 필요할 때 질문을 올린다. 호출한 뒤에는 바로 턴을 끝내라. 답은 다음 메시지로 온다.', {
       question: z.string().min(3), options: z.array(z.string()).max(5).default([]).describe('고를 수 있는 답(선택). 자유 답도 가능'),
     }, async (a) => text(impl.askHuman(a.question, a.options))),
+    ...(opts.approval ? [T('request_approval', '운영 DB·배포·인프라처럼 사람 승인이 필요한 명령을 요청한다. 호출한 뒤 바로 턴을 끝내라. 승인되면 같은 명령을 그대로 실행한다.', {
+      command: z.string().min(2).describe('실행할 명령 그대로(한 글자도 바꾸지 않는다)'), reason: z.string().min(3).describe('왜 필요한지, 무엇이 바뀌는지, 되돌리는 방법'),
+    }, async (a) => text(impl.requestApproval(a.command, a.reason)))] : []),
     T('report', '업무를 끝낸다. 반드시 마지막에 호출한다.', {
       status: z.enum(['done', 'failed']), summary: z.string().min(5).describe('바뀐 파일, 검증 결과, 사람이 확인할 점'),
     }, async (a) => text(impl.report(a.status, a.summary))),
@@ -42,9 +46,10 @@ export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: stri
   return createSdkMcpServer({ name: 'hivelane', version: '0.1.0', tools });
 }
 
-export function teamToolNames(sessionRoles: boolean, readable: boolean): string[] {
+export function teamToolNames(sessionRoles: boolean, readable: boolean, approval = false): string[] {
   const n = ['set_plan', 'check_item', 'set_stage', 'ask_human', 'report'];
   if (sessionRoles) n.push('delegate');
   if (readable) n.push('read_team_records');
+  if (approval) n.push('request_approval');
   return n.map((x) => `mcp__hivelane__${x}`);
 }

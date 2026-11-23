@@ -15,6 +15,7 @@ export interface TeamRow {
   paused_reason: string | null; pause_kind: string | null; pinned: number; priority: Priority; question: string | null; nudges: number;
   cost_usd: number; budget_usd: number | null; error: string | null; last_activity_at: string | null; last_heartbeat_at: string | null;
   revived_count: number; created_at: string; updated_at: string; started_at: string | null; finished_at: string | null;
+  env_mode: 'isolated' | 'mine';
 }
 export interface AgentRow {
   id: string; team_id: string | null; role_key: string; role_name: string; model: Model; run_mode: RunMode; parent_agent_id: string | null;
@@ -61,6 +62,12 @@ export function gitPushBlocked(protectedBranches: string[]): string[] {
     '\\bgh\\s+(pr\\s+(merge|close)|repo\\s+(create|delete|edit|rename|archive)|release\\b|api\\b[^|;&]*-X\\s*(DELETE|PUT|PATCH))',
   ];
 }
+/** 「내 환경」 팀에서는 막지 않고 사람 승인 뒤 실행하는 명령(운영 DB·배포·인프라) */
+export const APPROVABLE = new Set(['db:prod', 'prod:sync', '--profile\\s+\\S*prod', '\\bterraform\\s+(apply|destroy)', 'npm\\s+publish']);
+export function splitApproval(blocked: string[]): { hard: string[]; approval: string[] } {
+  return { hard: blocked.filter((p) => !APPROVABLE.has(p)), approval: blocked.filter((p) => APPROVABLE.has(p)) };
+}
+
 /** 팀이 실제로 쓰는 막을 명령 */
 export function effectiveBlocked(p: Project | null): string[] {
   if (!p) return [];
@@ -522,6 +529,7 @@ export class Store {
       last_check_at: t.last_check_at, last_check_ok: t.last_check_ok == null ? null : !!t.last_check_ok, readable_team_ids: parseJson<string[]>(t.readable_team_ids, []), agents,
       busy_note: busy ? `${busy.role_name}: ${busy.current_step}` : null,
       unread: this.teamUnread(t.id),
+      env_mode: t.env_mode === 'mine' ? 'mine' : 'isolated',
     };
   }
   teamDetail(id: string): TeamDetail | null {
