@@ -9,6 +9,11 @@ self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification(title, {
     body: d.body || '',
     tag: d.tag || undefined,
+    // 같은 tag 로 갱신돼도 다시 울리게(휴대폰에서 소리·진동)
+    renotify: !!d.tag,
+    vibrate: [200, 100, 200],
+    // 사람 확인 필요·실패는 직접 닫을 때까지 남김
+    requireInteraction: d.level === 'crit',
     icon: '/icon-512.png',
     badge: '/icon.svg',
     data: { url: d.url || '/' },

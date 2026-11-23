@@ -49,10 +49,10 @@ export class AppNotifier implements Notifier {
 
   private async push(n: Notice): Promise<void> {
     if (!this.vapid) return;
-    const payload = JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body, url: n.url ?? '/', tag: n.tag });
+    const payload = JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'), url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' });
     for (const s of this.store.pushSubs()) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 3600 });
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 86_400, urgency: 'high' });
         log.info(`푸시 보냄 · ${s.device} · ${n.title}`);
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode;
