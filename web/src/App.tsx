@@ -85,7 +85,7 @@ export function App() {
   let main: ReactElement;
   if (r.name === 'settings') main = <div className="page"><SettingsTabs r={r} /><Settings snap={snap} /></div>;
   else if (r.name === 'templates') main = <div className="page"><SettingsTabs r={r} /><Templates snap={snap} /></div>;
-  else if (r.name === 'prs') main = <div className="page"><PrSection snap={snap} /></div>;
+  else if (r.name === 'prs') main = <div className="page"><PrSection key={r.focus ?? ''} snap={snap} focus={r.focus} /></div>;
   else if (r.name === 'po') main = <Chat snap={snap} />;
   else if (r.name === 'team') main = <TeamChannel key={r.id} id={r.id} snap={snap} detail={!!r.detail} />;
   else main = <div className="page"><Now snap={snap} /></div>;

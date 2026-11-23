@@ -66,7 +66,7 @@ function Head({ t, snap, detail }: { t: TeamView; snap: StateSnapshot; detail: b
         </div>
       </div>
       <div className="tc-acts">
-        {prs.map((p) => <a key={p.url} className="tc-pr" href={p.url} target="_blank" rel="noreferrer">PR #{p.number} ↗</a>)}
+        {prs.map((p) => <a key={p.url} className="tc-pr" href={`#prs/${p.project_id}:${p.number}`} title={p.title}>PR #{p.number}</a>)}
         {t.state === 'running' && t.lifetime === 'task' && <button className="btn" type="button" onClick={() => void call('pause', '멈춤 요청을 보냈습니다')}>멈춤</button>}
         {t.state === 'paused' && <button className="btn primary" type="button" onClick={() => void call('resume', '재개했습니다 · 15분 동안 자동 멈춤 안 함')}>재개</button>}
         {t.state === 'failed' && <button className="btn primary" type="button" onClick={() => void call('retry', '대기열에 다시 넣었습니다')}>다시 시작</button>}

@@ -105,7 +105,7 @@ const PR_CHECK: Record<string, { icon: string; cls: string; label: string }> = {
 const MERGE_OK = new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE', 'BEHIND', 'UNKNOWN']);
 
 /** 사이드바 PR 한 줄: 검사 상태 · 병합(두 번 눌러 확인) · 제목은 GitHub 로 */
-function PrItem({ p }: { p: PrView }) {
+function PrItem({ p, on = false }: { p: PrView; on?: boolean }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!confirm) return; const t = setTimeout(() => setConfirm(false), 4000); return () => clearTimeout(t); }, [confirm]);
@@ -124,9 +124,9 @@ function PrItem({ p }: { p: PrView }) {
     setBusy(false); setConfirm(false);
   };
   return (
-    <div className="sb-item sb-pri" title={tip}>
+    <div className={`sb-item sb-pri${on ? ' on' : ''}`} title={tip}>
       {ck.icon ? <span className={`sb-ck ${ck.cls}`} aria-label={ck.label}>{ck.icon}</span> : <span className={`sb-pr${p.draft ? ' draft' : ''}`}>{p.draft ? '초안' : '열림'}</span>}
-      <a className="sb-name sb-prlink" href={p.url} target="_blank" rel="noreferrer">#{p.number} {p.title}</a>
+      <a className="sb-name sb-prlink" href={`#prs/${p.project_id}:${p.number}`}>#{p.number} {p.title}</a>
       {conflict && <span className="sb-rb clash" aria-label="충돌">⚠</span>}
       {canMerge
         ? <button type="button" className={`sb-pull${confirm ? ' confirm' : ''}`} disabled={busy} onClick={() => (confirm ? void merge() : setConfirm(true))} title={confirm ? `${p.base} 에 병합 커밋으로 병합합니다${fail ? ` · 실패한 검사 ${fail}개` : ''}${wait ? ` · 진행 중 검사 ${wait}개` : ''}` : `병합(두 번 눌러 확인)${blocked ? '' : ''}`}>{busy ? '병합 중' : confirm ? '확인?' : '병합'}</button>
@@ -165,6 +165,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
   const res = snap.resource;
   const e = snap.settings.engine;
   const nowOn = r.name === 'now' || r.name === 'home';
+  const prFocus = r.name === 'prs' ? r.focus : undefined;
   const poPending = snap.proposals.filter((p) => p.status === 'pending').length;
 
   return (
@@ -204,7 +205,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
         {snap.repos.length ? snap.repos.map((r) => (
           <div key={r.project_id} className="sb-repo-g">
             <RepoItem r={r} />
-            {openPrs.filter((p) => p.project_id === r.project_id).map((p) => <PrItem key={p.url} p={p} />)}
+            {openPrs.filter((p) => p.project_id === r.project_id).map((p) => <PrItem key={p.url} p={p} on={prFocus === `${p.project_id}:${p.number}`} />)}
           </div>
         )) : <div className="sb-empty">확인 중…</div>}
       </div>

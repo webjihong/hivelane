@@ -521,3 +521,4 @@ body { margin: 0; overflow: hidden; }
 .sb-repo-g .sb-pri { padding-left: 24px; font-size: 12.5px; }
 .sb-h .sb-h-link { margin-left: auto; font-size: 11px; text-decoration: none; }
 .sb-h .sb-h-link + .sb-add { margin-left: 2px; }
+.pr-row.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }

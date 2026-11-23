@@ -116,10 +116,10 @@ export function Now({ snap }: { snap: StateSnapshot }) {
               </a>
             )}
             {freshPrs.map((p) => (
-              <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="nw-row">
+              <a key={p.url} href={`#prs/${p.project_id}:${p.number}`} className="nw-row">
                 <span className="nw-kind pr">PR 열림</span>
                 <span className="nw-text"><b>{p.project_name} #{p.number}</b> · {p.title} · <span className="mono">{p.base} ← {p.head}</span></span>
-                <span className="nw-when">GitHub ↗</span>
+                <span className="nw-when">검사·병합 ›</span>
               </a>
             ))}
           </div>

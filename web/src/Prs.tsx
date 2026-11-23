@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PrView, StateSnapshot } from '../../shared/types.ts';
 import { act, api, clock, go, refreshState, useBox } from './store.ts';
 import { ConfirmButton } from './ui.tsx';
@@ -21,9 +21,14 @@ const MERGE_STATE: Record<string, { text: string; ok: boolean }> = {
 };
 const CHECK_ICON: Record<string, string> = { pass: '✓', fail: '✕', pending: '●', skip: '–' };
 
-export function PrRow({ pr, snap }: { pr: PrView; snap: StateSnapshot }) {
+/** PR 화면 주소에 쓰는 키: 프로젝트:번호 */
+export const prKey = (p: PrView) => `${p.project_id}:${p.number}`;
+
+export function PrRow({ pr, snap, focused = false }: { pr: PrView; snap: StateSnapshot; focused?: boolean }) {
   const now = useBox(clock);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(focused);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focused) rowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, [focused]);
   const [method, setMethod] = useState<'merge' | 'squash' | 'rebase'>('merge');
   const [busy, setBusy] = useState(false);
   const team = pr.team_id ? snap.teams.find((t) => t.id === pr.team_id) : null;
@@ -37,7 +42,7 @@ export function PrRow({ pr, snap }: { pr: PrView; snap: StateSnapshot }) {
   const failing = pr.check_list.filter((c) => c.state === 'fail').length;
   const pending = pr.check_list.filter((c) => c.state === 'pending').length;
   return (
-    <div className={`pr-row s-${pr.state.toLowerCase()}${open ? ' open' : ''}`}>
+    <div ref={rowRef} className={`pr-row s-${pr.state.toLowerCase()}${open ? ' open' : ''}${focused ? ' focused' : ''}`}>
       <button type="button" className="pr-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className={`pr-state ${pr.state.toLowerCase()}${pr.draft ? ' draft' : ''}`}>{pr.draft && pr.state === 'OPEN' ? '초안' : STATE[pr.state]}</span>
         <div className="pr-main">
@@ -90,8 +95,9 @@ export function PrRow({ pr, snap }: { pr: PrView; snap: StateSnapshot }) {
 }
 
 /** 저장소별 PR: 열린 것 먼저, 최근 3일 안에 병합·닫힌 것은 접어서 */
-export function PrSection({ snap }: { snap: StateSnapshot }) {
-  const [showClosed, setShowClosed] = useState(false);
+export function PrSection({ snap, focus }: { snap: StateSnapshot; focus?: string }) {
+  const focusedPr = focus ? snap.prs.find((p) => prKey(p) === focus) : undefined;
+  const [showClosed, setShowClosed] = useState(!!focusedPr && focusedPr.state !== 'OPEN');
   const [busy, setBusy] = useState(false);
   const open = snap.prs.filter((p) => p.state === 'OPEN');
   const closed = snap.prs.filter((p) => p.state !== 'OPEN');
@@ -108,8 +114,8 @@ export function PrSection({ snap }: { snap: StateSnapshot }) {
       </div>
       {open.length || showClosed ? (
         <div className="pr-list">
-          {open.map((p) => <PrRow key={p.url} pr={p} snap={snap} />)}
-          {showClosed && closed.map((p) => <PrRow key={p.url} pr={p} snap={snap} />)}
+          {open.map((p) => <PrRow key={p.url} pr={p} snap={snap} focused={prKey(p) === focus} />)}
+          {showClosed && closed.map((p) => <PrRow key={p.url} pr={p} snap={snap} focused={prKey(p) === focus} />)}
         </div>
       ) : <div className="all-clear" style={{ color: 'var(--muted)', background: 'var(--surface-2)' }}>열린 PR 이 없습니다. 2분마다 등록된 저장소에서 다시 읽습니다.</div>}
       {errs.length > 0 && <div className="muted small" style={{ marginTop: 6 }}>{errs.map(([k, v]) => `${k}: ${v}`).join(' · ')}</div>}
