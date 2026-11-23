@@ -510,3 +510,14 @@ body { margin: 0; overflow: hidden; }
 .new-below { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); border: 0; border-radius: 16px; padding: 6px 14px; background: var(--accent); color: #FFFFFF; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
 .sb-rb.clash { color: var(--sb-crit); font-weight: 700; }
 .sb-rb.dim { opacity: .7; }
+
+/* 사이드바 · PR */
+.sb-pri .sb-prlink { color: inherit; text-decoration: none; }
+.sb-pri .sb-prlink:hover { text-decoration: underline; }
+.sb-ck { width: 16px; text-align: center; font-size: 11px; font-weight: 700; flex: none; }
+.sb-ck.ok { color: var(--sb-good); } .sb-ck.bad { color: var(--sb-crit); } .sb-ck.wait { color: var(--sb-warn); font-size: 9px; }
+.sb-pull.confirm { border-color: var(--sb-crit); color: #FFFFFF; background: var(--sb-crit); opacity: 1; }
+.sb-pri .sb-pull { opacity: .8; }
+.sb-repo-g .sb-pri { padding-left: 24px; font-size: 12.5px; }
+.sb-h .sb-h-link { margin-left: auto; font-size: 11px; text-decoration: none; }
+.sb-h .sb-h-link + .sb-add { margin-left: 2px; }

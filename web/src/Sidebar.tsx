@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { RepoView, StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { PrView, RepoView, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { DOT_LABEL, dotOf, isActiveTask, isDoneTask, isStandingCh, nowCount, sideNote } from './chan.ts';
 import { act, api, clock, conn, refreshState, route, useBox, type Route } from './store.ts';
 
@@ -99,6 +99,42 @@ function RepoItem({ r: raw }: { r: RepoView }) {
   );
 }
 
+const PR_CHECK: Record<string, { icon: string; cls: string; label: string }> = {
+  pass: { icon: '✓', cls: 'ok', label: '검사 통과' }, fail: { icon: '✕', cls: 'bad', label: '검사 실패' }, pending: { icon: '●', cls: 'wait', label: '검사 중' }, none: { icon: '', cls: '', label: '검사 없음' },
+};
+const MERGE_OK = new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE', 'BEHIND', 'UNKNOWN']);
+
+/** 사이드바 PR 한 줄: 검사 상태 · 병합(두 번 눌러 확인) · 제목은 GitHub 로 */
+function PrItem({ p }: { p: PrView }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!confirm) return; const t = setTimeout(() => setConfirm(false), 4000); return () => clearTimeout(t); }, [confirm]);
+  const list = p.check_list ?? [];
+  const fail = list.filter((c) => c.state === 'fail').length;
+  const wait = list.filter((c) => c.state === 'pending').length;
+  const ck = PR_CHECK[p.checks] ?? PR_CHECK.none!;
+  const conflict = p.mergeable === 'CONFLICTING' || p.merge_state === 'DIRTY';
+  const blocked = p.merge_state === 'BLOCKED';
+  const canMerge = !p.draft && !conflict && MERGE_OK.has(p.merge_state ?? 'UNKNOWN');
+  const why = p.draft ? '초안이라 병합할 수 없음' : conflict ? '충돌 · 병합 불가' : blocked ? '막힘 · 리뷰·필수 검사 등 보호 규칙' : p.merge_state === 'BEHIND' ? '기준 브랜치보다 뒤처짐' : '병합 가능';
+  const tip = [`${p.project_name} #${p.number} ${p.title}`, `${p.base} ← ${p.head}${p.author ? ` · ${p.author}` : ''}`, `${ck.label}${fail ? ` · 실패 ${fail}` : ''}${wait ? ` · 진행 중 ${wait}` : ''}`, ...list.slice(0, 8).map((c) => `  ${PR_CHECK[c.state === 'skip' ? 'none' : c.state]?.icon || '–'} ${c.name}`), p.review === 'APPROVED' ? '리뷰 승인' : p.review === 'CHANGES_REQUESTED' ? '수정 요청된 리뷰' : p.review === 'REVIEW_REQUIRED' ? '리뷰 대기' : '', why].filter(Boolean).join('\n');
+  const merge = async () => {
+    setBusy(true);
+    await act(async () => { await api('/api/prs/merge', 'POST', { project_id: p.project_id, number: p.number, method: 'merge' }); await refreshState(); }, `#${p.number} 을(를) 병합했습니다`);
+    setBusy(false); setConfirm(false);
+  };
+  return (
+    <div className="sb-item sb-pri" title={tip}>
+      {ck.icon ? <span className={`sb-ck ${ck.cls}`} aria-label={ck.label}>{ck.icon}</span> : <span className={`sb-pr${p.draft ? ' draft' : ''}`}>{p.draft ? '초안' : '열림'}</span>}
+      <a className="sb-name sb-prlink" href={p.url} target="_blank" rel="noreferrer">#{p.number} {p.title}</a>
+      {conflict && <span className="sb-rb clash" aria-label="충돌">⚠</span>}
+      {canMerge
+        ? <button type="button" className={`sb-pull${confirm ? ' confirm' : ''}`} disabled={busy} onClick={() => (confirm ? void merge() : setConfirm(true))} title={confirm ? `${p.base} 에 병합 커밋으로 병합합니다${fail ? ` · 실패한 검사 ${fail}개` : ''}${wait ? ` · 진행 중 검사 ${wait}개` : ''}` : `병합(두 번 눌러 확인)${blocked ? '' : ''}`}>{busy ? '병합 중' : confirm ? '확인?' : '병합'}</button>
+        : <span className="sb-note t-muted" title={why}>{p.draft ? '초안' : conflict ? '충돌' : blocked ? '막힘' : ''}</span>}
+    </div>
+  );
+}
+
 function TeamItem({ t, r, now }: { t: TeamView; r: Route; now: number }) {
   const dot = dotOf(t);
   const note = sideNote(t, now);
@@ -164,17 +200,13 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
         {done.length > 0 && <button type="button" className="sb-more" onClick={toggleDone}>{showDone ? '끝난 팀 접기' : `끝난 팀 ${done.length}`}</button>}
         {showDone && done.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />)}
 
-        <div className="sb-h">PR<a href="#prs" className="sb-add" title="PR 전체">전체</a></div>
-        {openPrs.length ? openPrs.slice(0, 6).map((p) => (
-          <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="sb-item" title={`${p.project_name} #${p.number} ${p.title} · ${p.base} ← ${p.head}`}>
-            <span className={`sb-pr${p.draft ? ' draft' : ''}`}>{p.draft ? '초안' : '열림'}</span>
-            <span className="sb-name">#{p.number} {p.title}</span>
-            <span className="sb-note t-muted">↗</span>
-          </a>
-        )) : <div className="sb-empty">열린 PR 없음</div>}
-
-        <div className="sb-h">저장소<button type="button" className="sb-add" title="원격에서 새로 확인(fetch)" onClick={() => void act(async () => { await api('/api/repos/refresh', 'POST', {}); await refreshState(); }, '저장소 상태를 다시 확인했습니다')}>↻</button></div>
-        {snap.repos.length ? snap.repos.map((r) => <RepoItem key={r.project_id} r={r} />) : <div className="sb-empty">확인 중…</div>}
+        <div className="sb-h">저장소 · PR<a href="#prs" className="sb-add sb-h-link" title="PR 전체(최근 병합·닫힘 포함)">PR 전체</a><button type="button" className="sb-add" title="원격에서 새로 확인(fetch)" onClick={() => void act(async () => { await api('/api/repos/refresh', 'POST', {}); await refreshState(); }, '저장소 상태를 다시 확인했습니다')}>↻</button></div>
+        {snap.repos.length ? snap.repos.map((r) => (
+          <div key={r.project_id} className="sb-repo-g">
+            <RepoItem r={r} />
+            {openPrs.filter((p) => p.project_id === r.project_id).map((p) => <PrItem key={p.url} p={p} />)}
+          </div>
+        )) : <div className="sb-empty">확인 중…</div>}
       </div>
 
       <button type="button" className="sb-res" onClick={() => setDiag(true)} title={`${ZONE[res.zone]} · 무거운 명령 ${res.heavyRunning} 실행 · ${res.heavyWaiting} 대기 · ${c === 'down' ? '서버 연결 끊김' : '서버 연결됨'} — 누르면 누가 쓰는지 보기`}>
