@@ -276,4 +276,12 @@ CREATE TABLE po_knowledge (
 );
 `,
   },
+  {
+    id: 4,
+    name: 'project_git_mode',
+    sql: `
+ALTER TABLE projects ADD COLUMN git_mode TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE projects ADD COLUMN protected_branches TEXT NOT NULL DEFAULT '["prod","main","master"]';
+`,
+  },
 ];

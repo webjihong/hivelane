@@ -217,3 +217,4 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 .alert.q .acts .btn { white-space: normal; text-align: left; max-width: 100%; height: auto; line-height: 1.35; padding-top: 5px; padding-bottom: 5px; }
 .alert .a-s.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .alert .a-t { overflow-wrap: anywhere; }
+.chip.git-on { background: var(--accent-soft); color: var(--accent); }

@@ -113,10 +113,11 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
 
 function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boolean }) {
   const [open, setOpen] = useState(false);
-  const [d, setD] = useState({ name: p.name, base_ref: p.base_ref, deps_strategy: p.deps_strategy, heavy: p.heavy_patterns.join('\n'), blocked: p.blocked_patterns.join('\n'), memory: p.memory_paths.join('\n'), tpl: p.default_template_id ?? '' });
+  const [d, setD] = useState({ name: p.name, base_ref: p.base_ref, deps_strategy: p.deps_strategy, heavy: p.heavy_patterns.join('\n'), blocked: p.blocked_patterns.join('\n'), memory: p.memory_paths.join('\n'), tpl: p.default_template_id ?? '', git: p.git_mode, prot: p.protected_branches.join(', ') });
   const save = async () => {
     const r = await act(() => api(`/api/projects/${encodeURIComponent(p.id)}`, 'PATCH', {
       name: d.name.trim(), base_ref: d.base_ref.trim(), deps_strategy: d.deps_strategy, heavy_patterns: lines(d.heavy), blocked_patterns: lines(d.blocked), memory_paths: lines(d.memory), default_template_id: d.tpl || null,
+      git_mode: d.git, protected_branches: d.prot.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean),
     }), '프로젝트를 저장했습니다');
     if (r !== undefined) { await refreshState(); setOpen(false); }
   };
@@ -124,7 +125,7 @@ function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boo
   return (
     <div className="item">
       <div className="item-h">
-        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span><div className="muted small mono ellipsis">{p.path}</div></div>
+        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span> <span className={`chip${p.git_mode === 'push' ? ' git-on' : ''}`}>{p.git_mode === 'push' ? 'git 커밋·푸시 허용' : 'git 막음'}</span><div className="muted small mono ellipsis">{p.path}</div></div>
         <div className="row">
           <button className="btn" type="button" onClick={() => setOpen(!open)}>{open ? '닫기' : ro ? '보기' : '수정'}</button>
           {!ro && <ConfirmButton label="삭제" confirmLabel="등록을 지울까요? (저장소는 그대로)" onConfirm={() => void del()} />}
@@ -142,6 +143,12 @@ function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boo
           <label>기본 템플릿
             <select value={d.tpl} onChange={(e) => setD({ ...d, tpl: e.target.value })}><option value="">(없음)</option>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           </label>
+          <label>git 권한
+            <select value={d.git} onChange={(e) => setD({ ...d, git: e.target.value as Project['git_mode'] })}>
+              <option value="none">막음 (커밋·푸시는 사람이)</option><option value="push">커밋·푸시·PR 만들기 허용</option>
+            </select>
+          </label>
+          <label>보호 브랜치 <small className="muted">팀이 직접 푸시 못 함 · PR 만 · 쉼표로</small><input className="txt mono" value={d.prot} disabled={d.git !== 'push'} onChange={(e) => setD({ ...d, prot: e.target.value })} /></label>
           <label className="wide">무거운 명령 패턴 <small className="muted">한 줄에 하나 · 정규식</small><textarea className="txt area mono" rows={4} value={d.heavy} onChange={(e) => setD({ ...d, heavy: e.target.value })} /></label>
           <label className="wide">막을 명령 패턴 <small className="muted">한 줄에 하나 · 정규식</small><textarea className="txt area mono" rows={4} value={d.blocked} onChange={(e) => setD({ ...d, blocked: e.target.value })} /></label>
           <label className="wide">참조 메모리 경로 <small className="muted">한 줄에 하나</small><textarea className="txt area mono" rows={2} value={d.memory} onChange={(e) => setD({ ...d, memory: e.target.value })} /></label>

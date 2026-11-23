@@ -62,6 +62,7 @@
 - 참조 메모리: `memory_paths`를 additionalDirectories로 읽기 허용 + 프롬프트에 「MEMORY.md를 먼저 읽어라」.
 - 변경 수집: 턴이 끝날 때마다 `git diff --numstat <base_sha>` + 새 파일 → file_changes(팀별 스냅샷).
 - 정리: 사람이 「worktree 정리」. 브랜치는 남긴다.
+- git 권한(프로젝트별 `git_mode`): `none`(기본, 커밋·푸시·PR 막음) | `push`(커밋·일반 푸시·fetch/pull·PR 만들기 허용). `push` 에서도 보호 브랜치(`protected_branches`, 기본 prod·main·master) 직접 푸시, 강제·삭제 푸시(`-f`·`--force*`·`--delete`·`+refspec`), `gh pr merge/close`, 저장소·릴리스 조작, update-ref·worktree 조작은 막는다. 팀·역할 지시문의 git 규칙도 프로젝트 설정을 따른다.
 
 ## 6. PO 에이전트
 

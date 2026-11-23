@@ -25,7 +25,7 @@ export interface TaskRow {
   id: string; project_id: string | null; title: string; instruction: string; brief: string; priority: Priority; status: string;
   template_id: string | null; budget_usd: number | null; created_at: string; updated_at: string; finished_at: string | null;
 }
-interface ProjectRow { id: string; name: string; path: string; base_ref: string; deps_strategy: string; heavy_patterns: string; blocked_patterns: string; memory_paths: string; default_template_id: string | null }
+interface ProjectRow { id: string; name: string; path: string; base_ref: string; deps_strategy: string; heavy_patterns: string; blocked_patterns: string; memory_paths: string; default_template_id: string | null; git_mode: string | null; protected_branches: string | null }
 interface ProposalRow { id: string; project_id: string | null; title: string; instruction: string; brief: string; template_id: string | null; roles: string; priority: Priority; budget_usd: number | null; note: string; status: 'pending' | 'approved' | 'rejected'; task_id: string | null; created_at: string; decided_at: string | null }
 
 export const DEFAULT_HEAVY = [
@@ -44,6 +44,29 @@ export const DEFAULT_BLOCKED = [
   'db:prod', 'prod:sync', '--profile\\s+\\S*prod', '\\bterraform\\s+(apply|destroy)',
   '\\brm\\s+-rf?\\s+(/|~|\\$HOME)(\\s|$)', '\\bsudo\\b', 'npm\\s+publish',
 ];
+
+const GIT_PRE = '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+';
+/** 기본 막을 명령 중 git·gh 관련(커밋·푸시 허용 프로젝트에서는 아래 GIT_PUSH_BLOCKED 로 바꾼다) */
+export const isGitDefault = (p: string) => p.startsWith('\\bgit\\b') || p.startsWith('\\bgh\\s');
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** 커밋·푸시 허용 프로젝트에서도 막는 것: 보호 브랜치 푸시, 강제·삭제 푸시, PR 병합·닫기, 저장소·릴리스 조작, 공유 ref·worktree 조작 */
+export function gitPushBlocked(protectedBranches: string[]): string[] {
+  const prot = protectedBranches.filter(Boolean).map(esc).join('|') || 'prod|main|master';
+  return [
+    `${GIT_PRE}push\\b[^|;&]*(\\s(-f|-d)\\b|--force|--delete|--mirror|--prune|\\s\\+\\S)`,
+    `${GIT_PRE}push\\b[^|;&]*[\\s:](refs/heads/)?(${prot})(\\s|$|[;&|])`,
+    `${GIT_PRE}(update-ref|filter-branch|replace|notes)\\b`,
+    `${GIT_PRE}worktree\\s+(add|remove|prune|move)\\b`,
+    `${GIT_PRE}clean\\b`,
+    '\\bgh\\s+(pr\\s+(merge|close)|repo\\s+(create|delete|edit|rename|archive)|release\\b|api\\b[^|;&]*-X\\s*(DELETE|PUT|PATCH))',
+  ];
+}
+/** 팀이 실제로 쓰는 막을 명령 */
+export function effectiveBlocked(p: Project | null): string[] {
+  if (!p) return [];
+  if (p.git_mode !== 'push') return p.blocked_patterns;
+  return [...p.blocked_patterns.filter((x) => !isGitDefault(x)), ...gitPushBlocked(p.protected_branches)];
+}
 
 export class Store {
   constructor(readonly db: DB) {}
@@ -82,11 +105,12 @@ export class Store {
     const r = this.db.prepare('SELECT * FROM projects WHERE lower(name) = lower(?) OR id = ?').get(name, name) as ProjectRow | undefined;
     return r ? toProject(r) : null;
   }
-  insertProject(p: Omit<Project, 'id'>): Project {
+  insertProject(pin: Omit<Project, 'id' | 'git_mode' | 'protected_branches'> & Partial<Pick<Project, 'git_mode' | 'protected_branches'>>): Project {
+    const p: Omit<Project, 'id'> = { git_mode: 'none', protected_branches: ['prod', 'main', 'master'], ...pin };
     const id = newId('p');
     const ts = nowIso();
-    this.db.prepare(`INSERT INTO projects (id, name, path, base_ref, deps_strategy, heavy_patterns, blocked_patterns, memory_paths, default_template_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, p.name, p.path, p.base_ref, p.deps_strategy, JSON.stringify(p.heavy_patterns), JSON.stringify(p.blocked_patterns), JSON.stringify(p.memory_paths), p.default_template_id, ts, ts);
+    this.db.prepare(`INSERT INTO projects (id, name, path, base_ref, deps_strategy, heavy_patterns, blocked_patterns, memory_paths, default_template_id, git_mode, protected_branches, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, p.name, p.path, p.base_ref, p.deps_strategy, JSON.stringify(p.heavy_patterns), JSON.stringify(p.blocked_patterns), JSON.stringify(p.memory_paths), p.default_template_id, p.git_mode, JSON.stringify(p.protected_branches), ts, ts);
     bus.changed('project');
     return { id, ...p };
   }
@@ -94,8 +118,8 @@ export class Store {
     const cur = this.getProject(id);
     if (!cur) return null;
     const n = { ...cur, ...patch };
-    this.db.prepare(`UPDATE projects SET name=?, base_ref=?, deps_strategy=?, heavy_patterns=?, blocked_patterns=?, memory_paths=?, default_template_id=?, updated_at=? WHERE id=?`)
-      .run(n.name, n.base_ref, n.deps_strategy, JSON.stringify(n.heavy_patterns), JSON.stringify(n.blocked_patterns), JSON.stringify(n.memory_paths), n.default_template_id, nowIso(), id);
+    this.db.prepare(`UPDATE projects SET name=?, base_ref=?, deps_strategy=?, heavy_patterns=?, blocked_patterns=?, memory_paths=?, default_template_id=?, git_mode=?, protected_branches=?, updated_at=? WHERE id=?`)
+      .run(n.name, n.base_ref, n.deps_strategy, JSON.stringify(n.heavy_patterns), JSON.stringify(n.blocked_patterns), JSON.stringify(n.memory_paths), n.default_template_id, n.git_mode, JSON.stringify(n.protected_branches), nowIso(), id);
     bus.changed('project');
     return n;
   }
@@ -546,6 +570,7 @@ function toProject(r: ProjectRow): Project {
   return {
     id: r.id, name: r.name, path: r.path, base_ref: r.base_ref, deps_strategy: r.deps_strategy as Project['deps_strategy'],
     heavy_patterns: parseJson(r.heavy_patterns, []), blocked_patterns: parseJson(r.blocked_patterns, []), memory_paths: parseJson(r.memory_paths, []), default_template_id: r.default_template_id,
+    git_mode: r.git_mode === 'push' ? 'push' : 'none', protected_branches: parseJson(r.protected_branches, ['prod', 'main', 'master']),
   };
 }
 function toChatView(r: ChatRow): ChatView {

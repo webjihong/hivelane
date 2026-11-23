@@ -206,6 +206,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   const projectZ = z.object({
     path: z.string().min(1), name: z.string().min(1).max(60).optional(), base_ref: z.string().min(1).optional(), deps_strategy: z.enum(['symlink', 'install', 'none']).default('symlink'),
     heavy_patterns: z.array(z.string()).optional(), blocked_patterns: z.array(z.string()).optional(), memory_paths: z.array(z.string()).optional(), default_template_id: z.string().nullable().optional(),
+    git_mode: z.enum(['none', 'push']).optional(), protected_branches: z.array(z.string().min(1).max(100)).max(20).optional(),
   });
   app.post('/api/projects', async (c) => {
     localOnly(c);
@@ -215,6 +216,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     const p = store.insertProject({
       name: b.name ?? info.name, path: info.root, base_ref: b.base_ref ?? info.baseRef, deps_strategy: b.deps_strategy, heavy_patterns: b.heavy_patterns ?? DEFAULT_HEAVY,
       blocked_patterns: b.blocked_patterns ?? DEFAULT_BLOCKED, memory_paths: b.memory_paths ?? info.memoryPaths, default_template_id: b.default_template_id ?? 'tpl-dev',
+      git_mode: b.git_mode ?? 'none', protected_branches: b.protected_branches ?? ['prod', 'main', 'master'],
     });
     return c.json(p);
   });

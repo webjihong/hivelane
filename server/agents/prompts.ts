@@ -2,7 +2,7 @@ import type { KnowledgeView, Project, TemplateRole } from '../../shared/types.ts
 
 const COMMON = `
 - 모든 답과 보고는 한국어로, 짧고 구체적으로 쓴다.
-- git commit·push·reset·rebase·worktree, 운영 DB·배포 명령은 하지 않는다. 시도하면 거부된다. 커밋·병합은 사람이 한다.
+- 운영 DB·배포 명령은 하지 않는다. 시도하면 거부된다.
 - 작업 디렉토리(현재 worktree) 밖에는 쓰지 않는다.
 - 무거운 명령(테스트·타입 검사·빌드)은 자리가 날 때까지 기다릴 수 있다. 기다림은 정상이다.
 - 전체 테스트보다 바뀐 범위의 테스트를 먼저 돌린다.
@@ -12,6 +12,14 @@ const COMMON = `
 - 빈 줄 다음에 「- 」로 시작하는 항목 3~6개: 근거(파일:줄), 예외, 사람이 확인·결정할 점. 한 항목은 한두 문장.
 - 「코드는 고치지 않았다」 같은 작업 과정 설명은 맨 끝에 한 줄로만, 필요 없으면 생략. 긴 문단 금지.
 - 비교·목록이 3개 이상이면 마크다운 표나 목록을 쓴다.`;
+
+/** 프로젝트의 git 권한에 맞춘 규칙 */
+export function gitRule(project: Project | null): string {
+  if (project?.git_mode === 'push') {
+    return `\n- git: 이 프로젝트는 커밋·푸시·PR 만들기가 허용된다(사용자가 시켰을 때만). 커밋 메시지는 저장소 규칙(AGENTS.md·CLAUDE.md)을 따른다. 커밋 전 바뀐 파일·검사 결과를 확인한다.\n- git 금지(시도하면 거부): 보호 브랜치(${project.protected_branches.join(', ')})로 직접 푸시, 강제·삭제 푸시, PR 병합·닫기. 보호 브랜치 반영은 PR 을 만들고 사람이 병합한다.\n- 지금 worktree 는 팀 전용 브랜치다. 다른 브랜치로 반영할 때는 git push origin HEAD:<브랜치> 처럼 빠른 전진(fast-forward) 푸시를 쓰고, 거절되면 fetch 후 rebase 해서 다시 시도한다.`;
+  }
+  return '\n- git commit·push·rebase·merge·PR 만들기는 이 프로젝트에서 막혀 있다(시도하면 거부). 바꾼 내용은 worktree 에 두고, 커밋·푸시는 사람이 한다. 사람이 git 반영을 원하면 「프로젝트 설정에서 git 권한을 켜야 한다」고 report 에 적는다.';
+}
 
 export function memoryHint(project: Project | null): string {
   if (!project?.memory_paths.length) return '';
@@ -38,7 +46,7 @@ ${team || '- (팀원 없음: 직접 처리한다)'}
 
 ## 규칙
 - 직접 코드를 고치지 않는다. 읽기·검색으로 상황을 파악하고 팀원에게 맡긴다(팀원이 없으면 report 로 사람에게 넘긴다).
-- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${memoryHint(opts.project)}`;
+- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}`;
 }
 
 const ROLE_BASE: Record<string, string> = {
@@ -50,7 +58,7 @@ const ROLE_BASE: Record<string, string> = {
 
 export function rolePrompt(role: TemplateRole, project: Project | null): string {
   const base = role.prompt?.trim() || ROLE_BASE[role.tools] || ROLE_BASE.read!;
-  return `# 역할: ${role.name}\n${base}${COMMON}${memoryHint(project)}`;
+  return `# 역할: ${role.name}\n${base}${COMMON}${gitRule(project)}${memoryHint(project)}`;
 }
 
 const NOTE_BUDGET = 6000;
@@ -64,7 +72,7 @@ export function poPrompt(projects: Project[], knowledge: KnowledgeView[] = []): 
 사용자의 지시를 받아 팀을 구성해 맡기고, 모든 팀의 진행·작업 내역·수정 사항을 기억하고 답한다. 이 맥의 상태(리소스·프로세스·환경)도 직접 조사해 답한다. 직접 코드를 고치지 않는다.
 
 ## 등록된 프로젝트
-${projects.map((p) => `- ${p.name} (id: ${p.id}) ${p.path} · 기준 ${p.base_ref}`).join('\n') || '- (없음: 사용자에게 설정 화면에서 프로젝트를 등록하라고 안내한다)'}
+${projects.map((p) => `- ${p.name} (id: ${p.id}) ${p.path} · 기준 ${p.base_ref} · git ${p.git_mode === 'push' ? `커밋·푸시·PR 허용(보호: ${p.protected_branches.join(', ')})` : '막힘(커밋·푸시는 사람)'}`).join('\n') || '- (없음: 사용자에게 설정 화면에서 프로젝트를 등록하라고 안내한다)'}
 
 ## 지시를 받으면
 1. 어느 프로젝트 일인지 정한다. 하나뿐이면 그것. 모호하면 제안에 가장 그럴듯한 것을 넣고 note 에 확인을 부탁한다.

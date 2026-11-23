@@ -176,3 +176,18 @@ describe('외부 부하로 멈춘 팀 되돌리기', () => {
     expect(decide({ ...base, zone: 'red', cpu: 90, mem: 40, cores: 10, lastResumeAt: base.now - 1000, teams })).toEqual([]);
   });
 });
+
+describe('프로젝트 git 권한', () => {
+  it('막음이면 커밋·푸시 거부, 허용이면 커밋·일반 푸시·PR 생성 허용 · 보호 브랜치·강제 푸시·병합은 거부', async () => {
+    const { effectiveBlocked } = await import('../server/store.ts');
+    const base = { id: 'p', name: 'x', path: '/r', base_ref: 'origin/dev', deps_strategy: 'none' as const, heavy_patterns: [], blocked_patterns: DEFAULT_BLOCKED, memory_paths: [], default_template_id: null, protected_branches: ['prod', 'main', 'master'] };
+    const off = effectiveBlocked({ ...base, git_mode: 'none' });
+    const on = effectiveBlocked({ ...base, git_mode: 'push' });
+    const root = '/w/r';
+    expect(checkBash('git commit -m x', root, [root], off)).toMatch(/막힌 패턴/);
+    for (const c of ['git add -A && git commit -m "fix: x"', 'git push origin HEAD:dev', 'git push -u origin fix/push-retry', 'git fetch origin', 'git pull --rebase origin dev', 'git checkout -b fix/a', 'git cherry-pick abc123', 'gh pr create --base prod --head hotfix/a --title t', 'git push origin hotfix/prod-fix'])
+      expect(checkBash(c, root, [root], on), c).toBeNull();
+    for (const c of ['git push origin HEAD:prod', 'git push origin prod', 'git push origin main', 'git push -f origin dev', 'git push --force-with-lease origin dev', 'git push origin --delete dev', 'git push origin +HEAD:dev', 'gh pr merge 12', 'git -C . push origin HEAD:refs/heads/prod', 'npm run db:prod:sync', 'gh release create v1'])
+      expect(checkBash(c, root, [root], on), c).toMatch(/막힌 패턴/);
+  });
+});

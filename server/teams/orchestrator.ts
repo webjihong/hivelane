@@ -7,7 +7,7 @@ import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
 import { addWorktree, collectChanges, prepareDeps, removeWorktree, slug } from '../projects/git.ts';
-import type { AgentRow, Store, TeamRow } from '../store.ts';
+import { effectiveBlocked, type AgentRow, type Store, type TeamRow } from '../store.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
 import { descendants, listProcs, signalTree } from '../po/resources.ts';
 import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
@@ -360,7 +360,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path), cfg.uploadsDir],
       writableRoots: [wt],
       heavyPatterns: project?.heavy_patterns ?? [],
-      blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
+      blockedPatterns: [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
       mcpServers: { hivelane: teamMcpServer(impl, { sessionRoles: sessionRoles.map((r) => ({ key: r.key, name: r.name })), readableTeams: readable }) },
       toolsImpl: impl,
       subagents,
@@ -407,7 +407,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     try {
       const res = await this.deps.runner.runTurn({
         agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt, allowedTools: presetTools(role.tools),
-        additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...(project?.blocked_patterns ?? []), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
+        additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])],
         resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
       }, handle);

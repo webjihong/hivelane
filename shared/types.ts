@@ -39,6 +39,10 @@ export interface Project {
   blocked_patterns: string[];
   memory_paths: string[];
   default_template_id: string | null;
+  /** none: 커밋·푸시·PR 막음 · push: 커밋·푸시·PR 만들기 허용(보호 브랜치 푸시·강제 푸시·PR 병합은 막음) */
+  git_mode: 'none' | 'push';
+  /** git_mode=push 일 때 팀이 직접 푸시하면 안 되는 브랜치 */
+  protected_branches: string[];
 }
 
 export interface EngineSettings {
