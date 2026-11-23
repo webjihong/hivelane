@@ -95,18 +95,43 @@ export function Section({ title, sub, right, children }: { title: ReactNode; sub
 }
 
 /** PO 글: 줄바꿈과 **굵게** 정도만. HTML 은 넣지 않는다. */
+function inline(line: string): ReactNode[] {
+  return line.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((seg, k) => seg.startsWith('**') && seg.endsWith('**') && seg.length > 4 ? <b key={k}>{seg.slice(2, -2)}</b> : seg.startsWith('`') && seg.endsWith('`') && seg.length > 2 ? <code key={k}>{seg.slice(1, -1)}</code> : seg);
+}
+
+type Block = { t: 'p'; lines: string[] } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
+
+/** 가벼운 마크다운: 제목·목록·표·굵게·코드. 첫 줄이 「결론」이면 강조한다. */
 export function RichText({ text }: { text: string }) {
-  const paras = text.split(/\n{2,}/);
+  const blocks: Block[] = [];
+  const last = () => blocks[blocks.length - 1];
+  for (const raw of text.replace(/\r/g, '').split('\n')) {
+    const line = raw.trimEnd();
+    let m: RegExpMatchArray | null;
+    if (!line.trim()) { blocks.push({ t: 'p', lines: [] }); continue; }
+    if ((m = line.match(/^\s{0,3}#{1,4}\s+(.*)$/))) { blocks.push({ t: 'h', text: m[1]! }); continue; }
+    if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) { const b = last(); if (b?.t === 'ul') b.items.push(m[1]!); else blocks.push({ t: 'ul', items: [m[1]!] }); continue; }
+    if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { const b = last(); if (b?.t === 'ol') b.items.push(m[1]!); else blocks.push({ t: 'ol', items: [m[1]!] }); continue; }
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      if (/^\s*\|[\s:|-]+\|\s*$/.test(line)) continue;
+      const cells = line.trim().slice(1, -1).split('|').map((c) => c.trim());
+      const b = last(); if (b?.t === 'table') b.rows.push(cells); else blocks.push({ t: 'table', rows: [cells] });
+      continue;
+    }
+    const b = last(); if (b?.t === 'p' && b.lines.length) b.lines.push(line); else blocks.push({ t: 'p', lines: [line] });
+  }
+  const shown = blocks.filter((b) => b.t !== 'p' || b.lines.length);
   return (
-    <>
-      {paras.map((p, i) => (
-        <p key={i}>
-          {p.split('\n').map((line, j) => (
-            <span key={j}>{j > 0 && <br />}{line.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((seg, k) => seg.startsWith('**') && seg.endsWith('**') && seg.length > 4 ? <b key={k}>{seg.slice(2, -2)}</b> : seg.startsWith('`') && seg.endsWith('`') && seg.length > 2 ? <code key={k}>{seg.slice(1, -1)}</code> : seg)}</span>
-          ))}
-        </p>
-      ))}
-    </>
+    <div className="rt">
+      {shown.map((b, i) => {
+        if (b.t === 'h') return <div key={i} className="rt-h">{inline(b.text)}</div>;
+        if (b.t === 'ul') return <ul key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ul>;
+        if (b.t === 'ol') return <ol key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ol>;
+        if (b.t === 'table') return <div key={i} className="rt-table"><table><thead><tr>{b.rows[0]!.map((c, j) => <th key={j}>{inline(c)}</th>)}</tr></thead><tbody>{b.rows.slice(1).map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{inline(c)}</td>)}</tr>)}</tbody></table></div>;
+        const lead = i === 0 && /^\**\s*결론/.test(b.lines[0]!);
+        return <p key={i} className={lead ? 'rt-lead' : undefined}>{b.lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l)}</span>)}</p>;
+      })}
+    </div>
   );
 }
 
