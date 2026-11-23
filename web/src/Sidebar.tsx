@@ -207,6 +207,9 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
         {done.length > 0 && <button type="button" className="sb-more" onClick={toggleDone}>{showDone ? '끝난 팀 접기' : `끝난 팀 ${done.length}`}</button>}
         {showDone && done.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />)}
 
+      </div>
+
+      <div className="sb-bottom">
         <div className="sb-h">저장소 · PR<a href="#prs" className="sb-add sb-h-link" title="PR 전체(최근 병합·닫힘 포함)">PR 전체</a><button type="button" className="sb-add" title="원격에서 새로 확인(fetch)" onClick={() => void act(async () => { await api('/api/repos/refresh', 'POST', {}); await refreshState(); }, '저장소 상태를 다시 확인했습니다')}>↻</button></div>
         {snap.repos.length ? snap.repos.map((r) => (
           <div key={r.project_id} className="sb-repo-g">
