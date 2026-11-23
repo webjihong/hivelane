@@ -66,11 +66,12 @@ export async function act<T>(fn: () => Promise<T>, okText?: string): Promise<T |
 }
 
 /* ---------- 라우트 ---------- */
-export type Route = { name: 'home' | 'po' | 'templates' | 'settings' } | { name: 'team'; id: string };
+/** home: 데스크톱은 「지금 볼 것」, 휴대폰은 채널 목록 · now: 「지금 볼 것」 · list: 채널 목록(휴대폰) */
+export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'prs' | 'templates' | 'settings' } | { name: 'team'; id: string; detail?: boolean };
 function parseRoute(): Route {
   const h = decodeURIComponent(location.hash.slice(1));
-  if (h.startsWith('team-')) return { name: 'team', id: h.slice(5) };
-  if (h === 'po' || h === 'templates' || h === 'settings') return { name: h };
+  if (h.startsWith('team-')) { const id = h.slice(5); return id.endsWith('/detail') ? { name: 'team', id: id.slice(0, -7), detail: true } : { name: 'team', id }; }
+  if (h === 'po' || h === 'templates' || h === 'settings' || h === 'now' || h === 'list' || h === 'prs') return { name: h };
   return { name: 'home' };
 }
 export const route = box<Route>(parseRoute());

@@ -530,6 +530,7 @@ export class Store {
       busy_note: busy ? `${busy.role_name}: ${busy.current_step}` : null,
       unread: this.teamUnread(t.id),
       env_mode: t.env_mode === 'mine' ? 'mine' : 'isolated',
+      last_msg: (() => { const m = this.db.prepare("SELECT body, kind, to_label, created_at FROM messages WHERE team_id = ? AND from_label = 'PM' AND kind IN ('report','question') ORDER BY id DESC LIMIT 1").get(t.id) as { body: string; kind: string; to_label: string | null; created_at: string } | undefined; return m ? { body: m.body.slice(0, 400), kind: m.kind, to: m.to_label, at: m.created_at } : null; })(),
     };
   }
   teamDetail(id: string): TeamDetail | null {

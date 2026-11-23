@@ -151,8 +151,13 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const sendText = async (v: string) => { const r = await act(() => api('/api/chat', 'POST', { text: v })); stick.current = true; return r !== undefined; };
 
   return (
-    <aside className="chat" aria-label="PO 대화창">
-      <div className="chat-h"><b>PO</b><span className={snap.poBusy ? 'po-busy' : ''}>{snap.poBusy ? 'PO 에이전트 · 생각 중…' : 'PO 에이전트 · 대기 (이벤트 때만 깨어남)'}</span><button className="btn kn-btn" type="button" onClick={() => setKn(true)}>배운 것 {snap.knowledgeCount}</button></div>
+    <section className="chat po-chan" aria-label="PO 대화">
+      <div className="chat-h">
+        <a href="#list" className="tc-back" aria-label="채널 목록">←</a>
+        <span className={`sdot ${snap.poBusy ? 'run' : 'idle'}`} />
+        <div className="tc-title"><h1>PO</h1><div className="tc-sub">{snap.poBusy ? '생각 중…' : '대기 · 지시하면 깨어남'} · 팀 구성·진행 확인·맥 진단</div></div>
+        <button className="btn kn-btn" type="button" onClick={() => setKn(true)}>배운 것 {snap.knowledgeCount}</button>
+      </div>
       {kn && <KnowledgeDrawer onClose={() => setKn(false)} />}
       <div className="chat-body" ref={bodyRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
         {rows.length === 0 && <div className="c ev">PO에게 할 일을 지시하거나 진행 상황을 물어보세요. PO가 팀 구성을 제안하면 여기서 승인합니다.</div>}
@@ -163,6 +168,6 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
         <div className="hints">{HINTS.map((h) => <button key={h} className="hint" type="button" disabled={sending} onClick={() => void send(h)}>{h}</button>)}</div>
         <ChatInput placeholder="PO에게 지시하거나 질문하기" label="PO에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
       </div>
-    </aside>
+    </section>
   );
 }

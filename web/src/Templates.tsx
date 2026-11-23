@@ -1,3 +1,4 @@
+import { MODEL_LABEL } from './art.ts';
 import { useState } from 'react';
 import { TOOL_PRESET_LABEL, type Model, type RunMode, type StateSnapshot, type TeamTemplate, type TemplateRole, type ToolPreset } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
@@ -107,6 +108,28 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
   );
 }
 
+/** 프로젝트 기본 템플릿만 펼쳐 두고, 나머지는 한 줄 요약으로 접는다(펼친 상태는 이 기기에 기억). */
+function TemplateItem({ tpl, readOnly, defaultFor }: { tpl: TeamTemplate; readOnly: boolean; defaultFor: string[] }) {
+  const key = `hl.tpl.${tpl.id}`;
+  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v === null ? defaultFor.length > 0 : v === '1'; } catch { return defaultFor.length > 0; } });
+  const toggle = () => { setOpen(!open); try { localStorage.setItem(key, open ? '0' : '1'); } catch { /* 저장 안 됨 */ } };
+  const sessions = tpl.roles.filter((r) => r.mode === 'session' || r.key === 'pm').length;
+  if (open) return (
+    <div className="tpl-open">
+      <button type="button" className="tpl-fold" onClick={toggle} aria-expanded="true">접기 ▴</button>
+      <TemplateEditor tpl={tpl} readOnly={readOnly} />
+    </div>
+  );
+  return (
+    <button type="button" className="tpl-row" onClick={toggle} aria-expanded="false">
+      <span className="tpl-row-t"><b>{tpl.name}</b>{defaultFor.length > 0 && <span className="chip">기본 · {defaultFor.join(', ')}</span>}{tpl.builtin && <span className="muted small">기본 제공</span>}</span>
+      <span className="tpl-row-d muted">{tpl.description}</span>
+      <span className="tpl-row-r">{tpl.roles.map((r) => <span key={r.key} className="chip">{r.name} · {MODEL_LABEL[r.model]}{r.key !== 'pm' && r.mode === 'session' ? ' · 세션' : ''}</span>)}</span>
+      <span className="muted small">세션 {sessions}개 · 펼치기 ▾</span>
+    </button>
+  );
+}
+
 export function Templates({ snap }: { snap: StateSnapshot }) {
   const readOnly = snap.access === 'remote';
   const [draft, setDraft] = useState<TeamTemplate | null>(null);
@@ -122,7 +145,7 @@ export function Templates({ snap }: { snap: StateSnapshot }) {
         {readOnly && <div className="ro-note">원격 접속에서는 보기만 할 수 있습니다. 템플릿은 맥에서 바꾸세요.</div>}
         <div className="stack">
           {draft && <TemplateEditor key="new" tpl={draft} readOnly={false} isNew existing={snap.templates.map((t) => t.id)} onDone={() => setDraft(null)} />}
-          {snap.templates.map((t) => <TemplateEditor key={`${t.id}:${JSON.stringify(t)}`} tpl={t} readOnly={readOnly} />)}
+          {snap.templates.map((t) => <TemplateItem key={`${t.id}:${JSON.stringify(t)}`} tpl={t} readOnly={readOnly} defaultFor={snap.projects.filter((p) => p.default_template_id === t.id).map((p) => p.name)} />)}
         </div>
       </Section>
       <p className="note-sample">세션 수와 메모리는 「독립 세션 1개 ≈ 0.5GB」 기준으로 바로 다시 계산됩니다.</p>

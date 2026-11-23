@@ -1,76 +1,21 @@
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import type { StateSnapshot } from '../../shared/types.ts';
 import { AgentDrawer } from './AgentDrawer.tsx';
+import { nowCount } from './chan.ts';
 import { Chat } from './Chat.tsx';
-import { Home, isLine, isStanding } from './Home.tsx';
+import { Now } from './Now.tsx';
+import { PrSection } from './Prs.tsx';
 import { Settings } from './Settings.tsx';
-import { Team } from './Team.tsx';
+import { Sidebar } from './Sidebar.tsx';
+import { TeamChannel } from './TeamChannel.tsx';
 import { Templates } from './Templates.tsx';
-import { conn, openAgent, route, snapshot, toasts, useBox } from './store.ts';
+import { conn, openAgent, route, snapshot, toasts, useBox, type Route } from './store.ts';
 
-const ZONE = { green: '초록 구간', yellow: '노랑 구간', red: '빨강 구간' } as const;
-
-function Gauge({ label, v, y, r }: { label: string; v: number; y: number; r: number }) {
-  const bg = v > r ? 'var(--crit)' : v >= y ? 'var(--warn)' : 'var(--good)';
-  return (
-    <div className="gauge"><span>{label}</span>
-      <div className="bar"><div className="fill" style={{ width: `${Math.min(100, Math.max(0, v))}%`, background: bg }} /><div className="tick" style={{ left: `${y}%` }} /><div className="tick" style={{ left: `${r}%` }} /></div>
-      <span className="mono">{Math.round(v)}%</span>
-    </div>
-  );
-}
-
-function Top({ snap, routeName }: { snap: StateSnapshot | null; routeName: string }) {
-  const c = useBox(conn);
-  const lines = snap?.teams.filter(isLine) ?? [];
-  const n = (s: string) => lines.filter((t) => t.state === s).length;
-  const e = snap?.settings.engine;
-  const res = snap?.resource;
-  const onHome = routeName !== 'templates' && routeName !== 'settings';
-  return (
-    <header className="top">
-      <div className="top-in">
-        <div className="brand"><b>Hivelane 관제실</b>{snap && <span>{snap.access === 'remote' ? '원격 접속 · 보기 위주' : '로컬'}</span>}</div>
-        <nav className="tabs" aria-label="화면">
-          <a href="#home" className={onHome ? 'on' : ''}>업무</a>
-          <a href="#templates" className={routeName === 'templates' ? 'on' : ''}>팀 템플릿</a>
-          <a href="#settings" className={routeName === 'settings' ? 'on' : ''}>설정</a>
-        </nav>
-        {snap && e && res && (
-          <div className="gauges" aria-label="로컬 리소스">
-            <Gauge label="CPU" v={res.cpu} y={e.cpuY} r={e.cpuR} />
-            <Gauge label="메모리" v={res.mem} y={e.memY} r={e.memR} />
-            <span className={`zone ${res.zone}`}>{ZONE[res.zone]}</span>
-          </div>
-        )}
-        {snap && res && (
-          <div className="counts">
-            <span>실행 <b>{n('running')}</b></span><span>멈춤 <b>{n('paused')}</b></span><span>대기 <b>{n('queued')}</b></span>
-            <span>사람 확인 <b>{n('waiting_human')}</b></span>{n('failed') > 0 && <span>실패 <b>{n('failed')}</b></span>}
-            <span>무거운 명령 <b>{res.heavyRunning}</b> 실행 · <b>{res.heavyWaiting}</b> 대기</span>
-          </div>
-        )}
-        <div className="top-r">
-          {snap?.poBusy && <span className="po-pill"><span className="typing"><span /><span /><span /></span> PO 생각 중</span>}
-          {c === 'down' && <span className="conn-pill">연결 끊김 · 다시 연결 중</span>}
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function BottomNav({ snap, routeName }: { snap: StateSnapshot | null; routeName: string }) {
-  const need = snap ? snap.teams.filter((t) => (isLine(t) && (t.state === 'waiting_human' || t.state === 'paused' || t.state === 'failed')) || (isStanding(t) && (t.state === 'down' || t.state === 'reviving' || t.state === 'waiting_human'))).length : 0;
-  const unread = snap ? snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
-  const home = routeName !== 'templates' && routeName !== 'settings' && routeName !== 'po';
-  return (
-    <nav className="bnav" aria-label="화면">
-      <a href="#home" className={home ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 20V9l5 3V9l5 3V6l8 4v10z" /><path d="M3 20h18" /></svg>현황{need + unread > 0 && <span className="badge">{need + unread}</span>}</a>
-      <a href="#po" className={routeName === 'po' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>PO{snap?.poUnread ? <span className="badge">{snap.poUnread}</span> : snap?.poBusy && <span className="badge dot" />}</a>
-      <a href="#templates" className={routeName === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><path d="M3 19c0-3 2.5-5 5-5s5 2 5 5M11 19c0-3 2.5-5 5-5s5 2 5 5" /></svg>템플릿</a>
-      <a href="#settings" className={routeName === 'settings' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>설정</a>
-    </nav>
-  );
+const MOBILE = '(max-width: 760px)';
+function useMobile(): boolean {
+  const [m, setM] = useState(() => matchMedia(MOBILE).matches);
+  useEffect(() => { const q = matchMedia(MOBILE); const h = () => setM(q.matches); q.addEventListener('change', h); return () => q.removeEventListener('change', h); }, []);
+  return m;
 }
 
 function Toasts() {
@@ -82,37 +27,65 @@ function Toasts() {
   );
 }
 
+/** 휴대폰 하단 탭: 대화(채널 목록) · PR · 설정 */
+function BottomNav({ snap, r }: { snap: StateSnapshot; r: Route }) {
+  const { need, news } = nowCount(snap);
+  const chatOn = !['prs', 'settings', 'templates'].includes(r.name);
+  const openPrs = snap.prs.filter((p) => p.state === 'OPEN').length;
+  return (
+    <nav className="bnav b3" aria-label="화면">
+      <a href="#list" className={chatOn ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>대화{need + news > 0 && <span className="badge">{need + news}</span>}</a>
+      <a href="#prs" className={r.name === 'prs' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4" /></svg>PR{openPrs > 0 && <span className="badge dim">{openPrs}</span>}</a>
+      <a href="#settings" className={r.name === 'settings' || r.name === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>설정</a>
+    </nav>
+  );
+}
+
+function SettingsTabs({ r }: { r: Route }) {
+  return (
+    <nav className="set-tabs" aria-label="설정 구역">
+      <a href="#settings" className={r.name === 'settings' ? 'on' : ''}>설정</a>
+      <a href="#templates" className={r.name === 'templates' ? 'on' : ''}>팀 템플릿</a>
+    </nav>
+  );
+}
+
 export function App() {
   const snap = useBox(snapshot);
   const r = useBox(route);
   const agent = useBox(openAgent);
+  const c = useBox(conn);
+  const mobile = useMobile();
 
-  useEffect(() => { document.body.classList.toggle('r-po', r.name === 'po'); }, [r.name]);
+  useEffect(() => { if (r.name !== 'team') openAgent.set(null); }, [r]);
   // 읽지 않은 수: 탭 제목·앱 아이콘 배지
   const unreadTotal = snap ? snap.poUnread + snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
   useEffect(() => {
-    document.title = unreadTotal ? `(${unreadTotal}) Hivelane 관제실` : 'Hivelane 관제실';
+    document.title = unreadTotal ? `(${unreadTotal}) Hivelane` : 'Hivelane';
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
     try { void (unreadTotal ? nav.setAppBadge?.(unreadTotal) : nav.clearAppBadge?.())?.catch(() => {}); } catch { /* 지원 안 함 */ }
   }, [unreadTotal]);
-  useEffect(() => { if (r.name !== 'team') openAgent.set(null); }, [r]);
 
+  if (!snap) return <div className="boot muted">{c === 'down' ? '서버에 연결하지 못했습니다 · 다시 시도 중' : '불러오는 중…'}</div>;
+
+  // 휴대폰: 첫 화면은 채널 목록. 데스크톱: 첫 화면은 「지금 볼 것」
+  const showList = mobile && (r.name === 'home' || r.name === 'list');
   let main: ReactElement;
-  if (!snap) main = <div className="panel muted">불러오는 중…</div>;
-  else if (r.name === 'templates') main = <Templates snap={snap} />;
-  else if (r.name === 'settings') main = <Settings snap={snap} />;
-  else if (r.name === 'team') main = <Team key={r.id} id={r.id} snap={snap} />;
-  else main = <Home snap={snap} />;
+  if (r.name === 'settings') main = <div className="page"><SettingsTabs r={r} /><Settings snap={snap} /></div>;
+  else if (r.name === 'templates') main = <div className="page"><SettingsTabs r={r} /><Templates snap={snap} /></div>;
+  else if (r.name === 'prs') main = <div className="page"><PrSection snap={snap} /></div>;
+  else if (r.name === 'po') main = <Chat snap={snap} />;
+  else if (r.name === 'team') main = <TeamChannel key={r.id} id={r.id} snap={snap} detail={!!r.detail} />;
+  else main = <div className="page"><Now snap={snap} /></div>;
 
   return (
     <>
-      <Top snap={snap} routeName={r.name} />
-      <div className="shell">
-        <main className="main">{main}</main>
-        {snap ? <Chat snap={snap} /> : <aside className="chat" aria-label="PO 대화창" />}
+      <div className={`app${mobile ? ' m' : ''}${showList ? ' m-list' : ''}`}>
+        {(!mobile || showList) && <Sidebar snap={snap} />}
+        {!showList && <main className="app-main">{mobile && r.name !== 'po' && r.name !== 'team' && <a href="#list" className="m-back">← 목록</a>}{main}</main>}
       </div>
-      <BottomNav snap={snap} routeName={r.name} />
-      {agent && snap && <AgentDrawer key={agent} id={agent} snap={snap} />}
+      {mobile && <BottomNav snap={snap} r={r} />}
+      {agent && <AgentDrawer key={agent} id={agent} snap={snap} />}
       <Toasts />
     </>
   );

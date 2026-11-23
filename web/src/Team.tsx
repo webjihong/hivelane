@@ -8,7 +8,7 @@ import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText
 
 const ACTOR: Record<string, string> = { engine: 'PO 엔진', agent: 'PO', user: '사용자' };
 
-function useTeamDetail(id: string): { detail: TeamDetail | null; missing: boolean; reload: () => void } {
+export function useTeamDetail(id: string): { detail: TeamDetail | null; missing: boolean; reload: () => void } {
   const [detail, setDetail] = useState<TeamDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const reloadRef = useRef<() => void>(() => {});
@@ -130,7 +130,8 @@ function QaBox({ msgs, working }: { msgs: Msg[]; working: boolean }) {
   );
 }
 
-export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
+/** embedded: 팀 채널의 「팀 상세」 칸 안에서 쓴다(대화·지시·질문은 채널이 맡으므로 숨김) */
+export function Team({ id, snap, embedded = false }: { id: string; snap: StateSnapshot; embedded?: boolean }) {
   const { detail, missing, reload } = useTeamDetail(id);
   const now = useBox(clock);
   const [diffPath, setDiffPath] = useState<string | null>(null);
@@ -144,12 +145,12 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
   const lastId = msgList.length ? msgList[msgList.length - 1]!.id : 0;
   const unreadNow = t?.unread ?? 0;
   useEffect(() => {
-    if (!lastId || !unreadNow) return;
+    if (embedded || !lastId || !unreadNow) return;
     const mark = () => { if (document.visibilityState === 'visible') void api('/api/seen', 'POST', { team_id: id, up_to: lastId }).then(() => refreshState()).catch(() => {}); };
     mark();
     document.addEventListener('visibilitychange', mark);
     return () => document.removeEventListener('visibilitychange', mark);
-  }, [lastId, id, unreadNow]);
+  }, [lastId, id, unreadNow, embedded]);
 
   if (!t) return (
     <div className="stack">
@@ -180,7 +181,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
 
   return (
     <>
-      <div><button className="back" type="button" onClick={() => go('home')}>← 업무 목록</button></div>
+      {!embedded && <div><button className="back" type="button" onClick={() => go('home')}>← 업무 목록</button></div>}
       <div className="team-head">
         <div className="row">
           <span className={`lamp ${lampState(t.state)}`} />
@@ -201,7 +202,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
         {t.resume_grace_until && t.state === 'running' && <div className="task-note">직접 재개함 · {hhmm(t.resume_grace_until)}까지 자동 멈춤 안 함</div>}
         {t.state === 'failed' && <div className="task-note crit">실패: {t.error ?? '이유 없음'}</div>}
         {t.error && t.state !== 'failed' && <div className="task-note warn">{t.error}</div>}
-        {t.state === 'waiting_human' && (
+        {!embedded && t.state === 'waiting_human' && (
           <div className="ask-box">
             <div className="q-h">PM의 질문{t.question ? ` · ${hhmm(t.question.asked_at)}` : ''} · 답하면 팀이 바로 다시 가동</div>
             <p>{t.question?.text ?? t.paused_reason ?? '사람 확인이 필요합니다'}</p>
@@ -209,13 +210,13 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
             <Composer placeholder="직접 답하기" label="PM 질문에 직접 답하기" button="답하기" onSend={answer} />
           </div>
         )}
-        {canCompose && (
+        {!embedded && canCompose && (
           <div>
             <div className="composer-h">{standing ? 'PO를 거치지 않고 이 팀에 바로 지시합니다' : '이 팀 PM에게 직접 지시합니다 · PO도 기록을 함께 봅니다'}{t.state === 'paused' || t.state === 'queued' ? ' · 지금은 멈춰 있어 재개될 때 반영' : ''}</div>
             <Composer placeholder={standing ? '예: 지금 api 서버 에러율 확인해줘' : 'PM에게 직접 지시'} label="팀에 직접 지시" button="지시" onSend={message} working={t.state === 'running'} onCancel={() => call('interrupt', {}, '진행 중이던 지시를 취소했습니다')} />
           </div>
         )}
-        <QaBox msgs={msgs} working={t.state === 'running'} />
+        {!embedded && <QaBox msgs={msgs} working={t.state === 'running'} />}
         <div className="row">
           {t.state === 'running' && !standing && <button className="btn" type="button" onClick={() => void call('pause', {}, '멈춤 요청을 보냈습니다')}>멈춤</button>}
           {t.state === 'paused' && <button className="btn primary" type="button" title="15분 동안 엔진이 자동으로 멈추지 않습니다" onClick={() => void call('resume', {}, '재개했습니다 · 15분 동안 자동 멈춤 안 함')}>{t.pause_kind?.startsWith('engine') ? '지금 재개 (15분 보호)' : '재개'}</button>}
@@ -268,7 +269,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
 
       <div className="team-grid">
         <div className="stack">
-          <div className="panel"><h3>팀 대화 <small className="muted">최신이 위</small></h3>
+          {!embedded && <div className="panel"><h3>팀 대화 <small className="muted">최신이 위</small></h3>
             <div className="timeline">
               {msgs.length ? [...msgs].reverse().map((m) => (
                 <div key={m.id} className="msg"><time className="mono">{hhmm(m.created_at)}</time>
@@ -279,7 +280,7 @@ export function Team({ id, snap }: { id: string; snap: StateSnapshot }) {
                 </div>
               )) : <div className="muted">{detail ? '아직 대화가 없습니다.' : '불러오는 중…'}</div>}
             </div>
-          </div>
+          </div>}
           {sums.length > 0 && (
             <div className="panel"><h3>요약</h3>
               <div className="timeline">{sums.map((s, i) => <div key={i} className="msg"><time className="mono">{hhmm(s.created_at)}</time><div className="bubble report"><div className="who"><span className="k report">{s.stage}</span></div><div className="msg-body"><RichText text={s.body} /></div></div></div>)}</div>

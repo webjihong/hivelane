@@ -130,6 +130,8 @@ export interface TeamView {
   unread: number;
   /** isolated: 저장소 규칙만 · mine: 내 Claude Code 설정·플러그인·MCP·메모리 쓰기 + 운영 명령은 승인 후 실행 */
   env_mode: 'isolated' | 'mine';
+  /** 마지막 PM 답·보고·질문(채널 목록·새 소식 미리보기) */
+  last_msg: { body: string; kind: string; to: string | null; at: string } | null;
   question: { text: string; options: string[]; asked_at: string } | null;
   cost_usd: number;
   budget_usd: number | null;
