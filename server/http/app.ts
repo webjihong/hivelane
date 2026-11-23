@@ -29,6 +29,8 @@ const priorityZ = z.enum(['urgent', 'normal', 'low']);
 
 class HttpError extends Error { constructor(public status: 400 | 403 | 404 | 409, msg: string) { super(msg); } }
 
+const pushLog = logger('push');
+
 export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
   const app = new Hono<Env>();
@@ -256,6 +258,11 @@ export function createApp(d: AppDeps): Hono<Env> {
     const b = await body(c, z.object({ endpoint: z.string().url().optional() }));
     if (b.endpoint && notifier.sendTo) return c.json(await notifier.sendTo(b.endpoint, { title: '기기 점검', body: '이 알림이 보이면 이 기기 푸시가 정상입니다.', level: 'info', tag: 'push-check' }));
     await notifier.send({ title: '알림 시험', body: '이 알림이 보이면 설정이 끝났습니다.', level: 'info' });
+    return c.json({ ok: true });
+  });
+  app.post('/api/push/report', async (c) => {
+    const b = await body(c, z.object({ ua: z.string().max(300), steps: z.array(z.string().max(400)).max(20) }));
+    pushLog.info(`기기 점검 결과 · ${b.ua}\n  ${b.steps.join('\n  ')}`);
     return c.json({ ok: true });
   });
   app.post('/api/push/check', async (c) => {

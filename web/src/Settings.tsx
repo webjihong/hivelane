@@ -272,6 +272,7 @@ function PushDoctor({ vapid }: { vapid: string | null }) {
       push({ name: '알림 권한', ok: perm === 'granted', note: perm === 'granted' ? '허용됨' : perm === 'denied' ? '차단됨 → 주소창 자물쇠(또는 앱 정보) › 알림 허용' : '아직 안 물어봄 → 위 「알림 켜기」' });
       if (perm !== 'granted') return;
       const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      try { await reg?.update(); } catch { /* 새 버전 없음 */ }
       push({ name: '서비스 워커', ok: !!reg?.active, note: reg?.active ? '작동 중' : '없음 → 「다시 구독」' });
       if (!reg?.active) return;
       const sub = await reg.pushManager.getSubscription();
@@ -282,8 +283,9 @@ function PushDoctor({ vapid }: { vapid: string | null }) {
       await reg.showNotification('Hivelane · 기기 표시 시험', { body: '이게 보이면 이 기기는 알림을 띄울 수 있습니다.', tag: 'local-check', icon: '/icon-512.png' });
       push({ name: '기기 표시', ok: null, note: '방금 「기기 표시 시험」 알림을 띄웠습니다. 안 보이면 휴대폰(또는 맥) 설정에서 이 앱/Chrome 알림이 꺼져 있습니다.' });
       // 서버 → 푸시 서비스 → 이 기기 도착
+      let shownHow = '';
       const arrived = new Promise<boolean>((res) => {
-        const h = (e: MessageEvent) => { if ((e.data as { type?: string })?.type === 'hl-push') { navigator.serviceWorker.removeEventListener('message', h); res(true); } };
+        const h = (e: MessageEvent) => { const m = e.data as { type?: string; shown?: string }; if (m?.type === 'hl-push') { navigator.serviceWorker.removeEventListener('message', h); shownHow = m.shown ?? '알 수 없음(옛 서비스 워커)'; res(true); } };
         navigator.serviceWorker.addEventListener('message', h);
         setTimeout(() => { navigator.serviceWorker.removeEventListener('message', h); res(false); }, 20_000);
       });
@@ -293,10 +295,14 @@ function PushDoctor({ vapid }: { vapid: string | null }) {
       push({ name: '이 기기 도착', ok: null, note: '기다리는 중(최대 20초)…' });
       const ok = await arrived;
       out.pop();
-      push({ name: '이 기기 도착', ok, note: ok ? '도착함 · 「기기 점검」 알림이 떠야 합니다' : '20초 안에 안 옴 → 배터리 절전 제한(설정 › 앱 › Chrome › 배터리 › 제한 없음) 확인 후 「다시 구독」' });
+      push({ name: '이 기기 도착', ok, note: ok ? `도착함(표시: ${shownHow}) · 「기기 점검」 알림이 떠야 합니다` : '20초 안에 안 옴 → 배터리 절전 제한(설정 › 앱 › Chrome › 배터리 › 제한 없음) 확인 후 「다시 구독」' });
     } catch (e) {
       push({ name: '오류', ok: false, note: e instanceof Error ? e.message : String(e) });
-    } finally { setRunning(false); }
+    } finally {
+      setRunning(false);
+      // 결과를 서버 기록에 남긴다(원격 기기 문제를 맥에서 확인하려고)
+      void api('/api/push/report', 'POST', { ua: navigator.userAgent.slice(0, 200), steps: out.map((s) => `${s.ok === true ? 'OK' : s.ok === false ? 'FAIL' : '?'} ${s.name}: ${s.note}`) }).catch(() => {});
+    }
   };
   return (
     <div className="set-col">
