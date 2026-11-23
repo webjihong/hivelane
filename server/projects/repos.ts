@@ -20,7 +20,7 @@ export class RepoWatcher {
   async status(projectId: string, fetch: boolean): Promise<RepoView | null> {
     const p = this.deps.store.getProject(projectId);
     if (!p) return null;
-    const v: RepoView = { project_id: p.id, project_name: p.name, path: p.path, branch: null, upstream: null, ahead: 0, behind: 0, dirty: 0, fetched_at: null, error: null, pulling: false };
+    const v: RepoView = { project_id: p.id, project_name: p.name, path: p.path, branch: null, upstream: null, ahead: 0, behind: 0, dirty: 0, incoming: 0, overlap: [], fetched_at: null, error: null, pulling: false };
     if (fetch) {
       const f = await this.git(p.path, ['fetch', '--quiet', '--prune']);
       if (f.code === 0) v.fetched_at = new Date().toISOString();
@@ -36,7 +36,16 @@ export class RepoWatcher {
       v.ahead = ahead ?? 0; v.behind = behind ?? 0;
     }
     const s = await this.git(p.path, ['status', '--porcelain']);
-    v.dirty = s.stdout.split('\n').filter(Boolean).length;
+    const local = s.stdout.split('\n').filter(Boolean).map((l) => l.slice(3).split(' -> ').pop()!.replace(/^"|"$/g, ''));
+    v.dirty = local.length;
+    if (v.behind > 0) {
+      // 받으면 바뀌는 파일 = 갈라진 지점부터 원격까지 바뀐 파일
+      const d = await this.git(p.path, ['diff', '--name-only', 'HEAD...@{u}']);
+      const incoming = d.stdout.split('\n').filter(Boolean);
+      v.incoming = incoming.length;
+      const set = new Set(local);
+      v.overlap = incoming.filter((f) => set.has(f)).slice(0, 20);
+    }
     return v;
   }
 

@@ -223,6 +223,10 @@ export interface RepoView {
   ahead: number; behind: number;
   /** 커밋 안 된 로컬 변경 파일 수 */
   dirty: number;
+  /** 받으면 바뀌는 파일 수(원격에서 들어올 파일) */
+  incoming: number;
+  /** 받을 파일 중 로컬에서 고친 파일(겹치면 받기가 거절될 수 있음) */
+  overlap: string[];
   fetched_at: string | null; error: string | null; pulling: boolean;
 }
 

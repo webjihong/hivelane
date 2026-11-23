@@ -20,7 +20,7 @@ describe('저장소 상태·받기', () => {
     const p = store.insertProject({ name: 'app', path: a, base_ref: 'origin/main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
     const w = new RepoWatcher({ store });
     await w.refresh(true);
-    expect(w.repos[0]).toMatchObject({ branch: 'main', upstream: 'origin/main', behind: 1, ahead: 0, dirty: 0 });
+    expect(w.repos[0]).toMatchObject({ branch: 'main', upstream: 'origin/main', behind: 1, ahead: 0, dirty: 0, incoming: 1, overlap: [] });
     const ok = await w.pull(p.id);
     expect(ok.ok).toBe(true);
     expect(w.repos[0]).toMatchObject({ behind: 0 });
@@ -28,7 +28,7 @@ describe('저장소 상태·받기', () => {
     writeFileSync(join(b, 'f.txt'), '3\n'); git(b, 'commit', '-am', 'c3'); git(b, 'push');
     writeFileSync(join(a, 'f.txt'), 'local\n');
     await w.refresh(true);
-    expect(w.repos[0]).toMatchObject({ behind: 1, dirty: 1 });
+    expect(w.repos[0]).toMatchObject({ behind: 1, dirty: 1, incoming: 1, overlap: ['f.txt'] });
     const no = await w.pull(p.id);
     expect(no.ok).toBe(false);
     expect(no.message).toContain('겹칩니다');

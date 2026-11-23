@@ -82,14 +82,15 @@ function ResourceModal({ onClose }: { onClose: () => void }) {
 
 function RepoItem({ r }: { r: RepoView }) {
   const pull = () => act(async () => { const x = await api<{ message: string }>(`/api/repos/${encodeURIComponent(r.project_id)}/pull`, 'POST', {}); await refreshState(); return x; }, `${r.project_name}: 받았습니다`);
-  const tip = [r.path, r.branch ? `브랜치 ${r.branch}${r.upstream ? ` ← ${r.upstream}` : ' (원격 연결 없음)'}` : '', r.behind ? `원격보다 ${r.behind}개 뒤처짐` : '', r.ahead ? `안 올린 커밋 ${r.ahead}개` : '', r.dirty ? `커밋 안 한 변경 ${r.dirty}개` : '', r.error ?? ''].filter(Boolean).join('\n');
+  const tip = [r.path, r.branch ? `브랜치 ${r.branch}${r.upstream ? ` ← ${r.upstream}` : ' (원격 연결 없음)'}` : '', r.behind ? `받을 것: 커밋 ${r.behind}개 · 파일 ${r.incoming}개` : '받을 것 없음(최신)', r.overlap.length ? `겹침: 받을 파일 중 로컬에서 고친 파일 ${r.overlap.length}개 → 받기가 거절될 수 있음\n  ${r.overlap.join('\n  ')}` : '', r.ahead ? `안 올린 내 커밋 ${r.ahead}개` : '', r.dirty ? `커밋 안 한 로컬 변경 파일 ${r.dirty}개` : '', r.error ?? ''].filter(Boolean).join('\n');
   return (
     <div className="sb-item sb-repo" title={tip}>
       <span className="sb-name">{r.project_name}<span className="sb-branch">{r.branch ?? '?'}</span></span>
       {r.error ? <span className="sb-note t-pause">오류</span> : <>
-        {r.behind > 0 && <span className="sb-rb behind" aria-label={`${r.behind}개 뒤처짐`}>↓{r.behind}</span>}
+        {r.behind > 0 && <span className="sb-rb behind" aria-label={`받을 파일 ${r.incoming}개(커밋 ${r.behind}개)`}>↓{r.incoming}</span>}
+        {r.overlap.length > 0 && <span className="sb-rb clash" aria-label={`겹침 ${r.overlap.length}개`}>⚠{r.overlap.length}</span>}
         {r.ahead > 0 && <span className="sb-rb" aria-label={`안 올린 커밋 ${r.ahead}개`}>↑{r.ahead}</span>}
-        {r.dirty > 0 && <span className="sb-rb" aria-label={`로컬 변경 ${r.dirty}개`}>✎{r.dirty}</span>}
+        {r.dirty > 0 && <span className="sb-rb dim" aria-label={`로컬 변경 ${r.dirty}개`}>✎{r.dirty}</span>}
       </>}
       {r.upstream && <button type="button" className={`sb-pull${r.behind > 0 ? ' on' : ''}`} disabled={r.pulling} onClick={() => void pull()} title={`${r.upstream} → ${r.path.replace(/^\/Users\/[^/]+/, '~')} (${r.branch}) 받기\n빨리 감기만 · 로컬 변경·커밋은 건드리지 않음`}>{r.pulling ? '받는 중' : '받기'}</button>}
     </div>
