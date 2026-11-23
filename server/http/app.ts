@@ -252,7 +252,16 @@ export function createApp(d: AppDeps): Hono<Env> {
     store.addPushSub(b.endpoint, b.keys, b.device);
     return c.json({ ok: true });
   });
-  app.post('/api/push/test', async (c) => { await notifier.send({ title: '알림 시험', body: '이 알림이 보이면 설정이 끝났습니다.', level: 'info' }); return c.json({ ok: true }); });
+  app.post('/api/push/test', async (c) => {
+    const b = await body(c, z.object({ endpoint: z.string().url().optional() }));
+    if (b.endpoint && notifier.sendTo) return c.json(await notifier.sendTo(b.endpoint, { title: '기기 점검', body: '이 알림이 보이면 이 기기 푸시가 정상입니다.', level: 'info', tag: 'push-check' }));
+    await notifier.send({ title: '알림 시험', body: '이 알림이 보이면 설정이 끝났습니다.', level: 'info' });
+    return c.json({ ok: true });
+  });
+  app.post('/api/push/check', async (c) => {
+    const b = await body(c, z.object({ endpoint: z.string().url() }));
+    return c.json({ known: store.pushSubs().some((s) => s.endpoint === b.endpoint) });
+  });
 
   app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 

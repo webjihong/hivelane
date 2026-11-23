@@ -6,6 +6,8 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'Hivelane', body: e.data ? e.data.text() : '' }; }
   const title = d.title || 'Hivelane';
+  // 열려 있는 화면에 「도착」을 알린다(설정 › 알림 점검용)
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((l) => l.forEach((c) => c.postMessage({ type: 'hl-push', title }))));
   e.waitUntil(self.registration.showNotification(title, {
     body: d.body || '',
     tag: d.tag || undefined,

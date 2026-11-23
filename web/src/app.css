@@ -206,3 +206,7 @@ section > .set-grid, .set-grid > section { min-width: 0; }
 /* 읽지 않은 답변 */
 .unread { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 9px; padding: 1px 7px; margin: 0 6px 0 0; vertical-align: 1px; white-space: nowrap; }
 .alert.info { border-left-color: var(--accent); }
+.push-doc { margin: 6px 0 0; padding-left: 18px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.push-doc li.ok b { color: var(--good, #2e7d32); }
+.push-doc li.bad b { color: var(--crit, #c0392b); }
+.push-doc li span { color: var(--muted); }

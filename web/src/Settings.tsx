@@ -238,19 +238,79 @@ function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
 }
-async function enablePush(vapid: string | null): Promise<void> {
+async function enablePush(vapid: string | null, fresh = false): Promise<void> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('이 브라우저는 웹 푸시를 지원하지 않습니다(아이폰은 홈 화면에 추가한 뒤 열어야 합니다)');
   if (!vapid) throw new Error('서버에 VAPID 키가 없습니다');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('알림 권한이 거부되었습니다');
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
+  if (fresh) await (await reg.pushManager.getSubscription())?.unsubscribe();
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(vapid) }));
   const j = sub.toJSON();
   if (!j.endpoint || !j.keys?.p256dh || !j.keys.auth) throw new Error('구독 정보를 만들지 못했습니다');
   const ua = navigator.userAgent;
   const device = (/iPhone|iPad|Android|Macintosh|Windows|Linux/.exec(ua)?.[0] ?? 'browser') + ' · ' + (/Edg|Chrome|Firefox|Safari/.exec(ua)?.[0] ?? '');
   await api('/api/push/subscribe', 'POST', { endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, device: device.slice(0, 100) });
+}
+
+type Step = { name: string; ok: boolean | null; note: string };
+
+/** 이 기기 알림 점검: 어느 단계에서 끊기는지 보여 준다. */
+function PushDoctor({ vapid }: { vapid: string | null }) {
+  const [steps, setSteps] = useState<Step[] | null>(null);
+  const [running, setRunning] = useState(false);
+  const run = async () => {
+    setRunning(true);
+    const out: Step[] = [];
+    const push = (s: Step) => { out.push(s); setSteps([...out]); };
+    try {
+      const support = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+      push({ name: '브라우저 지원', ok: support, note: support ? '지원함' : '이 브라우저는 웹 푸시를 지원하지 않습니다(아이폰은 홈 화면에 추가한 앱에서 열어야 함)' });
+      if (!support) return;
+      const perm = Notification.permission;
+      push({ name: '알림 권한', ok: perm === 'granted', note: perm === 'granted' ? '허용됨' : perm === 'denied' ? '차단됨 → 주소창 자물쇠(또는 앱 정보) › 알림 허용' : '아직 안 물어봄 → 위 「알림 켜기」' });
+      if (perm !== 'granted') return;
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      push({ name: '서비스 워커', ok: !!reg?.active, note: reg?.active ? '작동 중' : '없음 → 「다시 구독」' });
+      if (!reg?.active) return;
+      const sub = await reg.pushManager.getSubscription();
+      const known = sub ? (await api<{ known: boolean }>('/api/push/check', 'POST', { endpoint: sub.endpoint })).known : false;
+      push({ name: '구독', ok: !!sub && known, note: !sub ? '이 기기에 구독 없음 → 「다시 구독」' : known ? '서버와 일치' : '서버에 없는 구독 → 「다시 구독」' });
+      if (!sub || !known) return;
+      // 기기 자체 표시: 서버를 거치지 않고 이 기기에서 바로 띄운다
+      await reg.showNotification('Hivelane · 기기 표시 시험', { body: '이게 보이면 이 기기는 알림을 띄울 수 있습니다.', tag: 'local-check', icon: '/icon-512.png' });
+      push({ name: '기기 표시', ok: null, note: '방금 「기기 표시 시험」 알림을 띄웠습니다. 안 보이면 휴대폰(또는 맥) 설정에서 이 앱/Chrome 알림이 꺼져 있습니다.' });
+      // 서버 → 푸시 서비스 → 이 기기 도착
+      const arrived = new Promise<boolean>((res) => {
+        const h = (e: MessageEvent) => { if ((e.data as { type?: string })?.type === 'hl-push') { navigator.serviceWorker.removeEventListener('message', h); res(true); } };
+        navigator.serviceWorker.addEventListener('message', h);
+        setTimeout(() => { navigator.serviceWorker.removeEventListener('message', h); res(false); }, 20_000);
+      });
+      const r = await api<{ ok: boolean; status?: number; error?: string }>('/api/push/test', 'POST', { endpoint: sub.endpoint });
+      push({ name: '서버 발송', ok: r.ok, note: r.ok ? `푸시 서비스가 받음(${r.status ?? ''})` : `실패: ${r.status ?? ''} ${r.error ?? ''}` });
+      if (!r.ok) return;
+      push({ name: '이 기기 도착', ok: null, note: '기다리는 중(최대 20초)…' });
+      const ok = await arrived;
+      out.pop();
+      push({ name: '이 기기 도착', ok, note: ok ? '도착함 · 「기기 점검」 알림이 떠야 합니다' : '20초 안에 안 옴 → 배터리 절전 제한(설정 › 앱 › Chrome › 배터리 › 제한 없음) 확인 후 「다시 구독」' });
+    } catch (e) {
+      push({ name: '오류', ok: false, note: e instanceof Error ? e.message : String(e) });
+    } finally { setRunning(false); }
+  };
+  return (
+    <div className="set-col">
+      <div className="row">
+        <button className="btn" type="button" disabled={running} onClick={() => void run()}>{running ? '점검 중…' : '이 기기 알림 점검'}</button>
+        <button className="btn" type="button" onClick={() => void act(() => enablePush(vapid, true), '새로 구독했습니다')}>다시 구독(새로 만들기)</button>
+      </div>
+      {steps && (
+        <ol className="push-doc">
+          {steps.map((s, i) => <li key={i} className={s.ok === true ? 'ok' : s.ok === false ? 'bad' : 'wait'}><b>{s.ok === true ? '✓' : s.ok === false ? '✕' : '…'} {s.name}</b> <span>{s.note}</span></li>)}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 function TextSetting({ label, sub, value, placeholder, disabled, onSave, mono }: { label: string; sub?: string; value: string; placeholder?: string; disabled: boolean; mono?: boolean; onSave: (v: string) => Promise<unknown> }) {
@@ -340,6 +400,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
                 <button className="btn primary" type="button" onClick={() => void act(async () => { await enablePush(snap.vapidPublicKey); setPushState('on'); }, '이 기기에서 알림을 받습니다')}>{pushState === 'on' ? '다시 구독' : '알림 켜기'}</button>
                 <button className="btn" type="button" onClick={() => void act(() => api('/api/push/test', 'POST', {}), '시험 알림을 보냈습니다')}>시험 알림</button>
               </div>
+              <PushDoctor vapid={snap.vapidPublicKey} />
             </div>
           </div>
         </Section>
