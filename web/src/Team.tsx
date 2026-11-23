@@ -61,30 +61,24 @@ function DiffModal({ teamId, path, onClose }: { teamId: string; path: string; on
   );
 }
 
-function Workshop({ t }: { t: TeamView }) {
-  const live = t.state === 'running';
+/** 팀 에이전트 목록: 누르면 작업 내역(스트림·토큰·프롬프트) */
+function Agents({ t }: { t: TeamView }) {
   return (
-    <div className="workshop">
-      <div className="ws-h"><h3>작업장 · 로봇을 누르면 작업 내역</h3>
-        <div className="ws-legend"><span><i style={{ background: 'var(--m-opus)' }} />Opus</span><span><i style={{ background: 'var(--m-sonnet)' }} />Sonnet</span><span><i style={{ background: 'var(--m-haiku)' }} />Haiku</span><span>점선 = 서브에이전트</span></div></div>
-      <div className="ws-floor">
-        {t.agents.length === 0 && <div className="muted ws-empty">아직 팀원이 없습니다.</div>}
-        {t.agents.map((a, i) => {
+    <div className="panel"><h3>에이전트 <small className="muted">누르면 작업 내역</small></h3>
+      <div className="ag-list">
+        {t.agents.length === 0 && <div className="muted">아직 팀원이 없습니다.</div>}
+        {t.agents.map((a) => {
           const sub = a.run_mode === 'subagent';
           const step = a.current_step || (a.state === 'idle' ? '대기' : AGENT_STATE_LABEL[a.state]);
           return (
-            <span key={a.id} className="ws-pair">
-              <button className={`ws-station ${sub ? 'sub' : ''} ${a.state}-st`} type="button" onClick={() => openAgent.set(a.id)}>
-                {sub && <span className="sub-tag">PM 세션 안</span>}
-                <div className="say">{step}{a.state === 'busy' && <> <span className="typing"><span /><span /><span /></span></>}</div>
-                <div className={`av ${a.state}`}><Robot agent={a} /><span className="spk" /><span className="spk" /><span className="spk" /><span className="zz">z z</span><span className="pause-b">II</span></div>
-                <div className="bench" />
-                <div className="ws-name"><b>{a.role_name}</b><span className={`mdl ${MODEL_LABEL[a.model]}`}>{MODEL_LABEL[a.model]}</span></div>
-                <div className="ws-mode">{MODE_LABEL[a.run_mode]} · {AGENT_STATE_LABEL[a.state]}</div>
-                <div className="work-bar"><i /></div>
-              </button>
-              {i < t.agents.length - 1 && <div className={`ws-link ${live ? 'flow' : ''}`} aria-hidden="true" />}
-            </span>
+            <button key={a.id} className={`ag-row ${a.state}`} type="button" onClick={() => openAgent.set(a.id)}>
+              <span className={`ag-av ${MODEL_LABEL[a.model]}`} aria-hidden="true">{a.role_name.slice(0, 2)}</span>
+              <span className="ag-main">
+                <span className="ag-t"><b>{a.role_name}</b><span className={`mdl ${MODEL_LABEL[a.model]}`}>{MODEL_LABEL[a.model]}</span><span className="muted small">{sub ? '서브에이전트 · PM 세션 안' : MODE_LABEL[a.run_mode]}</span></span>
+                <span className="ag-step">{a.state === 'busy' && <span className="sdot run" />}{step}</span>
+              </span>
+              <span className="ag-num mono muted">{money(a.cost_usd)}<br />{Math.round((a.tokens_in + a.tokens_out) / 1000)}k</span>
+            </button>
           );
         })}
       </div>
@@ -265,7 +259,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
         </div>
       )}
 
-      <Workshop t={t} />
+      <Agents t={t} />
 
       <div className="team-grid">
         <div className="stack">

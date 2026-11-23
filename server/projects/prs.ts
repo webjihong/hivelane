@@ -6,14 +6,25 @@ import { run } from '../util.ts';
 import type { PrView } from '../../shared/types.ts';
 
 const log = logger('prs');
-const FIELDS = 'number,title,url,state,isDraft,headRefName,baseRefName,author,createdAt,updatedAt,mergedAt,reviewDecision,statusCheckRollup';
+const FIELDS = 'number,title,url,state,isDraft,headRefName,baseRefName,author,createdAt,updatedAt,mergedAt,reviewDecision,statusCheckRollup,mergeable,mergeStateStatus';
 /** 닫히거나 병합된 PR 을 이 시간까지는 목록에 남긴다 */
 const KEEP_CLOSED_MS = 3 * 86_400_000;
 
 interface GhPr {
   number: number; title: string; url: string; state: 'OPEN' | 'CLOSED' | 'MERGED'; isDraft: boolean; headRefName: string; baseRefName: string;
   author: { login: string } | null; createdAt: string; updatedAt: string; mergedAt: string | null; reviewDecision: string | null;
-  statusCheckRollup: { conclusion?: string | null; state?: string | null; status?: string | null }[] | null;
+  statusCheckRollup: { conclusion?: string | null; state?: string | null; status?: string | null; name?: string; context?: string; workflowName?: string; detailsUrl?: string; targetUrl?: string }[] | null;
+  mergeable?: string; mergeStateStatus?: string;
+}
+
+export function checkListOf(r: GhPr['statusCheckRollup']): PrView['check_list'] {
+  return (r ?? []).map((c) => {
+    const v = (c.conclusion ?? c.state ?? c.status ?? '').toUpperCase();
+    const state: PrView['check_list'][number]['state'] = ['SUCCESS', 'NEUTRAL'].includes(v) ? 'pass' : ['SKIPPED'].includes(v) ? 'skip'
+      : ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(v) ? 'fail' : 'pending';
+    const name = c.name ? (c.workflowName && c.workflowName !== c.name ? `${c.workflowName} / ${c.name}` : c.name) : c.context ?? '검사';
+    return { name, state, url: c.detailsUrl ?? c.targetUrl ?? null };
+  });
 }
 
 export function checksOf(r: GhPr['statusCheckRollup']): PrView['checks'] {
@@ -55,7 +66,7 @@ export class PrWatcher {
           out.push({
             project_id: p.id, project_name: p.name, number: g.number, title: g.title, url: g.url, state: g.state, draft: g.isDraft,
             head: g.headRefName, base: g.baseRefName, author: g.author?.login ?? '', created_at: g.createdAt, updated_at: g.updatedAt, merged_at: g.mergedAt,
-            review: g.reviewDecision ?? null, checks: checksOf(g.statusCheckRollup), team_id: this.teamOf(g),
+            review: g.reviewDecision ?? null, checks: checksOf(g.statusCheckRollup), check_list: checkListOf(g.statusCheckRollup), mergeable: g.mergeable ?? 'UNKNOWN', merge_state: g.mergeStateStatus ?? 'UNKNOWN', team_id: this.teamOf(g),
           });
         }
       }
@@ -75,6 +86,17 @@ export class PrWatcher {
       this.list = out; this.errors = errors; this.lastAt = new Date().toISOString();
       if (changed) bus.changed('prs');
     } catch (e) { log.warn('PR 목록 갱신 실패', e); } finally { this.busy = false; }
+  }
+
+  /** 화면에서 병합: gh pr merge. 보호 규칙·충돌은 gh 가 거절하고 그 이유를 돌려준다. */
+  async merge(projectId: string, number: number, method: 'merge' | 'squash' | 'rebase'): Promise<{ ok: boolean; message: string }> {
+    const p = this.deps.store.getProject(projectId);
+    if (!p) return { ok: false, message: '프로젝트가 없습니다' };
+    const r = await run(this.deps.gh ?? 'gh', ['pr', 'merge', String(number), `--${method}`], { cwd: p.path, timeoutMs: 60_000 });
+    const message = (r.stdout + '\n' + r.stderr).trim().slice(0, 600);
+    log.info(`PR 병합 ${p.name} #${number} (${method}) → ${r.code === 0 ? '성공' : '실패'} ${message}`);
+    void this.refresh();
+    return { ok: r.code === 0, message: message || (r.code === 0 ? '병합했습니다' : `gh 종료 코드 ${r.code}`) };
   }
 
   /** PR 을 만든 Hivelane 팀: 팀 브랜치가 head 이거나, 팀 기록에 PR 주소가 남아 있으면 */

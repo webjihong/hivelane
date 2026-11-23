@@ -41,3 +41,20 @@ describe('PR 목록', () => {
     expect(notifier.sent[0]!.url).toBe('https://g/4');
   });
 });
+
+describe('PR 검사 목록', () => {
+  it('검사 하나하나 상태와 링크', async () => {
+    const { checkListOf } = await import('../server/projects/prs.ts');
+    expect(checkListOf([
+      { name: 'test', workflowName: 'CI', conclusion: 'SUCCESS', detailsUrl: 'https://x/1' },
+      { name: 'lint', workflowName: 'CI', status: 'IN_PROGRESS', conclusion: null },
+      { context: 'vercel', state: 'FAILURE', targetUrl: 'https://v' },
+      { name: 'deploy', conclusion: 'SKIPPED' },
+    ])).toEqual([
+      { name: 'CI / test', state: 'pass', url: 'https://x/1' },
+      { name: 'CI / lint', state: 'pending', url: null },
+      { name: 'vercel', state: 'fail', url: 'https://v' },
+      { name: 'deploy', state: 'skip', url: null },
+    ]);
+  });
+});

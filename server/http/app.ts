@@ -150,6 +150,13 @@ export function createApp(d: AppDeps): Hono<Env> {
     const first = diagnose(input);
     return c.json({ text: diagnose({ ...input, cwdOf: await cwdsOf(first.origins) }).text });
   });
+  app.post('/api/prs/merge', async (c) => {
+    const b = await body(c, z.object({ project_id: z.string(), number: z.number().int().positive(), method: z.enum(['merge', 'squash', 'rebase']) }));
+    if (!d.prs) throw new HttpError(409, 'PR 감시가 꺼져 있습니다');
+    const r = await d.prs.merge(b.project_id, b.number, b.method);
+    if (!r.ok) throw new HttpError(409, `병합하지 못했습니다: ${r.message}`);
+    return c.json(r);
+  });
   app.post('/api/prs/refresh', async (c) => { await d.prs?.refresh(); return c.json({ ok: true, at: d.prs?.lastAt ?? null }); });
   app.post('/api/seen', async (c) => {
     const b = await body(c, z.object({ team_id: z.string().optional(), po: z.boolean().optional(), up_to: z.number().int().optional() }));

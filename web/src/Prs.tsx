@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PrView, StateSnapshot } from '../../shared/types.ts';
 import { act, api, clock, go, refreshState, useBox } from './store.ts';
+import { ConfirmButton } from './ui.tsx';
 
 const STATE: Record<PrView['state'], string> = { OPEN: '열림', MERGED: '병합됨', CLOSED: '닫힘' };
 const REVIEW: Record<string, string> = { APPROVED: '승인', CHANGES_REQUESTED: '수정 요청', REVIEW_REQUIRED: '리뷰 대기' };
@@ -13,28 +14,78 @@ function ago(iso: string, now: number): string {
   return h < 48 ? `${h}시간 전` : `${Math.round(h / 24)}일 전`;
 }
 
+const MERGE_STATE: Record<string, { text: string; ok: boolean }> = {
+  CLEAN: { text: '바로 병합 가능', ok: true }, HAS_HOOKS: { text: '병합 가능(훅 있음)', ok: true }, UNSTABLE: { text: '병합 가능 · 실패한 검사 있음', ok: true },
+  BEHIND: { text: '기준 브랜치보다 뒤처짐 · 규칙상 최신화가 필요할 수 있음', ok: true }, BLOCKED: { text: '막힘 · 리뷰·필수 검사 등 보호 규칙', ok: false },
+  DIRTY: { text: '충돌 · 병합 불가', ok: false }, DRAFT: { text: '초안 · 병합 불가', ok: false }, UNKNOWN: { text: '병합 가능 여부 계산 중', ok: true },
+};
+const CHECK_ICON: Record<string, string> = { pass: '✓', fail: '✕', pending: '●', skip: '–' };
+
 export function PrRow({ pr, snap }: { pr: PrView; snap: StateSnapshot }) {
   const now = useBox(clock);
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<'merge' | 'squash' | 'rebase'>('merge');
+  const [busy, setBusy] = useState(false);
   const team = pr.team_id ? snap.teams.find((t) => t.id === pr.team_id) : null;
+  const ms = MERGE_STATE[pr.draft ? 'DRAFT' : pr.merge_state] ?? MERGE_STATE.UNKNOWN!;
+  const canMerge = pr.state === 'OPEN' && !pr.draft && pr.mergeable !== 'CONFLICTING' && ms.ok;
+  const merge = async () => {
+    setBusy(true);
+    await act(async () => { await api('/api/prs/merge', 'POST', { project_id: pr.project_id, number: pr.number, method }); await refreshState(); }, `#${pr.number} 을(를) 병합했습니다`);
+    setBusy(false);
+  };
+  const failing = pr.check_list.filter((c) => c.state === 'fail').length;
+  const pending = pr.check_list.filter((c) => c.state === 'pending').length;
   return (
-    <a className={`pr-row s-${pr.state.toLowerCase()}`} href={pr.url} target="_blank" rel="noreferrer">
-      <span className={`pr-state ${pr.state.toLowerCase()}${pr.draft ? ' draft' : ''}`}>{pr.draft && pr.state === 'OPEN' ? '초안' : STATE[pr.state]}</span>
-      <div className="pr-main">
-        <div className="pr-t"><span className="muted mono">#{pr.number}</span> {pr.title}</div>
-        <div className="pr-s muted">
-          <span className="chip">{pr.project_name}</span>
-          <span className="mono">{pr.base} ← {pr.head}</span>
-          {pr.author && <span>· {pr.author}</span>}
-          <span>· {ago(pr.merged_at ?? pr.updated_at, now)}</span>
-          {team && <button type="button" className="pr-team" onClick={(e) => { e.preventDefault(); go(`team-${team.id}`); }}>팀 「{team.title || team.name}」</button>}
+    <div className={`pr-row s-${pr.state.toLowerCase()}${open ? ' open' : ''}`}>
+      <button type="button" className="pr-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className={`pr-state ${pr.state.toLowerCase()}${pr.draft ? ' draft' : ''}`}>{pr.draft && pr.state === 'OPEN' ? '초안' : STATE[pr.state]}</span>
+        <div className="pr-main">
+          <div className="pr-t"><span className="muted mono">#{pr.number}</span> {pr.title}</div>
+          <div className="pr-s muted">
+            <span className="chip">{pr.project_name}</span>
+            <span className="mono">{pr.base} ← {pr.head}</span>
+            {pr.author && <span>· {pr.author}</span>}
+            <span>· {ago(pr.merged_at ?? pr.updated_at, now)}</span>
+            {team && <span className="pr-team" role="link" tabIndex={0} onClick={(e) => { e.stopPropagation(); go(`team-${team.id}`); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); go(`team-${team.id}`); } }}>팀 「{team.title || team.name}」</span>}
+          </div>
         </div>
-      </div>
-      <div className="pr-badges">
-        {pr.checks !== 'none' && <span className={`pr-b ${pr.checks}`}>{CHECKS[pr.checks]}</span>}
-        {pr.review && REVIEW[pr.review] && <span className={`pr-b r-${pr.review.toLowerCase()}`}>{REVIEW[pr.review]}</span>}
-        <span className="pr-go" aria-hidden="true">↗</span>
-      </div>
-    </a>
+        <div className="pr-badges">
+          {pr.checks !== 'none' && <span className={`pr-b ${pr.checks}`}>{CHECKS[pr.checks]}{pr.checks === 'fail' ? ` ${failing}` : pr.checks === 'pending' ? ` ${pending}` : ''}</span>}
+          {pr.review && REVIEW[pr.review] && <span className={`pr-b r-${pr.review.toLowerCase()}`}>{REVIEW[pr.review]}</span>}
+          <span className="pr-go" aria-hidden="true">{open ? '▴' : '▾'}</span>
+        </div>
+      </button>
+      {open && (
+        <div className="pr-body">
+          <div className="pr-checks">
+            <div className="pr-sub">검사 {pr.check_list.length ? `${pr.check_list.length}개` : '없음'}</div>
+            {pr.check_list.map((c, i) => (
+              <div key={i} className={`pr-check ${c.state}`}>
+                <span className="pr-ci" aria-label={c.state}>{CHECK_ICON[c.state]}</span>
+                <span className="pr-cn">{c.name}</span>
+                {c.url && <a href={c.url} target="_blank" rel="noreferrer">로그 ↗</a>}
+              </div>
+            ))}
+          </div>
+          {pr.state === 'OPEN' && (
+            <div className="pr-merge">
+              <div className={`pr-ms ${ms.ok && pr.mergeable !== 'CONFLICTING' ? 'ok' : 'no'}`}>{pr.mergeable === 'CONFLICTING' ? '충돌 · 병합 불가' : ms.text}{pr.review === 'CHANGES_REQUESTED' ? ' · 수정 요청된 리뷰 있음' : ''}</div>
+              <div className="row">
+                <select value={method} onChange={(e) => setMethod(e.target.value as typeof method)} aria-label="병합 방식" disabled={!canMerge}>
+                  <option value="merge">병합 커밋</option><option value="squash">스쿼시</option><option value="rebase">리베이스</option>
+                </select>
+                <ConfirmButton className="btn primary" label={busy ? '병합 중…' : '병합'} disabled={!canMerge || busy}
+                  confirmLabel={`${pr.project_name} #${pr.number} 을(를) ${pr.base} 에 병합할까요?${failing ? ` 실패한 검사 ${failing}개가 있습니다.` : ''}${pending ? ` 아직 도는 검사 ${pending}개가 있습니다.` : ''} 되돌리려면 revert 가 필요합니다.`}
+                  onConfirm={() => void merge()} />
+                <a className="btn" href={pr.url} target="_blank" rel="noreferrer">GitHub ↗</a>
+              </div>
+            </div>
+          )}
+          {pr.state !== 'OPEN' && <div className="row"><a className="btn" href={pr.url} target="_blank" rel="noreferrer">GitHub 에서 보기 ↗</a></div>}
+        </div>
+      )}
+    </div>
   );
 }
 

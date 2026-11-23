@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { StateSnapshot, TeamView } from '../../shared/types.ts';
 import { DOT_LABEL, dotOf, isActiveTask, isDoneTask, isStandingCh, nowCount, sideNote } from './chan.ts';
 import { api, clock, conn, route, useBox, type Route } from './store.ts';
@@ -15,14 +16,16 @@ function ResourceModal({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => { void api<{ text: string }>('/api/system/diag').then((r) => setText(r.text)).catch((e) => setText(`불러오지 못했습니다: ${e instanceof Error ? e.message : e}`)); }, []);
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', h); return () => removeEventListener('keydown', h); }, [onClose]);
-  return (
+  // 사이드바(어두운 칸) 밖, 문서 맨 위에 띄운다
+  return createPortal(
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" aria-label="맥 리소스 상세">
         <div className="drawer-h"><div><h2>맥 리소스 · 누가 쓰나</h2><div className="drawer-sub muted">출처별 합계(Claude Code 세션·앱·Hivelane 팀)와 상위 프로세스</div></div><button className="btn" type="button" onClick={onClose}>닫기</button></div>
         <div className="drawer-b">{text ? <div className="diag"><RichText text={text} /></div> : <div className="muted">재는 중…</div>}</div>
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
 

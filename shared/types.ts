@@ -205,6 +205,12 @@ export interface PrView {
   /** APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null */
   review: string | null;
   checks: 'pass' | 'fail' | 'pending' | 'none';
+  /** 검사(GitHub Actions 등) 하나하나 */
+  check_list: { name: string; state: 'pass' | 'fail' | 'pending' | 'skip'; url: string | null }[];
+  /** MERGEABLE | CONFLICTING | UNKNOWN */
+  mergeable: string;
+  /** CLEAN | BLOCKED | BEHIND | DIRTY | UNSTABLE | HAS_HOOKS | DRAFT | UNKNOWN */
+  merge_state: string;
   /** 이 PR 을 만든 Hivelane 팀 */
   team_id: string | null;
 }
