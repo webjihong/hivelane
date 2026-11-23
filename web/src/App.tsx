@@ -6,6 +6,7 @@ import { Chat } from './Chat.tsx';
 import { Now } from './Now.tsx';
 import { PrSection } from './Prs.tsx';
 import { Settings } from './Settings.tsx';
+import { Scripts } from './Scripts.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { TeamChannel } from './TeamChannel.tsx';
 import { Templates } from './Templates.tsx';
@@ -30,12 +31,14 @@ function Toasts() {
 /** 휴대폰 하단 탭: 대화(채널 목록) · PR · 설정 */
 function BottomNav({ snap, r }: { snap: StateSnapshot; r: Route }) {
   const { need, news } = nowCount(snap);
-  const chatOn = !['prs', 'settings', 'templates'].includes(r.name);
+  const chatOn = !['prs', 'scripts', 'settings', 'templates'].includes(r.name);
+  const runningScripts = snap.scripts.filter((s) => s.running_run_id).length;
   const openPrs = snap.prs.filter((p) => p.state === 'OPEN').length;
   return (
-    <nav className="bnav b3" aria-label="화면">
+    <nav className="bnav b4" aria-label="화면">
       <a href="#list" className={chatOn ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>대화{need + news > 0 && <span className="badge">{need + news}</span>}</a>
       <a href="#prs" className={r.name === 'prs' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4" /></svg>PR{openPrs > 0 && <span className="badge dim">{openPrs}</span>}</a>
+      <a href="#scripts" className={r.name === 'scripts' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12 15h5" /></svg>스크립트{runningScripts > 0 && <span className="badge dot" />}</a>
       <a href="#settings" className={r.name === 'settings' || r.name === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>설정</a>
     </nav>
   );
@@ -85,6 +88,7 @@ export function App() {
   let main: ReactElement;
   if (r.name === 'settings') main = <div className="page"><SettingsTabs r={r} /><Settings snap={snap} /></div>;
   else if (r.name === 'templates') main = <div className="page"><SettingsTabs r={r} /><Templates snap={snap} /></div>;
+  else if (r.name === 'scripts') main = <div className="page"><Scripts snap={snap} /></div>;
   else if (r.name === 'prs') main = <div className="page"><PrSection key={r.focus ?? ''} snap={snap} focus={r.focus} /></div>;
   else if (r.name === 'po') main = <Chat snap={snap} />;
   else if (r.name === 'team') main = <TeamChannel key={r.id} id={r.id} snap={snap} detail={!!r.detail} />;

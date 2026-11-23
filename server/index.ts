@@ -6,6 +6,7 @@ import { initLog, logger } from './log.ts';
 import { AppNotifier } from './notify/index.ts';
 import { PrWatcher } from './projects/prs.ts';
 import { RepoWatcher } from './projects/repos.ts';
+import { ScriptRunner } from './scripts.ts';
 import { AgentRunner } from './agents/runner.ts';
 import { Engine, realSampler } from './po/engine.ts';
 import { PoAgent } from './po/agent.ts';
@@ -42,7 +43,8 @@ const repos = new RepoWatcher({ store });
 void repos.refresh(true);
 const repoTimer = setInterval(() => void repos.refresh(true), 300_000);
 repoTimer.unref();
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos });
+const scripts = new ScriptRunner(store);
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });

@@ -27,7 +27,7 @@ export function AgentDrawer({ id, snap }: { id: string; snap: StateSnapshot }) {
     const later = debounce(() => { void load(); }, 1500);
     const off = onLive((e) => {
       if (e.type === 'state') { later(); return; }
-      if (e.agentId !== id) return;
+      if (e.type !== 'agent_event' || e.agentId !== id) return;
       setD((p) => (p && !p.events.some((x) => x.id === e.event.id) ? { ...p, events: [...p.events, { id: e.event.id, kind: e.event.kind, name: e.event.name, body: e.event.body, created_at: e.event.created_at }].slice(-600) } : p));
       if (e.event.kind === 'result') later();
     });

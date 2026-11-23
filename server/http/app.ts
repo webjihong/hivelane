@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readUpload, saveUpload } from '../uploads.ts';
 import type { PrWatcher } from '../projects/prs.ts';
 import type { RepoWatcher } from '../projects/repos.ts';
+import type { ScriptRunner } from '../scripts.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -23,7 +24,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -91,7 +92,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
+      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
@@ -151,6 +152,17 @@ export function createApp(d: AppDeps): Hono<Env> {
     const first = diagnoseData(input);
     return c.json(diagnoseData({ ...input, cwdOf: await cwdsOf(first.origins) }).data);
   });
+  /* ---------- 스크립트 버튼 (등록·수정은 맥에서만, 실행은 원격도) ---------- */
+  const scripts = () => { if (!d.scripts) throw new HttpError(409, '스크립트 기능이 꺼져 있습니다'); return d.scripts; };
+  const scriptZ = z.object({ project_id: z.string().nullable(), name: z.string().trim().min(1).max(60), command: z.string().trim().min(1).max(4000), cwd: z.string().max(500).default(''), confirm: z.boolean().default(false) });
+  app.post('/api/scripts', async (c) => { localOnly(c); const b = await body(c, scriptZ); return c.json(scripts().save(b)); });
+  app.patch('/api/scripts/:id', async (c) => { localOnly(c); const b = await body(c, scriptZ); if (!scripts().get(c.req.param('id'))) throw new HttpError(404, '없는 스크립트입니다'); return c.json(scripts().save({ ...b, id: c.req.param('id') })); });
+  app.delete('/api/scripts/:id', (c) => { localOnly(c); try { return c.json({ ok: scripts().remove(c.req.param('id')) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/scripts/:id/run', (c) => { try { return c.json({ run_id: scripts().run(c.req.param('id'), c.get('access')) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.get('/api/scripts/:id/runs', (c) => c.json(scripts().runs(c.req.param('id'))));
+  app.get('/api/script-runs/:id', (c) => { const r = scripts().getRun(Number(c.req.param('id'))); if (!r) throw new HttpError(404, '없는 실행입니다'); return c.json(r); });
+  app.post('/api/script-runs/:id/stop', (c) => c.json({ ok: scripts().stop(Number(c.req.param('id'))) }));
+  app.get('/api/projects/:id/npm-scripts', (c) => { const p = store.getProject(c.req.param('id')); if (!p) throw new HttpError(404, '프로젝트가 없습니다'); return c.json(scripts().npmScripts(p.path)); });
   app.post('/api/repos/refresh', async (c) => { await d.repos?.refresh(true); return c.json({ ok: true }); });
   app.post('/api/repos/:id/pull', async (c) => {
     if (!d.repos) throw new HttpError(409, '저장소 감시가 꺼져 있습니다');

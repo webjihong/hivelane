@@ -230,6 +230,18 @@ export interface RepoView {
   fetched_at: string | null; error: string | null; pulling: boolean;
 }
 
+/** 스크립트 버튼 */
+export interface ScriptRunView { id: number; script_id: string; command: string; cwd: string; started_at: string; finished_at: string | null; exit_code: number | null; by: 'local' | 'remote'; output?: string }
+export interface ScriptView {
+  id: string; project_id: string | null; project_name: string | null; name: string; command: string;
+  /** 비우면 프로젝트 폴더(프로젝트 없으면 홈). 프로젝트 기준 상대 경로도 됨 */
+  cwd: string;
+  /** 실행 전 한 번 더 확인 */
+  confirm: boolean;
+  running_run_id: number | null;
+  last_run: ScriptRunView | null;
+}
+
 export interface StateSnapshot {
   version: string;
   access: 'local' | 'remote';
@@ -245,6 +257,7 @@ export interface StateSnapshot {
   poUnread: number;
   prs: PrView[];
   repos: RepoView[];
+  scripts: ScriptView[];
   prErrors: Record<string, string>;
   vapidPublicKey: string | null;
 }

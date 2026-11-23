@@ -67,11 +67,12 @@ export async function act<T>(fn: () => Promise<T>, okText?: string): Promise<T |
 
 /* ---------- 라우트 ---------- */
 /** home: 데스크톱은 「지금 볼 것」, 휴대폰은 채널 목록 · now: 「지금 볼 것」 · list: 채널 목록(휴대폰) */
-export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'templates' | 'settings' } | { name: 'prs'; focus?: string } | { name: 'team'; id: string; detail?: boolean };
+export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'scripts' | 'templates' | 'settings' } | { name: 'prs'; focus?: string } | { name: 'team'; id: string; detail?: boolean };
 function parseRoute(): Route {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('team-')) { const id = h.slice(5); return id.endsWith('/detail') ? { name: 'team', id: id.slice(0, -7), detail: true } : { name: 'team', id }; }
   if (h.startsWith('prs/')) return { name: 'prs', focus: h.slice(4) };
+  if (h === 'scripts') return { name: 'scripts' };
   if (h === 'po' || h === 'templates' || h === 'settings' || h === 'now' || h === 'list' || h === 'prs') return { name: h };
   return { name: 'home' };
 }
@@ -87,8 +88,13 @@ export const openAgent = box<string | null>(null);
 /** 이번 세션에서 처리한 제안의 결과(승인/거절). 서버는 대기 중 제안만 준다. */
 export const proposalOutcome = box<Record<string, 'approved' | 'rejected'>>({});
 
+/** 서버가 화면보다 옛 버전(재시작 전)이어도 새 목록 값이 비지 않게 */
+function withDefaults(s: StateSnapshot): StateSnapshot {
+  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
+}
+
 export async function refreshState(): Promise<void> {
-  try { snapshot.set(await api<StateSnapshot>('/api/state')); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'crit'); }
+  try { snapshot.set(withDefaults(await api<StateSnapshot>('/api/state'))); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'crit'); }
 }
 export async function refreshChat(): Promise<void> {
   try { chat.set(await api<ChatView[]>('/api/chat')); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'crit'); }
@@ -96,7 +102,7 @@ export async function refreshChat(): Promise<void> {
 
 /* ---------- 버스(SSE 이벤트를 화면 조각에 나눠 준다) ---------- */
 export interface AgentEvent { id: number; agent_id: string; team_id: string | null; kind: string; name: string | null; body: string; created_at: string }
-export type LiveEvent = { type: 'state' } | { type: 'agent_event'; agentId: string; teamId: string | null; event: AgentEvent };
+export type LiveEvent = { type: 'state' } | { type: 'agent_event'; agentId: string; teamId: string | null; event: AgentEvent } | { type: 'script_out'; runId: number; chunk: string };
 const liveSubs = new Set<(e: LiveEvent) => void>();
 export function onLive(fn: (e: LiveEvent) => void): () => void { liveSubs.add(fn); return () => { liveSubs.delete(fn); }; }
 const emitLive = (e: LiveEvent): void => liveSubs.forEach((f) => f(e));
@@ -145,6 +151,10 @@ export function connect(): void {
   s.addEventListener('agent_event', (ev) => {
     const d = parse<{ agentId: string; teamId: string | null; event: AgentEvent }>(ev);
     if (d) emitLive({ type: 'agent_event', agentId: d.agentId, teamId: d.teamId, event: d.event });
+  });
+  s.addEventListener('script_out', (ev) => {
+    const d = parse<{ runId: number; chunk: string }>(ev);
+    if (d) emitLive({ type: 'script_out', runId: d.runId, chunk: d.chunk });
   });
   s.onerror = () => {
     s.close();

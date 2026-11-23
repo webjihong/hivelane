@@ -289,4 +289,32 @@ ALTER TABLE projects ADD COLUMN protected_branches TEXT NOT NULL DEFAULT '["prod
     name: 'team_env_mode',
     sql: `ALTER TABLE teams ADD COLUMN env_mode TEXT NOT NULL DEFAULT 'isolated';`,
   },
+  {
+    id: 6,
+    name: 'scripts',
+    sql: `
+CREATE TABLE scripts (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  name TEXT NOT NULL,
+  command TEXT NOT NULL,
+  cwd TEXT NOT NULL DEFAULT '',
+  confirm INTEGER NOT NULL DEFAULT 0,
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE script_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  script_id TEXT NOT NULL,
+  command TEXT NOT NULL,
+  cwd TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  exit_code INTEGER,
+  by TEXT NOT NULL DEFAULT 'local',
+  output TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX script_runs_script ON script_runs(script_id, id);
+`,
+  },
 ];

@@ -11,7 +11,8 @@ export type BusEvent =
   | { type: 'state'; reason: string }
   | { type: 'agent_event'; agentId: string; teamId: string | null; event: AgentEventRow }
   | { type: 'chat'; row: ChatRow }
-  | { type: 'resource'; sample: ResourceSnapshot };
+  | { type: 'resource'; sample: ResourceSnapshot }
+  | { type: 'script_out'; runId: number; chunk: string };
 
 export interface AgentEventRow { id: number; agent_id: string; team_id: string | null; kind: string; name: string | null; body: string; created_at: string }
 export interface ChatRow { id: number; role: string; body: string; proposal_id: string | null; links: string | null; tone: string | null; team_id: string | null; created_at: string }

@@ -22,7 +22,7 @@ export function useTeamDetail(id: string): { detail: TeamDetail | null; missing:
     const later = debounce(() => { void load(); }, 400);
     reloadRef.current = () => { void load(); };
     void load();
-    const off = onLive((e) => { if (e.type === 'state' || e.teamId === id) later(); });
+    const off = onLive((e) => { if (e.type === 'state' || (e.type === 'agent_event' && e.teamId === id)) later(); });
     return () => { alive = false; off(); };
   }, [id]);
   return { detail, missing, reload: () => reloadRef.current() };
