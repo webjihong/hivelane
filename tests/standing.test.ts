@@ -8,7 +8,7 @@ import { Search } from '../server/search/index.ts';
 import { Orchestrator, type TurnRunner } from '../server/teams/orchestrator.ts';
 import { sleep } from '../server/util.ts';
 import { execFileSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeRepo, testEnv } from './helpers.ts';
 
@@ -166,34 +166,55 @@ describe('작업 환경: 내 Claude Code 와 동일', () => {
   });
 });
 
-describe('PO worktree 정리', () => {
-  it('Hivelane worktree 만 보고 · 사용자 지시 턴에만 · 커밋 안 한 변경은 확인 후 · 브랜치는 기본으로 남김', async () => {
+describe('PO git 정리(worktree·로컬 브랜치)', () => {
+  it('최근·잠김·쓰는 중은 남김 · 합쳐진 것만 바로 · 변경/고유 커밋은 동의 후 · 사용자 지시 턴만', async () => {
     const env = setup();
     const repo = makeRepo();
     env.store.insertProject({ name: 'app', path: repo, base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
     const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
-    const wt = join(env.cfg.worktreesDir, 'app', 't-old');
-    g('worktree', 'add', '-b', 'hivelane/t-old', wt, 'main');
-    writeFileSync(join(wt, 'README.md'), '# 바뀜\n');
-    const mine = join(repo, '..', `mine-${Date.now()}`);
-    g('worktree', 'add', '-b', 'my-branch', mine, 'main');
+    const old = new Date(Date.now() - 2 * 86_400_000);
+    const age = (wt: string, files: string[] = []) => {
+      const gd = execFileSync('git', ['-C', wt, 'rev-parse', '--absolute-git-dir']).toString().trim();
+      for (const f of [join(gd, 'index'), join(gd, 'HEAD'), join(gd, 'logs', 'HEAD'), ...files.map((x) => join(wt, x))]) if (existsSync(f)) utimesSync(f, old, old);
+    };
+    const W = (n: string) => join(env.cfg.worktreesDir, 'app', n);
+    // 합쳐진 브랜치 + 변경 없는 오래된 worktree → 정리 가능
+    g('worktree', 'add', '-b', 'feat/done', W('done'), 'main'); age(W('done'));
+    // 변경 있는 오래된 worktree → 확인 필요
+    g('worktree', 'add', '-b', 'feat/dirty', W('dirty'), 'main'); writeFileSync(join(W('dirty'), 'README.md'), '# 바뀜\n'); age(W('dirty'), ['README.md']);
+    // 방금 만든 worktree → 남김
+    g('worktree', 'add', '-b', 'feat/recent', W('recent'), 'main');
+    // 잠긴 worktree → 남김
+    g('worktree', 'add', '-b', 'feat/locked', W('locked'), 'main'); age(W('locked')); g('worktree', 'lock', W('locked'));
+    // 어디에도 없는 커밋이 있는 브랜치(worktree 없음) → 확인 필요
+    g('branch', 'feat/solo', 'main'); g('worktree', 'add', W('tmp'), 'feat/solo'); writeFileSync(join(W('tmp'), 'x.txt'), 'x'); execFileSync('git', ['-C', W('tmp'), 'add', '.']); execFileSync('git', ['-C', W('tmp'), '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'solo']); g('worktree', 'remove', W('tmp'));
 
     const out: string[] = [];
-    await env.poTurn(async (t) => { out.push(await t.listWorktrees()); out.push(await t.cleanupWorktree({ path: wt, reason: '정리' })); return '목록 봤음'; }, null);
-    expect(out[0]).toContain('[정리 후보]');
-    expect(out[0]).toContain('t-old');
-    expect(out[0]).toContain('README.md');
-    expect(out[0]).not.toContain('mine-');
+    await env.poTurn(async (t) => { out.push(await t.scanGitCleanup('app')); out.push(await t.gitCleanup({ project: 'app', ids: [`wt:${W('done')}`], reason: '정리' })); return '살펴봄'; }, null);
+    const scan = out[0]!;
+    const line = (k: string) => scan.split('\n').find((l) => l.includes(k)) ?? '';
+    expect(line('/done ')).toContain('[정리 가능]');
+    expect(line('/dirty ')).toContain('[확인 필요]');
+    expect(line('/recent ')).toContain('[남김]');
+    expect(line('/locked ')).toContain('[남김]');
+    expect(line('br:feat/solo')).toContain('[확인 필요]');
+    expect(line('br:main')).toContain('[남김]');
     expect(out[1]).toMatch(/거절/);
 
-    await env.poTurn(async (t) => { out.push(await t.cleanupWorktree({ path: wt, reason: '정리해' })); return '변경이 있어요'; }, 'worktree 정리해');
-    expect(out[2]).toMatch(/멈춤.*README\.md/);
-    expect(existsSync(wt)).toBe(true);
+    await env.poTurn(async (t) => { out.push(await t.gitCleanup({ project: 'app', ids: [`wt:${W('done')}`, 'br:feat/done', `wt:${W('dirty')}`, `wt:${W('recent')}`, 'br:feat/solo', 'br:main'], reason: '정리해' })); return '정리'; }, '정리 가능한 거 지워');
+    const r = out[2]!;
+    expect(r).toMatch(/지움 worktree .*\/app\/done/);
+    expect(r).toContain('지움 브랜치 feat/done');
+    expect(r).toMatch(/멈춤 .*dirty/);
+    expect(r).toMatch(/남김 .*recent/);
+    expect(r).toMatch(/멈춤 feat\/solo/);
+    expect(r).toMatch(/남김 main/);
+    expect(existsSync(W('done'))).toBe(false);
+    expect(existsSync(W('dirty'))).toBe(true);
 
-    await env.poTurn(async (t) => { out.push(await t.cleanupWorktree({ path: wt, discard_changes: true, reason: '버려도 됨' })); return '정리했어요'; }, '버려도 돼');
-    expect(out[3]).toContain('worktree 를 지웠다');
-    expect(existsSync(wt)).toBe(false);
-    expect(g('branch', '--list', 'hivelane/t-old')).toContain('hivelane/t-old');
-    expect(existsSync(mine)).toBe(true);
+    await env.poTurn(async (t) => { out.push(await t.gitCleanup({ project: 'app', ids: [`wt:${W('dirty')}`, 'br:feat/solo'], discard_changes: true, reason: '버려도 됨' })); return '정리'; }, '그것도 버려도 돼');
+    expect(existsSync(W('dirty'))).toBe(false);
+    expect(g('branch', '--list', 'feat/solo')).toBe('');
+    expect(existsSync(W('locked'))).toBe(true);
   });
 });

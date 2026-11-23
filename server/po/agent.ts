@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { bus } from '../bus.ts';
@@ -15,7 +15,7 @@ import { TurnHandle } from '../agents/runner.ts';
 import type { Priority, TemplateRole } from '../../shared/types.ts';
 import { cpus, loadavg } from 'node:os';
 import { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } from './resources.ts';
-import { listWorktrees, removeHivelaneWorktree } from '../projects/worktrees.ts';
+import { applyCleanup, formatScan, scanGit } from '../projects/gitclean.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
 
 /** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
@@ -41,8 +41,8 @@ export interface PoTools {
   createStanding(p: { name: string; project: string | null; template_id: string; brief: string; roles?: TemplateRole[]; check_command?: string | null; check_interval_sec?: number | null }): string;
   updateStanding(teamId: string, p: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null }): string;
   endStanding(teamId: string, reason: string): Promise<string>;
-  listWorktrees(project?: string): Promise<string>;
-  cleanupWorktree(p: { team_id?: string; path?: string; discard_changes?: boolean; delete_branch?: boolean; reason: string }): Promise<string>;
+  scanGitCleanup(project: string): Promise<string>;
+  gitCleanup(p: { project: string; ids: string[]; discard_changes?: boolean; reason: string }): Promise<string>;
   sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string;
 }
 
@@ -303,40 +303,24 @@ ${chat}
         store.addChat({ role: 'event', body: `직속 팀 종료 · 「${t.name}」 (사용자 지시로 PO가 종료)`, team_id: teamId, tone: 'info' });
         return `직속 팀 「${t.name}」 를 종료했다.`;
       },
-      listWorktrees: async (project) => {
-        const all = await listWorktrees(cfg, store);
-        const pid = project ? projectId(project) : null;
-        const list = pid ? all.filter((w) => w.project_id === pid) : all;
-        if (!list.length) return 'Hivelane 이 만든 worktree 가 없다.';
-        return list.map((w) => `- ${w.orphan ? '[정리 후보] ' : ''}${w.project} · ${w.path}\n  브랜치 ${w.branch ?? '-'} · 팀 ${w.team_id ? `${w.team_name} (${w.team_id}, ${w.lifetime === 'standing' ? '직속' : '업무'}, ${w.team_state})` : '없음(주인 없는 worktree)'}${w.missing ? ' · 폴더 없음(기록만 남음)' : ` · 커밋 안 한 변경 ${w.dirty.length}개${w.dirty.length ? `: ${w.dirty.slice(0, 8).join(', ')}${w.dirty.length > 8 ? ' …' : ''}` : ''} · 브랜치에만 있는 커밋 ${w.ahead}개`}`).join('\n');
+      scanGitCleanup: async (project) => {
+        const p = store.getProject(projectId(project)) ?? store.getProject(project);
+        if (!p) return `프로젝트를 찾을 수 없다: ${project}`;
+        return formatScan(await scanGit(cfg, store, p));
       },
-      cleanupWorktree: async (p) => {
-        if (!this.userTurn) return '거절: worktree 정리는 사용자가 이번 대화에서 정리하라고 했을 때만 한다.';
-        const all = await listWorktrees(cfg, store);
-        const w = p.team_id ? all.find((x) => x.team_id === p.team_id) : all.find((x) => x.path === p.path || (!!p.path && realpathOr(x.path) === realpathOr(p.path)));
-        const t = p.team_id ? store.getTeam(p.team_id) : null;
-        if (!w) {
-          // worktree 는 이미 없고 팀만 남은 경우: 팀을 보관 처리
-          if (t && t.lifetime === 'task' && !orch.isRunning(t.id)) { if (!['done', 'failed', 'archived'].includes(t.state)) await orch.cancel(t.id); await orch.archive(t.id); return `worktree 는 이미 없어 팀 「${t.name}」 만 보관 처리했다.`; }
-          return '그런 Hivelane worktree 가 없다. list_worktrees 로 확인해라.';
-        }
-        if (w.lifetime === 'standing') return '직속 팀의 작업 폴더다. 직속 팀을 끝내려면 end_standing_team 을 쓴다(사용자 지시 필요).';
-        if (w.team_id && orch.isRunning(w.team_id)) return `팀 「${w.team_name}」 가 지금 일하는 중이다. 먼저 pause_team 으로 멈추거나 끝나길 기다린 뒤 정리한다.`;
-        if (!w.missing && (w.dirty.length || (p.delete_branch && w.ahead)) && !p.discard_changes) {
-          return `멈춤: 지우면 사라지는 작업이 있다 — 커밋 안 한 변경 ${w.dirty.length}개${w.dirty.length ? ` (${w.dirty.slice(0, 10).join(', ')})` : ''}${p.delete_branch ? ` · 브랜치에만 있는 커밋 ${w.ahead}개` : ''}. 사용자에게 버려도 되는지 물어보고, 된다고 하면 discard_changes: true 로 다시 불러라.`;
-        }
-        const proj = store.getProject(w.project_id)!;
-        let note: string;
-        if (w.team_id && t) {
-          if (!['done', 'failed', 'archived'].includes(t.state)) await orch.cancel(t.id);
-          await orch.archive(t.id);
-          note = 'worktree 를 지우고 팀을 보관했다';
-          if (p.delete_branch) note = await removeHivelaneWorktree(cfg, proj.path, { ...w, path: w.path }, true).then((n) => n.replace('worktree 를 지웠다', note)).catch((e: Error) => `${note} · 브랜치 정리 실패: ${e.message}`);
-        } else {
-          note = await removeHivelaneWorktree(cfg, proj.path, w, !!p.delete_branch);
-        }
-        store.addChat({ role: 'event', body: `worktree 정리 · ${w.project} · ${w.path.replace(/^\/Users\/[^/]+/, '~')}${w.team_name ? ` (팀 「${w.team_name}」)` : ''} · ${p.reason}`, team_id: w.team_id ?? undefined, tone: 'info' });
-        return `${note}. (${w.path}${w.dirty.length ? ` · 버린 변경 ${w.dirty.length}개` : ''})`;
+      gitCleanup: async (a) => {
+        if (!this.userTurn) return '거절: git 정리는 사용자가 이번 대화에서 정리하라고 했을 때만 한다.';
+        const p = store.getProject(projectId(a.project)) ?? store.getProject(a.project);
+        if (!p) return `프로젝트를 찾을 수 없다: ${a.project}`;
+        const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, async (teamId) => {
+          const t = store.getTeam(teamId);
+          if (!t || t.lifetime !== 'task' || orch.isRunning(teamId)) return;
+          if (!['done', 'failed', 'archived'].includes(t.state)) await orch.cancel(teamId);
+          if (t.state !== 'archived') await orch.archive(teamId).catch(() => {});
+        });
+        const done = lines.filter((l) => l.startsWith('지움')).length;
+        store.addChat({ role: 'event', body: `git 정리 · ${p.name} · ${done}개 지움${a.discard_changes ? ' (변경 버림 동의)' : ''} · ${a.reason}\n${lines.join('\n')}`, tone: 'info' });
+        return lines.join('\n');
       },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
@@ -347,9 +331,7 @@ ${chat}
   }
 }
 
-const realpathOr = (p: string) => { try { return realpathSync(p); } catch { return p; } };
-
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'list_worktrees', 'cleanup_worktree', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
 
 /** PO 의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
@@ -386,11 +368,10 @@ function poMcpServer(impl: PoTools) {
     }, async (a) => text(impl.createStanding({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
     T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기를 바꾼다', { team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional() },
       async (a) => { const { team_id, ...rest } = a; return text(impl.updateStanding(team_id, rest)); }),
-    T('list_worktrees', 'Hivelane 이 만든 팀 worktree 목록(팀·상태·커밋 안 한 변경·브랜치에만 있는 커밋·정리 후보). 정리 전에 먼저 본다', { project: z.string().optional() }, async (a) => text(await impl.listWorktrees(a.project))),
-    T('cleanup_worktree', '팀 worktree 를 정리한다(업무 팀은 중단·보관 후 worktree 삭제). 사용자가 이번 대화에서 정리하라고 했을 때만. 커밋 안 한 변경이 있으면 멈추고 알려준다 → 사용자가 버려도 된다고 하면 discard_changes: true', {
-      team_id: z.string().optional().describe('팀 id(팀이 있는 worktree)'), path: z.string().optional().describe('주인 없는 worktree 경로(list_worktrees 의 경로 그대로)'),
-      discard_changes: z.boolean().optional().describe('커밋 안 한 변경을 버린다 — 사용자가 동의했을 때만'), delete_branch: z.boolean().optional().describe('hivelane/ 브랜치도 지운다(기본은 남김)'), reason: z.string().describe('사용자 요청 요약'),
-    }, async (a) => text(await impl.cleanupWorktree(a))),
+    T('scan_git_cleanup', '프로젝트 저장소의 worktree·로컬 브랜치를 살펴 [정리 가능]/[확인 필요]/[남김] 으로 나눈다(지우지 않음). 정리 전에 반드시 먼저 본다', { project: z.string().describe('프로젝트 이름 또는 id') }, async (a) => text(await impl.scanGitCleanup(a.project))),
+    T('git_cleanup', 'scan_git_cleanup 의 id 들을 정리한다. 사용자가 이번 대화에서 정리하라고 했을 때만. [남김] 은 절대 안 지우고, [확인 필요] 는 사용자가 버려도 된다고 했을 때 discard_changes: true 로만', {
+      project: z.string(), ids: z.array(z.string()).min(1).describe('wt:경로 또는 br:브랜치 — scan 결과 그대로'), discard_changes: z.boolean().optional().describe('커밋 안 한 변경·어디에도 없는 커밋을 버린다 — 사용자 동의 필요'), reason: z.string().describe('사용자 요청 요약'),
+    }, async (a) => text(await impl.gitCleanup(a))),
     T('end_standing_team', '직속 팀을 종료(보관)한다. 사용자가 이번 대화에서 그 팀을 끝내라고 명시했을 때만. 그 밖의 이유(한가함·오류·리소스)로는 절대 끝내지 않는다', { team_id: z.string(), reason: z.string().describe('사용자 요청 원문 요약') },
       async (a) => text(await impl.endStanding(a.team_id, a.reason))),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
