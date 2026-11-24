@@ -5,6 +5,7 @@ import { ChatInput } from './ChatInput.tsx';
 import { DOT_LABEL, dotOf, sideNote } from './chan.ts';
 import { act, api, clock, go, refreshState, toast, useBox } from './store.ts';
 import { Team, useTeamDetail } from './Team.tsx';
+import { WorktreeCleanButton } from './GitClean.tsx';
 import { RichText, hhmm, money, whoLabel } from './ui.tsx';
 
 type Msg = TeamDetail['messages'][number];
@@ -70,6 +71,7 @@ function Head({ t, snap, detail }: { t: TeamView; snap: StateSnapshot; detail: b
         {t.state === 'running' && t.lifetime === 'task' && <button className="btn" type="button" onClick={() => void call('pause', '멈춤 요청을 보냈습니다')}>멈춤</button>}
         {t.state === 'paused' && <button className="btn primary" type="button" onClick={() => void call('resume', '재개했습니다 · 15분 동안 자동 멈춤 안 함')}>재개</button>}
         {t.state === 'failed' && <button className="btn primary" type="button" onClick={() => void call('retry', '대기열에 다시 넣었습니다')}>다시 시작</button>}
+        {t.lifetime === 'task' && (t.state === 'done' || t.state === 'failed') && t.worktree_path && snap.access === 'local' && <WorktreeCleanButton teamId={t.id} />}
         <a className={`btn${detail ? ' on' : ''}`} href={detail ? `#team-${t.id}` : `#team-${t.id}/detail`} aria-pressed={detail}>팀 상세</a>
       </div>
     </header>

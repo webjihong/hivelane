@@ -161,6 +161,12 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- worktree·로컬 브랜치 정리(화면) ---------- */
   const gc = () => { if (!d.gitClean) throw new HttpError(404, '정리 기능을 쓸 수 없습니다'); return d.gitClean; };
   app.get('/api/git-clean', async (c) => { if (c.req.query('refresh')) await gc().refresh(); return c.json({ summary: gc().summary, scans: gc().views }); });
+  app.post('/api/teams/:id/clean-worktree', async (c) => {
+    localOnly(c);
+    team(c.req.param('id'));
+    const b = await body(c, z.object({ discard: z.boolean().default(false) }));
+    return c.json(await gc().cleanTeam(c.req.param('id'), b.discard));
+  });
   app.post('/api/git-clean/apply', async (c) => {
     localOnly(c);
     const b = await body(c, z.object({ project_id: z.string().min(1), ids: z.array(z.string().min(3)).min(1).max(500), discard: z.boolean().default(false) }));

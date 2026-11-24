@@ -260,4 +260,31 @@ describe('화면 git 정리(사이드바 버튼)', () => {
     expect(w.views[0]!.items.some((i) => /\/app\/done$/.test(i.label))).toBe(false);
     expect(env.store.chat(50).some((c) => c.body.startsWith('git 정리(화면) · app'))).toBe(true);
   });
+  it('끝난 팀 버튼: 깨끗하면 바로, 변경이 있으면 동의 후 · 브랜치는 남김 · 돌던 팀은 거절', async () => {
+    const env = setup();
+    const repo = makeRepo();
+    const p = env.store.insertProject({ name: 'app2', path: repo, base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
+    const W = (n: string) => join(env.cfg.worktreesDir, 'app2', n);
+    g('worktree', 'add', '-b', 'hivelane/a', W('a'), 'main');
+    g('worktree', 'add', '-b', 'hivelane/b', W('b'), 'main'); writeFileSync(join(W('b'), 'README.md'), '# 바뀜\n');
+    const ta = env.store.insertTeam({ name: '팀A', project_id: p.id, worktree_path: W('a'), branch: 'hivelane/a', state: 'done' });
+    const tb = env.store.insertTeam({ name: '팀B', project_id: p.id, worktree_path: W('b'), branch: 'hivelane/b', state: 'failed' });
+    const tc = env.store.insertTeam({ name: '팀C', project_id: p.id, worktree_path: W('a'), branch: 'hivelane/a', state: 'running' });
+    const w = new GitCleanWatcher({ cfg: env.cfg, store: env.store, orch: env.orch, onChange: () => {} });
+
+    expect((await w.cleanTeam(tc.id, false)).result).toBe('blocked');
+    // 방금 끝난(최근) 팀이어도 콕 집어 누르면 지운다
+    expect((await w.cleanTeam(ta.id, false)).result).toBe('done');
+    expect(existsSync(W('a'))).toBe(false);
+    expect(g('branch', '--list', 'hivelane/a')).toContain('hivelane/a');
+    expect(env.store.getTeam(ta.id)!.state).toBe('archived');
+
+    const r1 = await w.cleanTeam(tb.id, false);
+    expect(r1.result).toBe('dirty');
+    expect(r1.dirty).toContain('README.md');
+    expect(existsSync(W('b'))).toBe(true);
+    expect((await w.cleanTeam(tb.id, true)).result).toBe('done');
+    expect(existsSync(W('b'))).toBe(false);
+  });
 });

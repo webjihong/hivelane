@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CleanItem, CleanScanView, GitCleanSummary } from '../../shared/types.ts';
-import { act, api, refreshState } from './store.ts';
+import { act, api, refreshState, toast } from './store.ts';
 
 type Resp = { summary: GitCleanSummary; scans: CleanScanView[]; lines?: string[] };
 
@@ -81,5 +81,33 @@ export function GitCleanPanel({ local, onClose }: { local: boolean; onClose: () 
       </aside>
     </>,
     document.body,
+  );
+}
+
+/** 끝난 팀의 worktree 정리 버튼: 두 번 눌러 확인 · 커밋 안 한 변경이 있으면 목록을 보여 주고 「버리고 지우기」를 한 번 더 */
+export function WorktreeCleanButton({ teamId, className = 'btn' }: { teamId: string; className?: string }) {
+  const [step, setStep] = useState<'idle' | 'sure' | 'dirty'>('idle');
+  const [dirty, setDirty] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const run = async (discard: boolean) => {
+    setBusy(true);
+    const r = await act(() => api<{ result: 'done' | 'dirty' | 'blocked'; message: string; dirty?: string[] }>(`/api/teams/${encodeURIComponent(teamId)}/clean-worktree`, 'POST', { discard }));
+    setBusy(false);
+    if (!r) { setStep('idle'); return; }
+    if (r.result === 'dirty') { setDirty(r.dirty ?? []); setStep('dirty'); return; }
+    setStep('idle');
+    toast(r.result === 'done' ? 'worktree 를 정리했습니다 · 브랜치는 남김' : r.message, r.result === 'done' ? 'good' : 'crit');
+    void refreshState();
+  };
+  if (step === 'idle') return <button className={className} type="button" onClick={() => setStep('sure')} title="이 팀의 worktree 폴더를 지웁니다(브랜치는 남김)">worktree 정리</button>;
+  if (step === 'sure') return (
+    <span className="confirm"><span>worktree 를 지울까요? 브랜치는 남습니다.</span><button className="btn danger" type="button" disabled={busy} onClick={() => void run(false)}>{busy ? '정리 중…' : '확인'}</button><button className="btn" type="button" onClick={() => setStep('idle')}>취소</button></span>
+  );
+  return (
+    <span className="confirm wt-dirty">
+      <span>커밋 안 한 변경 {dirty.length}개: <span className="mono">{dirty.slice(0, 4).join(', ')}{dirty.length > 4 ? ' …' : ''}</span> — 버리고 지울까요?</span>
+      <button className="btn danger" type="button" disabled={busy} onClick={() => void run(true)}>{busy ? '정리 중…' : '버리고 지우기'}</button>
+      <button className="btn" type="button" onClick={() => setStep('idle')}>취소</button>
+    </span>
   );
 }

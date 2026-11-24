@@ -4,6 +4,7 @@ import { MODEL_LABEL } from './art.ts';
 import { ChatInput } from './ChatInput.tsx';
 import { PrRow } from './Prs.tsx';
 import { act, api, clock, debounce, go, onLive, openAgent, refreshState, toast, useBox } from './store.ts';
+import { WorktreeCleanButton } from './GitClean.tsx';
 import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money, whoLabel } from './ui.tsx';
 
 const ACTOR: Record<string, string> = { engine: '총괄 엔진', agent: '총괄', user: '사용자' };
@@ -225,7 +226,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
           {t.state === 'failed' && <button className="btn primary" type="button" onClick={() => void call('retry', {}, '대기열에 다시 넣었습니다')}>다시 시작</button>}
           {!finished && <ConfirmButton label={standing ? '직속 팀 종료' : '중단'} confirmLabel={standing ? '이 직속 팀을 종료할까요? 다시 쓰려면 새로 만들어야 합니다.' : '이 팀을 중단할까요? 진행 중인 턴이 끊깁니다.'} onConfirm={() => void call('cancel', {}, standing ? '직속 팀을 종료했습니다' : '중단했습니다')} />}
           {!standing && (t.state === 'done' || t.state === 'failed') && t.worktree_path && !remote && (
-            <ConfirmButton label="worktree 정리" confirmLabel="worktree 폴더를 지웁니다(브랜치는 남김)." onConfirm={() => void call('archive', {}, 'worktree 를 정리했습니다')} />
+            <WorktreeCleanButton teamId={t.id} />
           )}
         </div>
       </div>
