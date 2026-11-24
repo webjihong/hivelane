@@ -10,6 +10,7 @@ import { ScriptRunner } from './scripts.ts';
 import { AgentRunner } from './agents/runner.ts';
 import { PlanUsage } from './po/usage.ts';
 import { AuthLogin } from './po/auth.ts';
+import { GitCleanWatcher } from './projects/cleanwatch.ts';
 import { bus } from './bus.ts';
 import { Engine, realSampler } from './po/engine.ts';
 import { PoAgent } from './po/agent.ts';
@@ -38,7 +39,8 @@ const runner = new AgentRunner({ store, slots, onRateLimit: () => usage.poke() }
 const orch = new Orchestrator({ cfg, store, runner, slots, notifier });
 const search = new Search(store);
 const engine = new Engine({ store, orch, slots, sampler: realSampler(), notifier });
-const po = new PoAgent({ cfg, store, runner, orch, search, notifier });
+const gitClean = new GitCleanWatcher({ cfg, store, orch, onChange: () => bus.emitEvent({ type: 'state', reason: 'git-clean' }) });
+const po = new PoAgent({ cfg, store, runner, orch, search, notifier, onGitCleaned: () => void gitClean.refresh() });
 
 orch.recover();
 engine.start();
@@ -52,7 +54,10 @@ void repos.refresh(true);
 const repoTimer = setInterval(() => void repos.refresh(true), 300_000);
 repoTimer.unref();
 const scripts = new ScriptRunner(store);
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth });
+setTimeout(() => void gitClean.refresh(), 20_000).unref();
+const gitCleanTimer = setInterval(() => void gitClean.refresh(), 600_000);
+gitCleanTimer.unref();
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });

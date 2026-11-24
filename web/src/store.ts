@@ -90,7 +90,7 @@ export const proposalOutcome = box<Record<string, 'approved' | 'rejected'>>({});
 
 /** 서버가 화면보다 옛 버전(재시작 전)이어도 새 목록 값이 비지 않게 */
 function withDefaults(s: StateSnapshot): StateSnapshot {
-  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], usage: s.usage ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
+  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], gitClean: s.gitClean ?? { remove: 0, ask: 0, takenAt: null, running: false }, usage: s.usage ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
 }
 
 export async function refreshState(): Promise<void> {

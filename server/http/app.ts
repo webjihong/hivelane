@@ -5,6 +5,7 @@ import type { RepoWatcher } from '../projects/repos.ts';
 import type { ScriptRunner } from '../scripts.ts';
 import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
+import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -26,7 +27,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -93,7 +94,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 상태·스트림 ---------- */
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
-      version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, projects: store.listProjects(), templates: store.listTemplates(),
+      version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, gitClean: d.gitClean?.summary ?? { remove: 0, ask: 0, takenAt: null, running: false }, projects: store.listProjects(), templates: store.listTemplates(),
       teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
@@ -157,6 +158,15 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 스크립트 버튼 (등록·수정은 맥에서만, 실행은 원격도) ---------- */
   const scripts = () => { if (!d.scripts) throw new HttpError(409, '스크립트 기능이 꺼져 있습니다'); return d.scripts; };
   const scriptZ = z.object({ project_id: z.string().nullable(), name: z.string().trim().min(1).max(60), command: z.string().trim().min(1).max(4000), cwd: z.string().max(500).default(''), confirm: z.boolean().default(false) });
+  /* ---------- worktree·로컬 브랜치 정리(화면) ---------- */
+  const gc = () => { if (!d.gitClean) throw new HttpError(404, '정리 기능을 쓸 수 없습니다'); return d.gitClean; };
+  app.get('/api/git-clean', async (c) => { if (c.req.query('refresh')) await gc().refresh(); return c.json({ summary: gc().summary, scans: gc().views }); });
+  app.post('/api/git-clean/apply', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({ project_id: z.string().min(1), ids: z.array(z.string().min(3)).min(1).max(500), discard: z.boolean().default(false) }));
+    const lines = await gc().apply(b.project_id, b.ids, b.discard);
+    return c.json({ lines, summary: gc().summary, scans: gc().views });
+  });
   /* ---------- Claude 재로그인(claude auth login 대행: 링크 보여 주고 코드 받기) ---------- */
   const auth = () => { if (!d.auth) throw new HttpError(404, '재로그인을 쓸 수 없습니다'); return d.auth; };
   app.get('/api/auth/login', (c) => c.json(auth().view));

@@ -1,3 +1,4 @@
+import { GitCleanWatcher } from '../server/projects/cleanwatch.ts';
 import { describe, expect, it } from 'vitest';
 import type { TurnHandle, TurnResult, TurnSpec } from '../server/agents/runner.ts';
 import { NullNotifier } from '../server/notify/index.ts';
@@ -216,5 +217,47 @@ describe('PO git 정리(worktree·로컬 브랜치)', () => {
     expect(existsSync(W('dirty'))).toBe(false);
     expect(g('branch', '--list', 'feat/solo')).toBe('');
     expect(existsSync(W('locked'))).toBe(true);
+  });
+});
+
+describe('화면 git 정리(사이드바 버튼)', () => {
+  it('저장소를 살펴 수를 세고, 고른 것만 지우며 남김·확인 필요는 동의 없이 안 지운다', async () => {
+    const env = setup();
+    const repo = makeRepo();
+    env.store.insertProject({ name: 'app', path: repo, base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
+    const old = new Date(Date.now() - 2 * 86_400_000);
+    const W = (n: string) => join(env.cfg.worktreesDir, 'app', n);
+    const age = (wt: string, files: string[] = []) => {
+      const gd = execFileSync('git', ['-C', wt, 'rev-parse', '--absolute-git-dir']).toString().trim();
+      for (const f of [join(gd, 'index'), join(gd, 'HEAD'), join(gd, 'logs', 'HEAD'), ...files.map((x) => join(wt, x))]) if (existsSync(f)) utimesSync(f, old, old);
+    };
+    g('worktree', 'add', '-b', 'feat/done', W('done'), 'main'); age(W('done'));
+    g('worktree', 'add', '-b', 'feat/dirty', W('dirty'), 'main'); writeFileSync(join(W('dirty'), 'README.md'), '# 바뀜\n'); age(W('dirty'), ['README.md']);
+    g('worktree', 'add', '-b', 'feat/recent', W('recent'), 'main');
+
+    let changes = 0;
+    const w = new GitCleanWatcher({ cfg: env.cfg, store: env.store, orch: env.orch, onChange: () => { changes++; } });
+    await w.refresh();
+    expect(changes).toBeGreaterThan(0);
+    const items = w.views[0]!.items;
+    const v = (label: RegExp) => items.find((i) => label.test(i.label))?.verdict;
+    expect(v(/\/app\/done$/)).toBe('remove');
+    expect(v(/\/app\/dirty$/)).toBe('ask');
+    expect(v(/\/app\/recent$/)).toBe('keep');
+    expect(w.summary.remove).toBeGreaterThanOrEqual(1);
+    expect(w.summary.ask).toBe(1);
+
+    const id = (re: RegExp) => items.find((i) => re.test(i.label))!.id;
+    const pid = env.store.listProjects()[0]!.id;
+    const lines = await w.apply(pid, [id(/\/app\/done$/), 'br:feat/done', id(/\/app\/dirty$/), id(/\/app\/recent$/)], false);
+    expect(lines.join('\n')).toMatch(/지움 worktree .*\/app\/done/);
+    expect(lines).toContain('지움 브랜치 feat/done');
+    expect(lines.join('\n')).toMatch(/멈춤 .*dirty/);
+    expect(lines.join('\n')).toMatch(/남김 .*recent/);
+    expect(existsSync(W('dirty'))).toBe(true);
+    expect(existsSync(W('recent'))).toBe(true);
+    expect(w.views[0]!.items.some((i) => /\/app\/done$/.test(i.label))).toBe(false);
+    expect(env.store.chat(50).some((c) => c.body.startsWith('git 정리(화면) · app'))).toBe(true);
   });
 });

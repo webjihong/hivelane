@@ -191,6 +191,12 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** worktree·로컬 브랜치 정리(사이드바 버튼) */
+export type CleanVerdict = 'remove' | 'ask' | 'keep';
+export interface CleanItem { id: string; kind: 'worktree' | 'branch'; label: string; sub: string | null; verdict: CleanVerdict; why: string; dirty?: string[] }
+export interface CleanScanView { project_id: string; project_name: string; base: string; items: CleanItem[] }
+export interface GitCleanSummary { remove: number; ask: number; takenAt: string | null; running: boolean }
+
 /** Claude 플랜 사용량: 한도 창별 사용 %(0~100) */
 export interface UsageWindow { key: string; label: string; pct: number; resets_at: string | null }
 export interface UsageView { available: boolean; plan: string | null; windows: UsageWindow[]; takenAt: string | null; error: string | null; login?: LoginInfo | null }
@@ -256,6 +262,7 @@ export interface StateSnapshot {
   settings: Settings;
   resource: ResourceView;
   usage: UsageView;
+  gitClean: GitCleanSummary;
   projects: Project[];
   templates: TeamTemplate[];
   teams: TeamView[];

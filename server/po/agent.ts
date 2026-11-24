@@ -16,6 +16,7 @@ import type { Priority, TemplateRole } from '../../shared/types.ts';
 import { cpus, loadavg } from 'node:os';
 import { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } from './resources.ts';
 import { applyCleanup, formatScan, scanGit } from '../projects/gitclean.ts';
+import { archiveForCleanup } from '../projects/cleanwatch.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
 
 /** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
@@ -56,7 +57,7 @@ export class PoAgent {
   private userTurn = false;
   private cancelled = false;
 
-  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier }) {
+  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier; onGitCleaned?: () => void }) {
     mkdirSync(deps.cfg.poDir, { recursive: true });
     bus.on('po_event', () => this.scheduleEvents());
     // 서버가 꺼져 있던 동안 쌓인 사건도 처리
@@ -312,12 +313,8 @@ ${chat}
         if (!this.userTurn) return '거절: git 정리는 사용자가 이번 대화에서 정리하라고 했을 때만 한다.';
         const p = store.getProject(projectId(a.project)) ?? store.getProject(a.project);
         if (!p) return `프로젝트를 찾을 수 없다: ${a.project}`;
-        const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, async (teamId) => {
-          const t = store.getTeam(teamId);
-          if (!t || t.lifetime !== 'task' || orch.isRunning(teamId)) return;
-          if (!['done', 'failed', 'archived'].includes(t.state)) await orch.cancel(teamId);
-          if (t.state !== 'archived') await orch.archive(teamId).catch(() => {});
-        });
+        const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, archiveForCleanup(store, orch));
+        this.deps.onGitCleaned?.();
         const done = lines.filter((l) => l.startsWith('지움')).length;
         store.addChat({ role: 'event', body: `git 정리 · ${p.name} · ${done}개 지움${a.discard_changes ? ' (변경 버림 동의)' : ''} · ${a.reason}\n${lines.join('\n')}`, tone: 'info' });
         return lines.join('\n');
