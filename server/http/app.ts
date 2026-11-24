@@ -7,6 +7,7 @@ import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
+import { tailscaleState } from '../remote.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -347,7 +348,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
   }).partial();
   app.put('/api/settings', async (c) => { localOnly(c); const b = await body(c, settingsZ); return c.json(store.saveSettings(b as Parameters<Store['saveSettings']>[0])); });
-  app.get('/api/remote', (c) => c.json({ ownerLogin: store.getSettings().ownerLogin, lastRemote: store.getKv('last_remote_login', null) }));
+  app.get('/api/remote', async (c) => c.json({ ownerLogin: store.getSettings().ownerLogin, lastRemote: store.getKv('last_remote_login', null), remotePort: d.cfg.remotePort, tailscale: await tailscaleState(d.cfg.remotePort, !!c.req.query('fresh')).catch(() => null) }));
   app.post('/api/search/reindex', async (c) => { localOnly(c); return c.json({ indexed: await search.reindexAll() }); });
   app.get('/api/search', async (c) => c.json(await search.search(c.req.query('q') ?? '', { projectId: c.req.query('project') || null })));
 

@@ -255,7 +255,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
           {poPending > 0 ? <span className="sb-badge ask">제안 {poPending}</span> : snap.poUnread > 0 ? <span className="sb-badge">{snap.poUnread}</span> : <span className={`sb-note ${snap.poBusy ? 't-run' : 't-muted'}`}>{snap.poBusy ? '생각 중' : '대기'}</span>}
         </a>
 
-        <div className="sb-h">직속 팀<a href="#settings" className="sb-add" aria-label="직속 팀 추가" title="직속 팀 추가(설정)">＋</a></div>
+        <div className="sb-h">직속 팀<a href="#settings/standing" className="sb-add" aria-label="직속 팀 추가" title="직속 팀 추가(설정 › 직속 팀)">＋</a></div>
         {standing.length ? standing.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">없음 · 총괄에게 「직속팀 만들어줘」</div>}
 
         <div className="sb-h">업무 팀</div>

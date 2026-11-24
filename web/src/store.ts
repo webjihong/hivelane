@@ -67,13 +67,14 @@ export async function act<T>(fn: () => Promise<T>, okText?: string): Promise<T |
 
 /* ---------- 라우트 ---------- */
 /** home: 데스크톱은 「지금 볼 것」, 휴대폰은 채널 목록 · now: 「지금 볼 것」 · list: 채널 목록(휴대폰) */
-export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'scripts' | 'templates' | 'settings' } | { name: 'prs'; focus?: string } | { name: 'finished'; tab: 'teams' | 'log' } | { name: 'team'; id: string; detail?: boolean };
+export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'scripts' | 'templates' } | { name: 'settings'; tab?: string } | { name: 'prs'; focus?: string } | { name: 'finished'; tab: 'teams' | 'log' } | { name: 'team'; id: string; detail?: boolean };
 function parseRoute(): Route {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('team-')) { const id = h.slice(5); return id.endsWith('/detail') ? { name: 'team', id: id.slice(0, -7), detail: true } : { name: 'team', id }; }
   if (h.startsWith('prs/')) return { name: 'prs', focus: h.slice(4) };
   if (h === 'scripts') return { name: 'scripts' };
   if (h === 'finished' || h === 'finished/log') return { name: 'finished', tab: h === 'finished/log' ? 'log' : 'teams' };
+  if (h.startsWith('settings/')) return { name: 'settings', tab: h.slice(9) };
   if (h === 'po' || h === 'templates' || h === 'settings' || h === 'now' || h === 'list' || h === 'prs') return { name: h };
   return { name: 'home' };
 }

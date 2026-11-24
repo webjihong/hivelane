@@ -342,13 +342,51 @@ function TextSetting({ label, sub, value, placeholder, disabled, onSave, mono }:
   );
 }
 
-interface RemoteInfo { ownerLogin: string | null; lastRemote: { login: string; at: string } | null }
+interface TsState { installed: boolean; backend: string | null; host: string | null; serving: boolean; url: string | null; otherTargets: string[]; funnel: boolean; error: string | null }
+interface RemoteInfo { ownerLogin: string | null; lastRemote: { login: string; at: string } | null; remotePort?: number; tailscale?: TsState | null }
 
-export function Settings({ snap }: { snap: StateSnapshot }) {
+/** 원격 접속 안내: Tailscale·serve·주인 계정 상태에 따라 지금 할 일 하나만 */
+function RemoteGuide({ info, owner, onRefresh, busy }: { info: RemoteInfo | null; owner: string | null; onRefresh: () => void; busy: boolean }) {
+  const ts = info?.tailscale;
+  const port = info?.remotePort ?? 4312;
+  const cmd = `tailscale serve --bg ${port}`;
+  const copy = (t: string) => { void navigator.clipboard?.writeText(t).then(() => toast('복사했습니다', 'good')).catch(() => {}); };
+  const again = <button className="link-btn" type="button" disabled={busy} onClick={onRefresh}>{busy ? '확인 중…' : '다시 확인'}</button>;
+  let tone = 'warn'; let body: ReactNode;
+  if (!info) body = <>상태 확인 중…</>;
+  else if (!ts) body = <>Tailscale 상태를 읽지 못했습니다. 맥 터미널에서 <code className="mono">{cmd}</code> 를 한 번 실행하면 같은 tailnet 기기에서 열 수 있습니다.</>;
+  else if (!ts.installed) body = <><b>1단계 · Tailscale 설치</b><br />맥과 휴대폰에 <a href="https://tailscale.com/download" target="_blank" rel="noreferrer">Tailscale</a> 을 깔고 같은 계정으로 로그인하세요. 관리 콘솔 › DNS 에서 HTTPS Certificates 도 켭니다. 그다음 다시 확인을 누르세요.</>;
+  else if (!ts.backend && ts.error) body = <><b>Tailscale 상태를 읽지 못했습니다</b><br /><span className="mono">{ts.error}</span><br />맥 터미널에서 <code className="mono">{cmd}</code> 로 직접 켤 수 있습니다.</>;
+  else if (ts.backend !== 'Running') body = <><b>2단계 · Tailscale 연결</b><br />Tailscale 이 {ts.backend === 'NeedsLogin' ? '로그인을 기다립니다' : `꺼져 있습니다(${ts.backend ?? '알 수 없음'})`}. 맥 메뉴 막대의 Tailscale 에서 로그인·연결하세요.</>;
+  else if (ts.funnel) { tone = 'crit'; body = <><b>funnel 이 켜져 있습니다 — 인터넷 누구나 접속을 시도할 수 있습니다.</b><br />터미널에서 <code className="mono">tailscale funnel reset</code> 후 <code className="mono">{cmd}</code> 로 tailnet 안에서만 여세요.</>; }
+  else if (!ts.serving) body = <><b>3단계 · 원격 연결 켜기</b><br />맥 터미널에서 한 번 실행하세요(맥을 다시 켜도 유지): <code className="mono">{cmd}</code> <button className="link-btn" type="button" onClick={() => copy(cmd)}>복사</button>{ts.otherTargets.length > 0 && <><br /><span className="muted">지금 serve 는 다른 곳({ts.otherTargets.join(', ')})으로 연결돼 있습니다. 위 명령이 Hivelane 으로 바꿉니다.</span></>}</>;
+  else if (!owner) body = <><b>4단계 · 주인 계정 등록</b><br />원격 연결은 켜져 있습니다 · <a href={ts.url ?? '#'} target="_blank" rel="noreferrer" className="mono">{ts.url}</a> <button className="link-btn" type="button" onClick={() => copy(ts.url ?? '')}>복사</button><br />휴대폰에서 이 주소를 한 번 열면 아래 「마지막 원격 접속 시도」에 계정이 뜹니다 → 「이 계정을 주인으로」.</>;
+  else { tone = 'good'; body = <><b>✓ 휴대폰에서 쓸 수 있습니다</b> · <a href={ts.url ?? '#'} target="_blank" rel="noreferrer" className="mono">{ts.url}</a> <button className="link-btn" type="button" onClick={() => copy(ts.url ?? '')}>복사</button><br /><span className="muted">휴대폰 브라우저에서 「홈 화면에 추가」하면 앱처럼 쓰고 웹 푸시도 받습니다. funnel 은 쓰지 마세요.</span></>; }
+  return <div className={`rg ${tone}`}><div className="small">{body}</div><div className="rg-a">{again}</div></div>;
+}
+
+/** 검색 안내: 고른 방식에 따라 */
+function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
+  return (
+    <div className="rg info small">
+      <b>무엇에 쓰나</b> — 총괄이 지난 기록(팀 대화·보고·요약·배운 것)을 찾을 때 씁니다. 기본 <b>전문 검색</b>은 늘 켜져 있고 글자가 겹치는 기록을 찾습니다(한국어 3글자 조각).
+      임베딩(<b>벡터 검색</b>)을 켜면 말이 달라도 뜻이 비슷한 기록까지 찾습니다(예: 「결제 오류」로 「PG 승인 실패」 찾기). 기록이 적거나 단어로 충분하면 꺼 둬도 됩니다.
+      {provider === 'off' && <><br /><span className="muted">켜려면 Ollama(맥 안에서 무료) 또는 Voyage(클라우드 유료)를 고르세요.</span></>}
+      {provider === 'ollama' && <><br /><b>Ollama</b> · 기록이 맥 밖으로 나가지 않습니다. 준비: <code className="mono">brew install ollama</code> → <code className="mono">ollama serve</code>(또는 앱 실행) → <code className="mono">ollama pull bge-m3</code>. 모델 기본 bge-m3(한국어 됨), 주소 기본 http://127.0.0.1:11434. 바꾼 뒤 「다시 색인」.</>}
+      {provider === 'voyage' && <><br /><b>Voyage</b> · 기록 글이 voyageai.com 으로 보내집니다(유료). 서버 환경 변수 <code className="mono">VOYAGE_API_KEY</code> 가 있어야 합니다(launchd 서비스면 plist 에 넣고 다시 설치). 모델 예: voyage-3.5. 주소 칸은 쓰지 않습니다. 바꾼 뒤 「다시 색인」.</>}
+      <br /><span className="muted">「다시 색인」은 지금까지의 기록을 처음부터 다시 넣습니다(방식·모델을 바꿨을 때).</span>
+    </div>
+  );
+}
+
+export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search';
+
+export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: SettingsTab }) {
   const ro = snap.access === 'remote';
   const s = snap.settings;
   const [newStanding, setNewStanding] = useState(false);
   const [remote, setRemote] = useState<RemoteInfo | null>(null);
+  const [rBusy, setRBusy] = useState(false);
   const [pushState, setPushState] = useState<'unknown' | 'on' | 'off'>('unknown');
   const [indexing, setIndexing] = useState(false);
 
@@ -364,8 +402,8 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
 
   return (
     <>
-      <Section title="설정" sub="바꾸면 상단 게이지 기준선과 총괄 엔진 판단에 바로 반영">
-        {ro && <div className="ro-note">원격 접속에서는 보기만 할 수 있습니다. 설정·프로젝트·직속 팀은 맥에서 바꾸세요.</div>}
+      {ro && <div className="ro-note">원격 접속에서는 보기만 할 수 있습니다. 설정·프로젝트·직속 팀은 맥에서 바꾸세요.</div>}
+      {tab === 'engine' && <Section title="총괄·엔진" sub="바꾸면 사이드바 게이지 기준선과 총괄 엔진 판단에 바로 반영">
         <div className="set-grid">
           <div className="panel"><h3>총괄 엔진 · 구간 기준</h3>
             {ENGINE_ROWS.map(([k, l, sub, u]) => <Row key={k} label={l} sub={sub} htmlFor={`set-${k}`}><NumField id={`set-${k}`} value={s.engine[k]} unit={u} disabled={ro} onSave={eng(k)} /></Row>)}
@@ -389,24 +427,24 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
             </div>
           </div>
         </div>
-      </Section>
+      </Section>}
 
-      <Section title="프로젝트" sub="팀이 일할 git 저장소">
+      {tab === 'projects' && <Section title="프로젝트" sub="팀이 일할 git 저장소">
         <div className="panel stack-s">
           {snap.projects.length ? snap.projects.map((p) => <ProjectItem key={`${p.id}:${JSON.stringify(p)}`} p={p} snap={snap} ro={ro} />) : <div className="muted">등록된 프로젝트가 없습니다.</div>}
           {!ro && <ProjectNew snap={snap} />}
         </div>
-      </Section>
+      </Section>}
 
-      <Section title="직속 팀" right={!ro && !newStanding ? <button className="back" type="button" onClick={() => setNewStanding(true)}>+ 직속 팀 추가</button> : <span>총괄을 거치지 않고 바로 지시하는 상시 팀</span>}>
+      {tab === 'standing' && <Section title="직속 팀" right={!ro && !newStanding ? <button className="back" type="button" onClick={() => setNewStanding(true)}>+ 직속 팀 추가</button> : <span>총괄을 거치지 않고 바로 지시하는 상시 팀</span>}>
         <div className="panel stack-s">
           {standing.length ? standing.map((t) => <StandingItem key={`${t.id}:${t.name}:${t.standing_brief}:${t.check_command ?? ''}:${t.check_interval_sec ?? ''}`} t={t} snap={snap} ro={ro} />) : <div className="muted">직속 팀이 없습니다.</div>}
           {newStanding && <StandingNew snap={snap} onDone={() => setNewStanding(false)} />}
         </div>
-      </Section>
+      </Section>}
 
-      <div className="set-grid">
-        <Section title="알림" sub="사람 확인 필요·완료·실패·장애">
+      <div className="set-one">
+        {tab === 'notify' && <Section title="알림" sub="사람 확인 필요·완료·실패·장애">
           <div className="panel stack-s">
             <Row label="읽지 않은 답변 다시 알림" sub="답을 안 읽으면 이 간격(분)마다 다시 알림 · 0이면 끔" htmlFor="set-remind"><NumField id="set-remind" value={s.remindUnreadMin} unit="분" step={5} disabled={ro} onSave={(v) => saveSettings({ remindUnreadMin: Math.max(0, Math.round(v)) })} /></Row>
             <TextSetting label="슬랙 웹훅" sub="비우면 끔" value={s.slackWebhook ?? ''} placeholder="https://hooks.slack.com/services/…" mono disabled={ro} onSave={(v) => saveSettings({ slackWebhook: v.trim() || null })} />
@@ -419,10 +457,10 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
               <PushDoctor vapid={snap.vapidPublicKey} />
             </div>
           </div>
-        </Section>
-        <Section title="원격 접속" sub="Tailscale 로 휴대폰에서 보기">
+        </Section>}
+        {tab === 'remote' && <Section title="원격 접속" sub="Tailscale 로 휴대폰에서 보기">
           <div className="panel stack-s">
-            <div className="small">맥에서 <code className="mono">tailscale serve --bg 4312</code> 을 한 번 실행하면 같은 tailnet 의 기기에서 열 수 있습니다. funnel 은 쓰지 마세요.</div>
+            <RemoteGuide info={remote} owner={s.ownerLogin} busy={rBusy} onRefresh={() => { setRBusy(true); api<RemoteInfo>('/api/remote?fresh=1').then(setRemote).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), 'crit')).finally(() => setRBusy(false)); }} />
             <TextSetting label="주인 계정" sub="Tailscale 로그인 (예: me@github)" value={s.ownerLogin ?? ''} mono disabled={ro} onSave={(v) => saveSettings({ ownerLogin: v.trim() || null })} />
             <div className="small muted">
               마지막 원격 접속 시도: {remote?.lastRemote ? <><span className="mono">{remote.lastRemote.login}</span> · {hhmm(remote.lastRemote.at)}</> : '없음'}
@@ -431,19 +469,20 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
               )}
             </div>
           </div>
-        </Section>
-        <Section title="검색" sub="벡터 검색(선택)">
+        </Section>}
+        {tab === 'search' && <Section title="검색" sub="벡터 검색(선택)">
           <div className="panel stack-s">
             <Row label="임베딩" htmlFor="set-emb">
-              <select id="set-emb" disabled={ro} value={s.embedding.provider} onChange={(e) => void saveSettings({ embedding: { provider: e.target.value as SettingsT['embedding']['provider'] } })}>
+              <select id="set-emb" disabled={ro} value={s.embedding.provider} onChange={(e) => { const provider = e.target.value as SettingsT['embedding']['provider']; const model = provider === 'voyage' && s.embedding.model === 'bge-m3' ? 'voyage-3.5' : provider === 'ollama' && s.embedding.model.startsWith('voyage') ? 'bge-m3' : s.embedding.model; void saveSettings({ embedding: { provider, model } }); }}>
                 <option value="off">끔 (전문 검색만)</option><option value="ollama">Ollama</option><option value="voyage">Voyage</option>
               </select>
             </Row>
-            <TextSetting label="모델" value={s.embedding.model} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { model: v.trim() } })} />
-            <TextSetting label="주소" value={s.embedding.url} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { url: v.trim() } })} />
-            {!ro && <div className="row"><button className="btn" type="button" disabled={indexing} onClick={() => { setIndexing(true); void act(async () => { const r = await api<{ indexed: number }>('/api/search/reindex', 'POST', {}); toast(`${r.indexed}건 색인했습니다`, 'good'); }).finally(() => setIndexing(false)); }}>{indexing ? '색인 중…' : '다시 색인'}</button></div>}
+            <SearchGuide provider={s.embedding.provider} />
+            {s.embedding.provider !== 'off' && <TextSetting label="모델" sub={s.embedding.provider === 'ollama' ? 'ollama pull 로 받은 이름' : 'Voyage 모델 이름'} value={s.embedding.model} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { model: v.trim() } })} />}
+            {s.embedding.provider === 'ollama' && <TextSetting label="주소" sub="Ollama 서버" value={s.embedding.url} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { url: v.trim() } })} />}
+            {!ro && s.embedding.provider !== 'off' && <div className="row"><button className="btn" type="button" disabled={indexing} onClick={() => { setIndexing(true); void act(async () => { const r = await api<{ indexed: number }>('/api/search/reindex', 'POST', {}); toast(`${r.indexed}건 색인했습니다`, 'good'); }).finally(() => setIndexing(false)); }}>{indexing ? '색인 중…' : '다시 색인'}</button></div>}
           </div>
-        </Section>
+        </Section>}
       </div>
       <p className="note-sample">Hivelane {snap.version} · {ro ? '원격 접속' : '로컬 접속'}</p>
     </>
