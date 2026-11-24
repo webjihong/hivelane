@@ -8,7 +8,9 @@ export const STATE_LABEL: Record<TeamState, string> = {
   idle: '대기', down: '응답 없음', reviving: '되살리는 중', archived: '보관됨',
 };
 export const PRI: Record<Priority, string> = { urgent: '긴급', normal: '보통', low: '낮음' };
-export const KIND_LABEL: Record<string, string> = { instruction: '지시', handoff: '넘김', question: '질문', reply: '답변', report: '보고', review: '검토', engine: 'PO 엔진' };
+/** 기록에 남은 이름(예전 「PO」)을 화면 이름으로 */
+export function whoLabel(l: string | null | undefined): string { return l === 'PO' ? '총괄' : l === 'PO 엔진' ? '총괄 엔진' : l ?? ''; }
+export const KIND_LABEL: Record<string, string> = { instruction: '지시', handoff: '넘김', question: '질문', reply: '답변', report: '보고', review: '검토', engine: '총괄 엔진' };
 export const MODE_LABEL = { session: '독립 세션', subagent: '서브에이전트' } as const;
 export const AGENT_STATE_LABEL = { busy: '작업 중', idle: '쉬는 중', stop: '일시정지' } as const;
 
@@ -94,7 +96,7 @@ export function Section({ title, sub, right, children }: { title: ReactNode; sub
   );
 }
 
-/** PO 글: 줄바꿈과 **굵게** 정도만. HTML 은 넣지 않는다. */
+/** 총괄 글: 줄바꿈과 **굵게** 정도만. HTML 은 넣지 않는다. */
 function inline(line: string): ReactNode[] {
   return line.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((seg, k) => seg.startsWith('**') && seg.endsWith('**') && seg.length > 4 ? <b key={k}>{seg.slice(2, -2)}</b> : seg.startsWith('`') && seg.endsWith('`') && seg.length > 2 ? <code key={k}>{seg.slice(1, -1)}</code> : seg);
 }

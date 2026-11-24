@@ -69,7 +69,7 @@ describe('직속 팀: PO 생성·종료와 유지', () => {
     const env = setup();
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
     expect(env.orch.message(st.id, '디스크 확인해', 'po')).toBe('delivered');
-    await until(() => env.prompts.some((p) => p.includes('PO 지시: 디스크 확인해')));
+    await until(() => env.prompts.some((p) => p.includes('총괄 지시: 디스크 확인해')));
     await env.orch.idle();
     expect(env.store.getTeam(st.id)!.state).toBe('idle');
   });

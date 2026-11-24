@@ -571,5 +571,6 @@ body { margin: 0; overflow: hidden; }
 
 /* 사이드바 아래 고정: 저장소·PR */
 .sb-bottom .sb-scripts { margin-top: 6px; }
+.sb-bottom .sb-scripts + .sb-h { border-top: 1px solid #23504D; margin-top: 6px; padding-top: 10px; }
 .sb-bottom { flex: none; border-top: 1px solid #23504D; padding: 0 10px 6px; max-height: 38vh; overflow-y: auto; }
 .sb-bottom .sb-h { padding-top: 10px; }

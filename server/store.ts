@@ -365,7 +365,7 @@ export class Store {
     }
   }
 
-  /** 보관 기간: 끝난 지 오래된 팀의 세부 기록과 처리된 PO 사건을 지운다(요약·대화·변경 기록은 남긴다). */
+  /** 보관 기간: 끝난 지 오래된 팀의 세부 기록과 처리된 총괄 사건을 지운다(요약·대화·변경 기록은 남긴다). */
   prune(days = 14): { events: number; runs: number; poEvents: number } {
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
     const old = "SELECT id FROM teams WHERE state IN ('done','failed','archived') AND coalesce(finished_at, updated_at) < @cutoff";
@@ -396,7 +396,7 @@ export class Store {
     bus.emit('indexed', { sourceType, sourceId, text, teamId: team?.id ?? null, projectId: team?.project_id ?? null });
   }
 
-  /* ---------- PO 학습 ---------- */
+  /* ---------- 총괄 학습 ---------- */
   listKnowledge(): KnowledgeView[] {
     return this.db.prepare("SELECT * FROM po_knowledge ORDER BY kind DESC, name").all() as KnowledgeView[];
   }
@@ -415,7 +415,7 @@ export class Store {
     }
     const row = this.getKnowledge(k.name)!;
     this.unindex('knowledge', row.id);
-    this.index('knowledge', row.id, `[PO ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
+    this.index('knowledge', row.id, `[총괄 ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
     bus.changed('knowledge');
     return { row, created: !cur };
   }
@@ -426,7 +426,7 @@ export class Store {
     this.db.prepare('UPDATE po_knowledge SET kind = ?, name = ?, when_to_use = ?, body = ?, updated_at = ? WHERE id = ?').run(n.kind, n.name, n.when_to_use, n.body, nowIso(), cur.id);
     const row = this.getKnowledge(cur.id)!;
     this.unindex('knowledge', row.id);
-    this.index('knowledge', row.id, `[PO ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
+    this.index('knowledge', row.id, `[총괄 ${row.kind === 'skill' ? '스킬' : '메모'}] ${row.name}: ${row.when_to_use}\n${row.body}`, null);
     bus.changed('knowledge');
     return row;
   }
@@ -440,7 +440,7 @@ export class Store {
   }
   touchKnowledge(id: string): void { this.db.prepare('UPDATE po_knowledge SET uses = uses + 1, last_used_at = ? WHERE id = ?').run(nowIso(), id); }
 
-  /* ---------- PO ---------- */
+  /* ---------- 총괄 ---------- */
   addPoEvent(type: string, teamId: string | null, payload: Record<string, unknown> = {}): number {
     const team = this.getTeam(teamId);
     const r = this.db.prepare('INSERT INTO po_events (type, team_id, task_id, payload, created_at) VALUES (?, ?, ?, ?, ?)').run(type, teamId, team?.task_id ?? null, JSON.stringify(payload), nowIso());

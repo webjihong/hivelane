@@ -4,9 +4,9 @@ import { MODEL_LABEL } from './art.ts';
 import { ChatInput } from './ChatInput.tsx';
 import { PrRow } from './Prs.tsx';
 import { act, api, clock, debounce, go, onLive, openAgent, refreshState, toast, useBox } from './store.ts';
-import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money } from './ui.tsx';
+import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money, whoLabel } from './ui.tsx';
 
-const ACTOR: Record<string, string> = { engine: 'PO 엔진', agent: 'PO', user: '사용자' };
+const ACTOR: Record<string, string> = { engine: '총괄 엔진', agent: '총괄', user: '사용자' };
 
 export function useTeamDetail(id: string): { detail: TeamDetail | null; missing: boolean; reload: () => void } {
   const [detail, setDetail] = useState<TeamDetail | null>(null);
@@ -113,7 +113,7 @@ function QaBox({ msgs, working }: { msgs: Msg[]; working: boolean }) {
         <div key={q.id} className={`qa${i > 0 ? ' old' : ''}`}>
           <div className="qa-q"><span className="k instruction">{q.kind === 'reply' ? '내 답' : '내 지시'}</span><time className="mono muted">{hhmm(q.created_at)}</time><div className="qa-qt"><RichText text={q.body} /></div></div>
           {a ? (
-            <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><span className="muted small">{a.to_label === '사용자' ? 'PM → 나' : `PM → ${a.to_label ?? ''} (기록용 보고)`}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
+            <div className="qa-a"><div className="qa-ah"><span className="k report">{a.kind === 'question' ? 'PM 질문' : 'PM 답변'}</span><span className="muted small">{a.to_label === '사용자' ? 'PM → 나' : `PM → ${whoLabel(a.to_label)} (기록용 보고)`}</span><time className="mono muted">{hhmm(a.created_at)}</time></div><div className="msg-body"><RichText text={a.body} /></div></div>
           ) : (
             <div className="qa-a pending">{i === 0 && working ? <>처리 중 <span className="typing"><span /><span /><span /></span></> : '아직 답이 없습니다'}</div>
           )}
@@ -181,7 +181,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
           <span className={`lamp ${lampState(t.state)}`} />
           <span className={`tag ${t.state}`}>{standing && t.state === 'idle' ? '상시 대기' : STATE_LABEL[t.state]}</span>
           {t.priority !== 'normal' && <span className={`chip ${t.priority}`}>{PRI[t.priority]}</span>}
-          <span className="chip">{standing ? '직속 팀' : 'PO 팀'}</span>
+          <span className="chip">{standing ? '직속 팀' : '업무 팀'}</span>
           {t.pinned && <span className="chip">멈추지 않음</span>}
           {t.project_name && <span className="chip">{t.project_name}</span>}
         </div>
@@ -192,7 +192,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
           <span className="muted">{money(t.cost_usd)}{t.budget_usd != null ? ` / 상한 ${money(t.budget_usd)}` : ''}</span>
           <span className="muted">· 만듦 {hhmm(t.created_at)}{t.started_at ? ` · 시작 ${hhmm(t.started_at)} · ${elapsed(t, now)}` : ''}{t.finished_at ? ` · 끝 ${hhmm(t.finished_at)}` : ''}</span>
         </div>
-        {(t.state === 'paused' || t.state === 'queued') && t.paused_reason && <div className="task-note warn">{t.state === 'paused' && t.pause_kind?.startsWith('engine') ? `PO 엔진이 멈춤 · 리소스가 회복되면 자동으로 재개합니다 · ${t.paused_reason}` : t.paused_reason}</div>}
+        {(t.state === 'paused' || t.state === 'queued') && t.paused_reason && <div className="task-note warn">{t.state === 'paused' && t.pause_kind?.startsWith('engine') ? `총괄 엔진이 멈춤 · 리소스가 회복되면 자동으로 재개합니다 · ${t.paused_reason}` : t.paused_reason}</div>}
         {t.resume_grace_until && t.state === 'running' && <div className="task-note">직접 재개함 · {hhmm(t.resume_grace_until)}까지 자동 멈춤 안 함</div>}
         {t.state === 'failed' && <div className="task-note crit">실패: {t.error ?? '이유 없음'}</div>}
         {t.error && t.state !== 'failed' && <div className="task-note warn">{t.error}</div>}
@@ -206,7 +206,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
         )}
         {!embedded && canCompose && (
           <div>
-            <div className="composer-h">{standing ? 'PO를 거치지 않고 이 팀에 바로 지시합니다' : '이 팀 PM에게 직접 지시합니다 · PO도 기록을 함께 봅니다'}{t.state === 'paused' || t.state === 'queued' ? ' · 지금은 멈춰 있어 재개될 때 반영' : ''}</div>
+            <div className="composer-h">{standing ? '총괄을 거치지 않고 이 팀에 바로 지시합니다' : '이 팀 PM에게 직접 지시합니다 · 총괄도 기록을 함께 봅니다'}{t.state === 'paused' || t.state === 'queued' ? ' · 지금은 멈춰 있어 재개될 때 반영' : ''}</div>
             <Composer placeholder={standing ? '예: 지금 api 서버 에러율 확인해줘' : 'PM에게 직접 지시'} label="팀에 직접 지시" button="지시" onSend={message} working={t.state === 'running'} onCancel={() => call('interrupt', {}, '진행 중이던 지시를 취소했습니다')} />
           </div>
         )}
@@ -268,7 +268,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
               {msgs.length ? [...msgs].reverse().map((m) => (
                 <div key={m.id} className="msg"><time className="mono">{hhmm(m.created_at)}</time>
                   <div className={`bubble ${m.kind}`}>
-                    <div className="who"><span className={`k ${m.kind}`}>{KIND_LABEL[m.kind] ?? m.kind}</span><b>{m.from_label}</b>{m.to_label && <span className="muted">→ {m.to_label}</span>}</div>
+                    <div className="who"><span className={`k ${m.kind}`}>{KIND_LABEL[m.kind] ?? m.kind}</span><b>{whoLabel(m.from_label)}</b>{m.to_label && <span className="muted">→ {whoLabel(m.to_label)}</span>}</div>
                     <div className="msg-body"><RichText text={m.body} /></div>
                   </div>
                 </div>
@@ -294,7 +294,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
               </div>
             </>
           )}
-          <div className="panel"><h3>PO 결정 기록</h3>
+          <div className="panel"><h3>총괄 결정 기록</h3>
             <ul className="decisions">{decs.length ? decs.map((d) => <li key={d.id}><span className="mono muted">{hhmm(d.created_at)}</span><span><b>{ACTOR[d.actor] ?? d.actor}</b> · {d.reason || d.action}</span></li>) : <li className="muted">없음</li>}</ul>
           </div>
         </div>

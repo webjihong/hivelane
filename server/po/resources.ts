@@ -93,7 +93,7 @@ export function signalTree(procs: Proc[], sig: 'SIGSTOP' | 'SIGCONT'): number {
   return n;
 }
 
-/* ---------- PO 진단용: 누가 CPU·메모리를 쓰는지 ---------- */
+/* ---------- 총괄 진단용: 누가 CPU·메모리를 쓰는지 ---------- */
 
 export interface ProcDetail extends Proc { etime: string; command: string }
 
@@ -137,7 +137,7 @@ export interface DiagInput {
   top?: number;
 }
 
-/** 사람·PO 가 읽을 진단 보고서. 순수 함수(테스트 가능). */
+/** 사람·총괄이 읽을 진단 보고서. 순수 함수(테스트 가능). */
 export function diagnose(d: DiagInput): { text: string; origins: number[] } {
   const byPid = new Map(d.procs.map((p) => [p.pid, p]));
   const teamOf = new Map<number, string>();

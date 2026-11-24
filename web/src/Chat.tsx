@@ -124,7 +124,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const [kn, setKn] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const sb = useStickToBottom(bodyRef);
-  // 대화창이 실제로 보이는 동안(데스크톱 옆 칸·모바일 PO 탭) PO 답을 읽음으로
+  // 대화창이 실제로 보이는 동안(데스크톱 옆 칸·모바일 총괄 탭) 총괄 답을 읽음으로
   const lastChat = rows.length ? rows[rows.length - 1]!.id : 0;
   useEffect(() => {
     if (!snap.poUnread || !lastChat) return;
@@ -147,17 +147,17 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
   const sendText = async (v: string) => { const r = await act(() => api('/api/chat', 'POST', { text: v })); sb.stickNow(); return r !== undefined; };
 
   return (
-    <section className="chat po-chan" aria-label="PO 대화">
+    <section className="chat po-chan" aria-label="총괄 대화">
       <div className="chat-h">
         <a href="#list" className="tc-back" aria-label="채널 목록">←</a>
         <span className={`sdot ${snap.poBusy ? 'run' : 'idle'}`} />
-        <div className="tc-title"><h1>PO</h1><div className="tc-sub">{snap.poBusy ? '생각 중…' : '대기 · 지시하면 깨어남'} · 팀 구성·진행 확인·맥 진단</div></div>
+        <div className="tc-title"><h1>총괄</h1><div className="tc-sub">{snap.poBusy ? '생각 중…' : '대기 · 지시하면 깨어남'} · 팀 구성·진행 확인·맥 진단</div></div>
         <button className="btn kn-btn" type="button" onClick={() => setKn(true)}>배운 것 {snap.knowledgeCount}</button>
       </div>
       {kn && <KnowledgeDrawer onClose={() => setKn(false)} />}
       <div className="tc-scroll">
       <div className="chat-body" ref={bodyRef} onScroll={sb.onScroll}>
-        {rows.length === 0 && <div className="c ev">PO에게 할 일을 지시하거나 진행 상황을 물어보세요. PO가 팀 구성을 제안하면 여기서 승인합니다.</div>}
+        {rows.length === 0 && <div className="c ev">총괄에게 할 일을 지시하거나 진행 상황을 물어보세요. 총괄이 팀 구성을 제안하면 여기서 승인합니다.</div>}
         {rows.map((c) => <Row key={c.id} c={c} snap={snap} outcome={outcome} />)}
         {snap.poBusy && <div className="c po thinking">생각 중 <span className="typing"><span /><span /><span /></span></div>}
       </div>
@@ -165,7 +165,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
       </div>
       <div className="chat-f">
         <div className="hints">{HINTS.map((h) => <button key={h} className="hint" type="button" disabled={sending} onClick={() => void send(h)}>{h}</button>)}</div>
-        <ChatInput placeholder="PO에게 지시하거나 질문하기" label="PO에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
+        <ChatInput placeholder="총괄에게 지시하거나 질문하기" label="총괄에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
       </div>
     </section>
   );

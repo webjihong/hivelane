@@ -15,7 +15,7 @@ const log = logger('engine');
 export interface Sampler { cpu(): number; mem(): Promise<number>; procs(): Promise<Proc[]> }
 export const realSampler = (): Sampler => { const m = new CpuMeter(); return { cpu: () => m.sample(), mem: memPercent, procs: listProcs }; };
 
-/** PO 엔진: LLM 없이 규칙으로 리소스를 지킨다. */
+/** 총괄 엔진: LLM 없이 규칙으로 리소스를 지킨다. */
 export class Engine {
   private zones = new ZoneTracker();
   private lastPauseAt = 0;

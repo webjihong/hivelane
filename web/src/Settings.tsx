@@ -48,11 +48,11 @@ const ENGINE_ROWS: [keyof EngineSettings, string, string, string][] = [
   ['resumeSec', '재개 대기', '초록이 이만큼 유지되면 하나씩 재개', '초'],
   ['hardPauseSec', '강한 멈춤까지', '빨강이 이만큼 이어지면 프로세스 정지', '초'],
   ['pauseEverySec', '멈춤 간격', '빨강에서 팀을 하나씩 멈추는 간격', '초'],
-  ['stallMin', '정체 판단', '활동이 없으면 PO를 깨움', '분'],
+  ['stallMin', '정체 판단', '활동이 없으면 총괄을 깨움', '분'],
   ['beatSec', '직속 팀 생존 확인 간격', '무응답이면 되살리기 시작', '초'],
 ];
 const CONC_ROWS: [keyof EngineSettings, string, string, string][] = [
-  ['cap', '동시 PO 팀 상한', '직속 팀은 세지 않음', '개'],
+  ['cap', '동시 업무 팀 상한', '직속 팀은 세지 않음', '개'],
   ['slotsGreen', '무거운 명령 자리 (초록)', 'jest·vitest·tsc·build', '개'],
   ['slotsYellow', '무거운 명령 자리 (노랑)', '', '개'],
 ];
@@ -364,27 +364,27 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
 
   return (
     <>
-      <Section title="설정" sub="바꾸면 상단 게이지 기준선과 PO 엔진 판단에 바로 반영">
+      <Section title="설정" sub="바꾸면 상단 게이지 기준선과 총괄 엔진 판단에 바로 반영">
         {ro && <div className="ro-note">원격 접속에서는 보기만 할 수 있습니다. 설정·프로젝트·직속 팀은 맥에서 바꾸세요.</div>}
         <div className="set-grid">
-          <div className="panel"><h3>PO 엔진 · 구간 기준</h3>
+          <div className="panel"><h3>총괄 엔진 · 구간 기준</h3>
             {ENGINE_ROWS.map(([k, l, sub, u]) => <Row key={k} label={l} sub={sub} htmlFor={`set-${k}`}><NumField id={`set-${k}`} value={s.engine[k]} unit={u} disabled={ro} onSave={eng(k)} /></Row>)}
           </div>
           <div className="stack">
             <div className="panel"><h3>동시 실행</h3>
               {CONC_ROWS.map(([k, l, sub, u]) => <Row key={k} label={l} sub={sub} htmlFor={`set-${k}`}><NumField id={`set-${k}`} value={s.engine[k]} unit={u} disabled={ro} onSave={eng(k)} /></Row>)}
             </div>
-            <div className="panel"><h3>PO 에이전트</h3>
-              <Row label="PO 모델" htmlFor="set-poModel">
+            <div className="panel"><h3>총괄 에이전트</h3>
+              <Row label="총괄 모델" htmlFor="set-poModel">
                 <select id="set-poModel" disabled={ro} value={s.poModel} onChange={(e) => void saveSettings({ poModel: e.target.value as Model })}>
                   <option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option>
                 </select>
               </Row>
-              <Row label="팀 구성 자동 승인" sub="켜면 PO 제안을 확인 없이 바로 시작" htmlFor="set-auto">
+              <Row label="팀 구성 자동 승인" sub="켜면 총괄 제안을 확인 없이 바로 시작" htmlFor="set-auto">
                 <input className="switch" type="checkbox" id="set-auto" disabled={ro} checked={s.autoApprove} onChange={(e) => void saveSettings({ autoApprove: e.target.checked }, e.target.checked ? '자동 승인을 켰습니다' : '자동 승인을 껐습니다')} />
               </Row>
               <Row label="업무 기본 예산" sub="비우면 무제한 · 팀마다 승인할 때 바꿀 수 있음" htmlFor="set-budget"><BudgetField id="set-budget" value={s.defaultBudgetUsd} disabled={ro} onSave={(v) => saveSettings({ defaultBudgetUsd: v })} /></Row>
-              <Row label="맥락 한도" sub="넘으면 새 PO 세션 + 요약으로 시작" htmlFor="set-ctx"><NumField id="set-ctx" value={s.contextLimitTokens} unit="토큰" step={1000} disabled={ro} onSave={(v) => saveSettings({ contextLimitTokens: v })} /></Row>
+              <Row label="맥락 한도" sub="넘으면 새 총괄 세션 + 요약으로 시작" htmlFor="set-ctx"><NumField id="set-ctx" value={s.contextLimitTokens} unit="토큰" step={1000} disabled={ro} onSave={(v) => saveSettings({ contextLimitTokens: v })} /></Row>
             </div>
           </div>
         </div>
@@ -397,7 +397,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
         </div>
       </Section>
 
-      <Section title="직속 팀" right={!ro && !newStanding ? <button className="back" type="button" onClick={() => setNewStanding(true)}>+ 직속 팀 추가</button> : <span>PO를 거치지 않고 바로 지시하는 상시 팀</span>}>
+      <Section title="직속 팀" right={!ro && !newStanding ? <button className="back" type="button" onClick={() => setNewStanding(true)}>+ 직속 팀 추가</button> : <span>총괄을 거치지 않고 바로 지시하는 상시 팀</span>}>
         <div className="panel stack-s">
           {standing.length ? standing.map((t) => <StandingItem key={`${t.id}:${t.name}:${t.standing_brief}:${t.check_command ?? ''}:${t.check_interval_sec ?? ''}`} t={t} snap={snap} ro={ro} />) : <div className="muted">직속 팀이 없습니다.</div>}
           {newStanding && <StandingNew snap={snap} onDone={() => setNewStanding(false)} />}

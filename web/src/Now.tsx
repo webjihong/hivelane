@@ -88,9 +88,9 @@ export function Now({ snap }: { snap: StateSnapshot }) {
             {needs.map((t) => <Need key={t.id} t={t} snap={snap} />)}
             {proposals.map((p) => (
               <article key={p.id} className="nw-card ask">
-                <div className="nw-meta"><b>PO 팀 구성 제안</b> · {p.project_name ?? '프로젝트 없음'}</div>
+                <div className="nw-meta"><b>총괄 팀 구성 제안</b> · {p.project_name ?? '프로젝트 없음'}</div>
                 <div className="nw-q">{p.title}</div>
-                <div className="nw-acts"><a className="btn primary" href="#po">PO에서 승인·수정</a></div>
+                <div className="nw-acts"><a className="btn primary" href="#po">총괄에서 승인·수정</a></div>
               </article>
             ))}
           </div>
@@ -110,8 +110,8 @@ export function Now({ snap }: { snap: StateSnapshot }) {
             ))}
             {lastPo && (
               <a href="#po" className="nw-row">
-                <span className="nw-kind news">PO 답변</span>
-                <span className="nw-text"><b>PO</b>{snap.poUnread > 1 ? ` (${snap.poUnread})` : ''} · {preview(lastPo.body)}</span>
+                <span className="nw-kind news">총괄 답변</span>
+                <span className="nw-text"><b>총괄</b>{snap.poUnread > 1 ? ` (${snap.poUnread})` : ''} · {preview(lastPo.body)}</span>
                 <span className="nw-when">{ago(lastPo.created_at, now)}</span>
               </a>
             )}
@@ -139,7 +139,7 @@ export function Now({ snap }: { snap: StateSnapshot }) {
               </a>
             ))}
           </div>
-        ) : <div className="nw-empty">지금 일하는 팀이 없습니다. PO에게 지시하거나 팀 채널에서 바로 시키세요.</div>}
+        ) : <div className="nw-empty">지금 일하는 팀이 없습니다. 총괄에게 지시하거나 팀 채널에서 바로 시키세요.</div>}
       </section>
 
       {openPrs.length > 0 && (

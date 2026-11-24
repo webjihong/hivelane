@@ -53,11 +53,11 @@ export function KnowledgeDrawer({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <aside className="drawer" aria-label="PO가 배운 것">
+      <aside className="drawer" aria-label="총괄이 배운 것">
         <div className="drawer-h">
           <div>
-            <h2>PO가 배운 것</h2>
-            <div className="drawer-sub muted">PO에게 「이렇게 하는 법 배워둬」, 「기억해」, 「잊어」라고 말하면 여기에 쌓입니다. 스킬은 해당 상황에 꺼내 쓰고, 메모는 늘 기억합니다.</div>
+            <h2>총괄이 배운 것</h2>
+            <div className="drawer-sub muted">총괄에게 「이렇게 하는 법 배워둬」, 「기억해」, 「잊어」라고 말하면 여기에 쌓입니다. 스킬은 해당 상황에 꺼내 쓰고, 메모는 늘 기억합니다.</div>
           </div>
           <button className="btn" type="button" onClick={onClose}>닫기</button>
         </div>

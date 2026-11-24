@@ -141,7 +141,7 @@ export function Templates({ snap }: { snap: StateSnapshot }) {
   };
   return (
     <>
-      <Section title="팀 템플릿" right={<span>PO가 팀을 구성할 때 고르는 틀 · 바꾸면 다음 팀부터 적용{!readOnly && !draft && <> · <button className="back" type="button" onClick={startNew}>새 템플릿</button></>}</span>}>
+      <Section title="팀 템플릿" right={<span>총괄이 팀을 구성할 때 고르는 틀 · 바꾸면 다음 팀부터 적용{!readOnly && !draft && <> · <button className="back" type="button" onClick={startNew}>새 템플릿</button></>}</span>}>
         {readOnly && <div className="ro-note">원격 접속에서는 보기만 할 수 있습니다. 템플릿은 맥에서 바꾸세요.</div>}
         <div className="stack">
           {draft && <TemplateEditor key="new" tpl={draft} readOnly={false} isNew existing={snap.templates.map((t) => t.id)} onDone={() => setDraft(null)} />}

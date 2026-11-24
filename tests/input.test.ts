@@ -66,6 +66,6 @@ describe('진행 중 취소', () => {
     expect(await env.po.cancel()).toBe(true);
     await until(() => !env.po.busy);
     const chat = env.store.chat(10).map((c) => `${c.role}:${c.body}`);
-    expect(chat.at(-1)).toBe('event:사용자가 PO 응답을 취소함');
+    expect(chat.at(-1)).toBe('event:사용자가 총괄 응답을 취소함');
   });
 });

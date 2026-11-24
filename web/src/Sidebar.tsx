@@ -42,7 +42,7 @@ function AuthModal({ onClose }: { onClose: () => void }) {
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" aria-label="Claude 재인증">
-        <div className="drawer-h"><div><h2>Claude 재인증</h2><div className="drawer-sub muted">터미널의 claude auth login 과 같습니다 · 팀·PO 가 쓰는 로그인이 바뀝니다</div></div><div className="row"><button className="btn" type="button" onClick={onClose}>닫기</button></div></div>
+        <div className="drawer-h"><div><h2>Claude 재인증</h2><div className="drawer-sub muted">터미널의 claude auth login 과 같습니다 · 팀·총괄이 쓰는 로그인이 바뀝니다</div></div><div className="row"><button className="btn" type="button" onClick={onClose}>닫기</button></div></div>
         <div className="drawer-b au">
           {v?.phase === 'done' && <p className="au-ok">다시 로그인했습니다. 사용량·인증 표시가 곧 새로 고쳐집니다.</p>}
           {v?.phase === 'failed' && <p className="crit-t">끝나지 않았습니다: {v.error}</p>}
@@ -125,7 +125,7 @@ function ResourceModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               </details>
-              <p className="muted small">PO에게 「CPU 왜 높아?」라고 물으면 같은 자료로 원인과 조치를 정리해 줍니다.</p>
+              <p className="muted small">총괄에게 「CPU 왜 높아?」라고 물으면 같은 자료로 원인과 조치를 정리해 줍니다.</p>
             </>
           )}
         </div>
@@ -247,12 +247,12 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
         </a>
         <a href="#po" className={`sb-item sb-po${r.name === 'po' ? ' on' : ''}${snap.poUnread || poPending ? ' loud' : ''}`}>
           <span className={`sdot ${snap.poBusy ? 'run' : 'idle'}`} aria-label={snap.poBusy ? '생각 중' : '대기'} />
-          <span className="sb-name">PO</span>
+          <span className="sb-name">총괄</span>
           {poPending > 0 ? <span className="sb-badge ask">제안 {poPending}</span> : snap.poUnread > 0 ? <span className="sb-badge">{snap.poUnread}</span> : <span className={`sb-note ${snap.poBusy ? 't-run' : 't-muted'}`}>{snap.poBusy ? '생각 중' : '대기'}</span>}
         </a>
 
         <div className="sb-h">직속 팀<a href="#settings" className="sb-add" aria-label="직속 팀 추가" title="직속 팀 추가(설정)">＋</a></div>
-        {standing.length ? standing.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">없음 · PO에게 「직속팀 만들어줘」</div>}
+        {standing.length ? standing.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">없음 · 총괄에게 「직속팀 만들어줘」</div>}
 
         <div className="sb-h">업무 팀</div>
         {tasks.length ? tasks.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">진행 중인 업무 없음</div>}

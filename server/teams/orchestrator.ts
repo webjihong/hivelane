@@ -470,12 +470,12 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const team = store.getTeam(teamId)!;
     store.addSummary({ team_id: teamId, stage: '최종', body: r.summary });
-    // 보고 받는 쪽: 이번 일을 시킨 쪽(사용자가 직접 지시했으면 사용자, 아니면 PO)
+    // 보고 받는 쪽: 이번 일을 시킨 쪽(사용자가 직접 지시했으면 사용자, 아니면 총괄)
     const asker = this.askerOf(teamId);
     store.addMessage({ team_id: teamId, from_label: 'PM', to_label: asker.from === '사용자' ? '사용자' : 'PO', kind: 'report', body: r.summary });
     if (team.lifetime === 'standing') {
       store.updateTeam(teamId, { state: 'idle' });
-      // PO 가 맡긴 일의 답은 PO 에게 사건으로 넘겨 사용자에게 전하게 한다
+      // 총괄이 맡긴 일의 답은 총괄에게 사건으로 넘겨 사용자에게 전하게 한다
       if (asker.from === 'PO') store.addPoEvent('team_reply', teamId, { status: r.status, asked: truncate(asker.body, 300), answer: truncate(r.summary, 2500) });
       this.deps.notifier.send({ title: `${team.name} 답변`, body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
       return;
@@ -528,7 +528,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     } else if (['queued', 'waiting_human', 'running', 'idle', 'down', 'reviving'].includes(team.state) || l?.starting) {
       store.updateTeam(teamId, { state: 'paused' });
     }
-    // 엔진 멈춤은 PO 를 깨우지 않는다(빨강 구간에 PO 턴까지 돌면 부하만 늘어난다)
+    // 엔진 멈춤은 총괄을 깨우지 않는다(빨강 구간에 총괄 턴까지 돌면 부하만 늘어난다)
     if (kind !== 'user') this.deps.notifier.send({ title: '팀 일시정지', body: `${team.name}: ${reason}`, level: 'warn', url: `/#team-${teamId}`, tag: `pause-${teamId}` });
   }
 
@@ -607,11 +607,12 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const team = store.getTeam(teamId);
     if (!team) throw new Error('팀이 없습니다');
     if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀에는 지시할 수 없습니다. 다시 시작하거나 새 업무로 맡기세요.');
-    const who = actor === 'user' ? '사용자' : 'PO';
+    const who = actor === 'user' ? '사용자' : '총괄';
+    const fromLabel = actor === 'user' ? '사용자' : 'PO'; // 기록값은 예전 그대로('PO') — 화면이 「총괄」로 보여 준다
     const l = this.L(teamId);
     // 사람에게 온 질문(예산 포함)이 걸려 있으면 사람의 말은 그 질문의 답이다(답으로 한 번만 남긴다)
     if (!l.loop && team.question && actor === 'user' && ['waiting_human', 'idle', 'down', 'paused'].includes(team.state)) { this.answer(teamId, text); return 'delivered'; }
-    store.addMessage({ team_id: teamId, from_label: who, to_label: 'PM', kind: 'instruction', body: text });
+    store.addMessage({ team_id: teamId, from_label: fromLabel, to_label: 'PM', kind: 'instruction', body: text });
     text = forAgent(this.deps.cfg, text);
     if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
     if (team.lifetime === 'standing') { this.wake(teamId, `${who} 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
@@ -677,7 +678,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     this.deps.store.addDecision(teamId, actor, 'pin', on ? '멈추지 않음' : '멈추지 않음 해제');
   }
 
-  /** 직속 팀 종료: 사용자가 직접 또는 PO 에게 시켰을 때만 호출된다. */
+  /** 직속 팀 종료: 사용자가 직접 또는 총괄에게 시켰을 때만 호출된다. */
   async endStanding(teamId: string, actor: 'user' | 'agent', reason: string): Promise<void> {
     const t = this.deps.store.getTeam(teamId);
     if (!t || t.lifetime !== 'standing') throw new ConflictError('직속 팀이 아닙니다');

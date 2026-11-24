@@ -1,15 +1,15 @@
 # Hivelane
 
 맥 한 대에서 **AI 개발팀 여러 개**를 동시에 돌리는 관제실입니다.
-PO에게 일을 말하면 PO가 팀(PM·개발·QA…)을 꾸려 맡기고, PO 엔진이 맥의 CPU·메모리를 보며 팀을 멈추고 다시 돌립니다.
+총괄에게 일을 말하면 총괄이 팀(PM·개발·QA…)을 꾸려 맡기고, 총괄 엔진이 맥의 CPU·메모리를 보며 팀을 멈추고 다시 돌립니다.
 진행 상황은 메신저처럼 생긴 웹 화면에서 맥과 휴대폰으로 봅니다.
 
-> *Hivelane is a local orchestrator that runs several Claude Code agent teams on one Mac, with a PO agent that plans and a resource engine that pauses/resumes teams. The UI is in Korean.*
+> *Hivelane is a local orchestrator that runs several Claude Code agent teams on one Mac, with a lead agent ("총괄") that plans and a resource engine that pauses/resumes teams. The UI is in Korean.*
 
 ## 무엇을 하나
 
-- **PO 에이전트**: 지시를 받아 팀 구성을 제안하고, 진행을 보고, 작업 질문에 기록을 찾아 답합니다. git 정리·맥 진단도 맡깁니다.
-- **PO 엔진**: 5초마다 CPU·메모리를 재고 초록/노랑/빨강 구간에 맞춰 팀을 시작·멈춤·재개합니다. 테스트·빌드 같은 무거운 명령은 대기열로 돌립니다.
+- **총괄 에이전트**: 지시를 받아 팀 구성을 제안하고, 진행을 보고, 작업 질문에 기록을 찾아 답합니다. git 정리·맥 진단도 맡깁니다.
+- **총괄 엔진**: 5초마다 CPU·메모리를 재고 초록/노랑/빨강 구간에 맞춰 팀을 시작·멈춤·재개합니다. 테스트·빌드 같은 무거운 명령은 대기열로 돌립니다.
 - **업무 팀**: PM과 역할별 팀원이 업무마다 따로 만든 git worktree에서 일합니다. 커밋·푸시·운영 명령은 기본으로 막혀 있습니다.
 - **직속 팀**: 서버 점검·긴급 대응처럼 늘 대기하며 바로 지시받는 팀입니다. 죽으면 스스로 되살아납니다.
 - **PR·저장소·스크립트**: 열린 PR의 검사·리뷰를 보고 병합하고, 저장소 상태를 보고, 자주 쓰는 터미널 명령을 버튼으로 실행합니다(휴대폰에서도).
@@ -19,7 +19,7 @@ PO에게 일을 말하면 PO가 팀(PM·개발·QA…)을 꾸려 맡기고, PO �
 ## 문서
 
 - [설치 가이드](docs/INSTALL.md): 준비물, 설치, 상시 실행, 휴대폰(Tailscale), 업데이트·제거, 문제 해결
-- [사용 가이드](docs/GUIDE.md): 화면 구성, PO에게 일 맡기기, 팀 채널, PR·스크립트, 설정, 안전장치
+- [사용 가이드](docs/GUIDE.md): 화면 구성, 총괄에게 일 맡기기, 팀 채널, PR·스크립트, 설정, 안전장치
 - [명세](docs/SPEC.md): 설계와 동작 규칙(개발자용)
 
 ## 빠른 시작
@@ -59,12 +59,12 @@ server/
   store.ts            SQLite 접근(모든 기록)
   agents/             Agent SDK 실행(runner) · 경로·명령 가드 · 역할 지시문
   teams/              팀 생성·PM 턴 루프·질문/답변·멈춤/재개·직속 팀·복구 · PM 전용 도구
-  po/                 PO 에이전트·도구 · 엔진(측정·정책) · 무거운 명령 슬롯 · 플랜 사용량 · 재인증
+  po/                 총괄 에이전트·도구 · 엔진(측정·정책) · 무거운 명령 슬롯 · 플랜 사용량 · 재인증
   projects/           worktree·PR·저장소 상태·git 정리
   scripts.ts          스크립트 버튼 실행
   search/             FTS5(한국어 trigram) + 선택적 벡터 검색
   http/app.ts         REST·SSE·접근 제어
-web/src/              React 화면(채널 목록·지금 볼 것·PO·팀 채널·PR·스크립트·설정), PWA
+web/src/              React 화면(채널 목록·지금 볼 것·총괄·팀 채널·PR·스크립트·설정), PWA
 shared/types.ts       서버·화면 공용 타입
 ```
 

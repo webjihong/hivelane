@@ -5,7 +5,7 @@ import { ChatInput } from './ChatInput.tsx';
 import { DOT_LABEL, dotOf, sideNote } from './chan.ts';
 import { act, api, clock, go, refreshState, toast, useBox } from './store.ts';
 import { Team, useTeamDetail } from './Team.tsx';
-import { RichText, hhmm, money } from './ui.tsx';
+import { RichText, hhmm, money, whoLabel } from './ui.tsx';
 
 type Msg = TeamDetail['messages'][number];
 
@@ -14,7 +14,7 @@ function Fold({ m }: { m: Msg }) {
   const head = m.body.replace(/\s+/g, ' ').slice(0, 90);
   return (
     <details className="tc-fold">
-      <summary><span className="mono muted">{hhmm(m.created_at)}</span> <b>{m.from_label}</b> → {m.to_label} · {m.kind === 'handoff' ? '맡김' : '보고'}: <span className="muted">{head}{m.body.length > 90 ? '…' : ''}</span></summary>
+      <summary><span className="mono muted">{hhmm(m.created_at)}</span> <b>{whoLabel(m.from_label)}</b> → {whoLabel(m.to_label)} · {m.kind === 'handoff' ? '맡김' : '보고'}: <span className="muted">{head}{m.body.length > 90 ? '…' : ''}</span></summary>
       <div className="tc-fold-b"><RichText text={m.body} /></div>
     </details>
   );
@@ -29,16 +29,16 @@ function Line({ m }: { m: Msg }) {
     <div className="tc-them">
       <span className="tc-av" aria-hidden="true">PM</span>
       <div className="tc-col">
-        <div className="tc-who"><b>PM</b> {m.kind === 'question' ? '질문' : m.to_label === '사용자' ? '답변' : 'PO 에게 보고'} · <span className="mono">{hhmm(m.created_at)}</span></div>
+        <div className="tc-who"><b>PM</b> {m.kind === 'question' ? '질문' : m.to_label === '사용자' ? '답변' : '총괄에게 보고'} · <span className="mono">{hhmm(m.created_at)}</span></div>
         <div className={`tc-bub${m.kind === 'question' ? ' q' : ''}`}><RichText text={m.body} /></div>
       </div>
     </div>
   );
   if (m.from_label === 'PO') return (
     <div className="tc-them">
-      <span className="tc-av po" aria-hidden="true">PO</span>
+      <span className="tc-av po" aria-hidden="true">총괄</span>
       <div className="tc-col">
-        <div className="tc-who"><b>PO</b> 지시 · <span className="mono">{hhmm(m.created_at)}</span></div>
+        <div className="tc-who"><b>총괄</b> 지시 · <span className="mono">{hhmm(m.created_at)}</span></div>
         <div className="tc-bub po"><RichText text={m.body} /></div>
       </div>
     </div>
@@ -145,7 +145,7 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
               cancelLabel="진행 취소"
             />
           </div>
-        ) : <div className="tc-in muted">끝난 팀입니다. 이어서 하려면 PO에게 새 업무로 맡기세요.</div>}
+        ) : <div className="tc-in muted">끝난 팀입니다. 이어서 하려면 총괄에게 새 업무로 맡기세요.</div>}
       </section>
       {detail && (
         <aside className="tc-detail" aria-label="팀 상세">

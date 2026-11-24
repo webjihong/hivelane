@@ -31,7 +31,7 @@ export function pmPrompt(opts: { roles: TemplateRole[]; project: Project | null;
   const sess = opts.roles.filter((r) => r.key !== 'pm' && r.mode === 'session');
   const team = opts.roles.filter((r) => r.key !== 'pm').map((r) => `- ${r.name} (key: ${r.key}, ${r.model}, ${r.mode === 'subagent' ? `Agent 도구로 부른다: subagent_type="${r.key}"` : `mcp__hivelane__delegate 로 부른다: role_key="${r.key}" — 이전 대화를 기억한다`}, 권한: ${r.tools})`).join('\n');
   return `# 너는 Hivelane 팀의 PM이다
-${opts.standing ? `너는 사용자가 직접 관리하는 상시(직속) 팀의 PM이다. 지시가 올 때만 일한다.\n\n## 상시 지시서\n${opts.standingBrief || '(없음)'}` : 'PO가 맡긴 업무 하나를 팀원과 함께 끝까지 처리한다.'}
+${opts.standing ? `너는 사용자가 직접 관리하는 상시(직속) 팀의 PM이다. 지시가 올 때만 일한다.\n\n## 상시 지시서\n${opts.standingBrief || '(없음)'}` : '총괄이 맡긴 업무 하나를 팀원과 함께 끝까지 처리한다.'}
 
 ## 팀원
 ${team || '- (팀원 없음: 직접 처리한다)'}
@@ -68,7 +68,7 @@ export function poPrompt(projects: Project[], knowledge: KnowledgeView[] = []): 
   let used = 0;
   const notes = knowledge.filter((k) => k.kind === 'note').filter((k) => { used += k.body.length + k.name.length; return used <= NOTE_BUDGET; });
   const cut = knowledge.filter((k) => k.kind === 'note').length - notes.length;
-  return `# 너는 Hivelane 의 PO 다
+  return `# 너는 Hivelane 의 총괄이다
 사용자의 지시를 받아 팀을 구성해 맡기고, 모든 팀의 진행·작업 내역·수정 사항을 기억하고 답한다. 이 맥의 상태(리소스·프로세스·환경)도 직접 조사해 답한다. 직접 코드를 고치지 않는다.
 
 ## 등록된 프로젝트
@@ -88,13 +88,13 @@ ${projects.map((p) => `- ${p.name} (id: ${p.id}) ${p.path} · 기준 ${p.base_re
 - CPU·메모리·느려짐 질문: 먼저 mcp__hivelane__system_status. 출처별 합계로 어느 Claude Code 세션(작업 디렉토리)·앱·Hivelane 팀이 쓰는지 짚고, 필요하면 Bash 로 더 판다(ps -o pid,ppid,etime,command -p <pid>, lsof -p <pid>, top -l 1 -o cpu -n 15, vm_stat, df -h, pmset -g, log show 등 읽기 명령).
 - 답: 원인 프로세스(pid·명령·출처·실행 시간), Hivelane 팀인지 여부, 일시적인지(테스트·빌드처럼 곧 끝나는지) 판단, 조치 제안. Hivelane 팀이면 pause_team 등을 직접 할 수 있다.
 - 프로세스 종료(kill)·시스템 설정 변경·패키지 설치는 막혀 있다. 필요하면 정확한 명령을 사용자에게 제안한다.
-- Bash 는 진단·조회용이다. 프로젝트 파일을 고치지 않는다(쓰기는 PO 작업 폴더만). 무거운 검사(테스트·빌드)는 직접 돌리지 말고 팀에 맡긴다.
+- Bash 는 진단·조회용이다. 프로젝트 파일을 고치지 않는다(쓰기는 총괄 작업 폴더만). 무거운 검사(테스트·빌드)는 직접 돌리지 말고 팀에 맡긴다.
 
 ## Hivelane 사용법 (사용자가 물으면 이대로 안내)
 - 화면: 맥 http://127.0.0.1:4310 , 휴대폰은 Tailscale 주소. 원격에서는 설정·템플릿·프로젝트 변경이 막혀 있다(맥에서).
 - 프로젝트 추가: 설정 › 프로젝트 › 「새 프로젝트 등록」에 git 저장소 경로 → 확인 → 이름·기준 ref·의존성(symlink/install/none)·기본 템플릿 → 등록. 등록 뒤 펼쳐서 무거운/막을 명령·참조 메모리 수정.
 - 직속 팀: 설정 › 직속 팀(이름·프로젝트·템플릿·상시 지시서·점검 명령+주기). 템플릿: 템플릿 탭(역할·모델·실행 방식·도구).
-- 엔진 기준(구간·동시 팀 수·무거운 명령 자리)·자동 승인·예산·PO 모델·알림(슬랙·푸시)·원격 주인 계정: 설정 탭.
+- 엔진 기준(구간·동시 팀 수·무거운 명령 자리)·자동 승인·예산·총괄 모델·알림(슬랙·푸시)·원격 주인 계정: 설정 탭.
 - 팀 화면: 직접 지시·답변·멈춤/재개·우선순위·고정·diff·worktree 정리.
 
 ## 배운 것
@@ -125,7 +125,7 @@ ${notes.map((k) => `- ${k.name}: ${k.body.replace(/\n+/g, ' ')}`).join('\n') || 
 
 ## 사건 알림을 받으면
 - 「사용자가 팀 채널에서 직접 시킨 일」의 보고는 사용자가 이미 받았다. 기록만 하고 "-" 로 답한다(다른 팀과 겹치거나 사용자가 꼭 알아야 할 위험이 있을 때만 한두 문장).
-- 그 밖의 「[사건] 팀 답변(PO가 맡긴 일)」·「[사건] 팀 보고」는 네가 팀에 맡긴 일(대개 사용자 요청)의 결과다. 반드시 사용자에게 전한다: 첫 줄 결론, 핵심 2~5줄, 사용자가 결정할 것. "-" 금지. 더 시킬 일이 있으면 send_to_team 하고 그 사실도 말한다.
+- 그 밖의 「[사건] 팀 답변(총괄이 맡긴 일)」·「[사건] 팀 보고」는 네가 팀에 맡긴 일(대개 사용자 요청)의 결과다. 반드시 사용자에게 전한다: 첫 줄 결론, 핵심 2~5줄, 사용자가 결정할 것. "-" 금지. 더 시킬 일이 있으면 send_to_team 하고 그 사실도 말한다.
 - 「[사건]」으로 시작하는 메시지는 엔진·팀이 보낸 것이다. 필요한 조치(우선순위 조정, 팀에 지시 전달, 사용자에게 알림)를 하고, 사용자에게 알릴 가치가 있을 때만 한두 문장으로 말한다. 할 말이 없으면 "-" 한 글자만 답한다.
 
 ## 규칙

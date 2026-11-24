@@ -28,7 +28,7 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
 type Job = { kind: 'user'; text: string } | { kind: 'events' };
 
 const EVENT_LABEL: Record<string, string> = {
-  team_reply: '팀 답변(PO가 맡긴 일)', report: '팀 보고', ask_human: '사람 확인 필요', stall: '정체', paused: '일시정지', overlap: '파일 겹침', budget: '예산 상한', error: '팀 오류', standing_down: '직속 팀 장애',
+  team_reply: '팀 답변(총괄이 맡긴 일)', report: '팀 보고', ask_human: '사람 확인 필요', stall: '정체', paused: '일시정지', overlap: '파일 겹침', budget: '예산 상한', error: '팀 오류', standing_down: '직속 팀 장애',
 };
 
 export interface PoTools {
@@ -52,7 +52,7 @@ export class PoAgent {
   private eventTimer: NodeJS.Timeout | null = null;
   private handle: TurnHandle | null = null;
   busy = false;
-  /** 이번 PO 턴에 사용자 메시지가 있는가(직속 팀 생성·종료는 사용자가 시킨 턴에만) */
+  /** 이번 총괄 턴에 사용자 메시지가 있는가(직속 팀 생성·종료는 사용자가 시킨 턴에만) */
   private userTurn = false;
   private cancelled = false;
 
@@ -63,7 +63,7 @@ export class PoAgent {
     if (deps.store.pendingPoEvents().length) this.scheduleEvents();
   }
 
-  /** 사용자 → PO */
+  /** 사용자 → 총괄 */
   say(textIn: string): void {
     this.deps.store.addChat({ role: 'user', body: textIn });
     this.jobs.push({ kind: 'user', text: textIn });
@@ -135,32 +135,32 @@ export class PoAgent {
       }, handle);
       if (this.cancelled) {
         this.cancelled = false;
-        store.addChat({ role: 'event', body: '사용자가 PO 응답을 취소함', tone: 'info' });
+        store.addChat({ role: 'event', body: '사용자가 총괄 응답을 취소함', tone: 'info' });
         return;
       }
       if (res.ok) store.markPoEventsHandled(events.map((e) => e.id));
       if (res.contextTokens > store.getSettings().contextLimitTokens) {
         store.updateAgent(agent.id, { session_id: null });
-        log.info(`PO 맥락 ${Math.round(res.contextTokens / 1000)}k → 다음 턴 새 세션`);
+        log.info(`총괄 맥락 ${Math.round(res.contextTokens / 1000)}k → 다음 턴 새 세션`);
       }
       const say = res.text.trim();
-      // 팀이 보낸 답(PO 가 맡긴 일의 결과·업무 완료)은 사용자에게 반드시 전해져야 한다
+      // 팀이 보낸 답(총괄이 맡긴 일의 결과·업무 완료)은 사용자에게 반드시 전해져야 한다
       // 사용자가 팀 채널에서 직접 시킨 일의 완료 보고는 사용자가 이미 받았으니 제외
       const replies = events.filter((e) => e.type === 'team_reply' || (e.type === 'report' && parseJson<Record<string, unknown>>(e.payload, {}).asked_by !== '사용자'));
       const spoke = res.ok && !!say && say !== '-';
-      if (!res.ok) store.addChat({ role: 'event', body: `PO 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
+      if (!res.ok) store.addChat({ role: 'event', body: `총괄 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
       if (spoke) {
         const links = replies.filter((e) => e.team_id).map((e) => ({ label: `${store.getTeam(e.team_id)?.name ?? '팀'} 채널`, href: `#team-${e.team_id}` }));
         store.addChat({ role: 'po', body: say, links: links.length ? links : undefined });
-        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? 'PO · 팀 답변 전달' : 'PO 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
+        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? '총괄 · 팀 답변 전달' : '총괄 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
       } else {
-        // PO 가 말하지 않았거나 실패했어도 팀 답은 그대로 전한다
+        // 총괄이 말하지 않았거나 실패했어도 팀 답은 그대로 전한다
         for (const e of replies) {
           const p = parseJson<Record<string, unknown>>(e.payload, {});
           if (typeof p.answer !== 'string') continue;
           const t = store.getTeam(e.team_id);
           store.addChat({ role: 'po', body: `**「${t?.name ?? '팀'}」 답변이 왔습니다**\n\n${truncate(p.answer, 1500)}`, links: e.team_id ? [{ label: '팀 채널 열기', href: `#team-${e.team_id}` }] : undefined, team_id: e.team_id });
-          void this.deps.notifier.send({ title: `PO · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
+          void this.deps.notifier.send({ title: `총괄 · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
         }
         // 이미 전했으니 다시 처리하지 않는다(실패로 남은 다른 사건은 다음 턴에)
         store.markPoEventsHandled(replies.map((e) => e.id));
@@ -168,7 +168,7 @@ export class PoAgent {
       if (!res.ok && agent.session_id && /session|resume/i.test(res.error ?? '')) store.updateAgent(agent.id, { session_id: null });
     } catch (e) {
       log.error('PO 턴 실패', e);
-      store.addChat({ role: 'event', body: `PO 오류: ${e instanceof Error ? e.message : e}`, tone: 'warn' });
+      store.addChat({ role: 'event', body: `총괄 오류: ${e instanceof Error ? e.message : e}`, tone: 'warn' });
     } finally {
       this.busy = false;
       this.userTurn = false;
@@ -179,7 +179,7 @@ export class PoAgent {
 
   async stop(): Promise<void> { await this.handle?.interrupt(); }
 
-  /** 사용자가 진행 중인 PO 응답을 취소: 대기 중인 메시지도 버린다. 돌고 있지 않으면 false. */
+  /** 사용자가 진행 중인 총괄 응답을 취소: 대기 중인 메시지도 버린다. 돌고 있지 않으면 false. */
   async cancel(): Promise<boolean> {
     const had = this.busy || this.jobs.length > 0;
     this.jobs = this.jobs.filter((j) => j.kind === 'events');
@@ -197,7 +197,7 @@ export class PoAgent {
     const chat = store.chat(12).map((c) => `${c.role}: ${truncate(c.body, 200)}`).join('\n');
     return `## 현재 현황 (DB에서 읽음, 새 세션)
 진행 중 팀:
-${active.map((t) => `- ${t.id} ${t.name} · ${t.state} · ${t.lifetime === 'standing' ? '직속' : 'PO'} · 우선순위 ${t.priority}`).join('\n') || '- 없음'}
+${active.map((t) => `- ${t.id} ${t.name} · ${t.state} · ${t.lifetime === 'standing' ? '직속' : '업무'} · 우선순위 ${t.priority}`).join('\n') || '- 없음'}
 최근 끝난 팀:
 ${recent.map((t) => `- ${t.id} ${t.name} · ${t.state} · ${t.finished_at ?? ''}`).join('\n') || '- 없음'}
 최근 대화:
@@ -208,7 +208,7 @@ ${chat}
 
   tools(): PoTools {
     const { store, orch, search, cfg } = this.deps;
-    const teamLine = (t: TeamRow) => `- ${t.id} 「${t.name}」 ${t.state}${t.paused_reason ? `(${t.paused_reason})` : ''} · ${t.lifetime === 'standing' ? '직속' : 'PO'} · ${store.getProject(t.project_id)?.name ?? '-'} · 우선순위 ${t.priority}${t.pinned ? '·고정' : ''} · 단계 ${['기획', '구현', '검사', '보고', '끝'][t.stage]} · $${t.cost_usd.toFixed(2)}`;
+    const teamLine = (t: TeamRow) => `- ${t.id} 「${t.name}」 ${t.state}${t.paused_reason ? `(${t.paused_reason})` : ''} · ${t.lifetime === 'standing' ? '직속' : '업무'} · ${store.getProject(t.project_id)?.name ?? '-'} · 우선순위 ${t.priority}${t.pinned ? '·고정' : ''} · 단계 ${['기획', '구현', '검사', '보고', '끝'][t.stage]} · $${t.cost_usd.toFixed(2)}`;
     const projectId = (name?: string | null) => (name ? store.findProjectByName(name)?.id ?? null : null);
     return {
       listProjects: () => store.listProjects().map((p) => `- ${p.id} ${p.name} · ${p.path} · 기준 ${p.base_ref} · 의존성 ${p.deps_strategy}`).join('\n') || '등록된 프로젝트가 없다.',
@@ -265,7 +265,7 @@ ${chat}
       },
       learn: (k) => {
         const { row, created } = store.saveKnowledge(k);
-        store.addChat({ role: 'event', body: `PO가 ${created ? '배움' : '고쳐 배움'} · ${row.kind === 'skill' ? '스킬' : '메모'} 「${row.name}」`, tone: 'good' });
+        store.addChat({ role: 'event', body: `총괄이 ${created ? '배움' : '고쳐 배움'} · ${row.kind === 'skill' ? '스킬' : '메모'} 「${row.name}」`, tone: 'good' });
         return `${created ? '저장' : '갱신'}했다: ${row.kind} 「${row.name}」 (${row.id})`;
       },
       recall: (name) => {
@@ -277,7 +277,7 @@ ${chat}
       forget: (name) => {
         const k = store.getKnowledge(name);
         if (!k || !store.deleteKnowledge(k.id)) return `「${name}」 없음.`;
-        store.addChat({ role: 'event', body: `PO가 잊음 · 「${k.name}」`, tone: 'info' });
+        store.addChat({ role: 'event', body: `총괄이 잊음 · 「${k.name}」`, tone: 'info' });
         return `지웠다: 「${k.name}」`;
       },
       createStanding: (p) => {
@@ -286,7 +286,7 @@ ${chat}
         if (p.project && !pid) return `거절: 프로젝트 「${p.project}」 없음. list_projects 로 확인해라.`;
         if (!store.getTemplate(p.template_id)) return `거절: 템플릿 ${p.template_id} 없음.`;
         const t = orch.createStanding({ name: p.name, project_id: pid, template_id: p.template_id, roles: p.roles, brief: p.brief, check_command: p.check_command ?? null, check_interval_sec: p.check_command ? (p.check_interval_sec ?? 300) : null });
-        store.addChat({ role: 'event', body: `직속 팀 생성 · 「${t.name}」 (PO가 사용자 지시로 만듦)`, team_id: t.id, tone: 'good' });
+        store.addChat({ role: 'event', body: `직속 팀 생성 · 「${t.name}」 (총괄이 사용자 지시로 만듦)`, team_id: t.id, tone: 'good' });
         return `직속 팀 ${t.id} 「${t.name}」 를 만들었다. 평소 대기하다가 지시·점검 이상 때 깨어나고, 사용자가 끝내라고 할 때까지 유지된다.`;
       },
       updateStanding: (teamId, p) => {
@@ -299,8 +299,8 @@ ${chat}
         if (!this.userTurn) return '거절: 직속 팀 종료는 사용자가 이번 대화에서 끝내라고 했을 때만 한다.';
         const t = store.getTeam(teamId);
         if (!t || t.lifetime !== 'standing') return '직속 팀이 아니다.';
-        await orch.endStanding(teamId, 'agent', `PO(사용자 지시): ${reason}`);
-        store.addChat({ role: 'event', body: `직속 팀 종료 · 「${t.name}」 (사용자 지시로 PO가 종료)`, team_id: teamId, tone: 'info' });
+        await orch.endStanding(teamId, 'agent', `총괄(사용자 지시): ${reason}`);
+        store.addChat({ role: 'event', body: `직속 팀 종료 · 「${t.name}」 (사용자 지시로 총괄이 종료)`, team_id: teamId, tone: 'info' });
         return `직속 팀 「${t.name}」 를 종료했다.`;
       },
       scanGitCleanup: async (project) => {
@@ -324,8 +324,8 @@ ${chat}
       },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
-      pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `PO: ${reason}`); return '멈췄다.'; },
-      resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', 'PO 재개'); return '재개했다.'; },
+      pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `총괄: ${reason}`); return '멈췄다.'; },
+      resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', '총괄 재개'); return '재개했다.'; },
       pinTeam: (teamId, on) => { orch.pin(teamId, on, 'agent'); return on ? '멈추지 않음으로 설정했다.' : '해제했다.'; },
     };
   }
@@ -333,7 +333,7 @@ ${chat}
 
 const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
 
-/** PO 의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
+/** 총괄의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
 
 const roleSchema = z.object({ key: z.string(), name: z.string(), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().optional() });
