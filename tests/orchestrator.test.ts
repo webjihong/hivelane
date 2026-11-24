@@ -253,6 +253,31 @@ describe('리뷰 지적 회귀', () => {
     expect(() => env.orch.message(team.id, '더 해줘')).toThrow(/끝난 팀/);
   });
 
+  it('1인 팀(역할이 pm 하나): 격리 환경이어도 쓰기·Bash 도구, 직접 고치는 프롬프트 · 막을 명령은 그대로', async () => {
+    const env = setup(async (spec) => { tools(spec).report('done', 'ok'); });
+    env.store.upsertTemplate({ id: 'tpl-solo', name: '1인팀', description: '', roles: [{ key: 'pm', name: 'PM', model: 'opus', mode: 'session', tools: 'pm' }] });
+    const team = env.orch.createFromProposal(env.propose('tpl-solo').id);
+    await env.orch.start(team.id); await env.orch.idle();
+    const spec = env.runner.calls[0]!;
+    expect(spec.envMine).toBe(false);
+    expect(spec.allowedTools).toEqual(expect.arrayContaining(['Edit', 'Write', 'Bash', 'Agent', 'mcp__hivelane__report']));
+    expect(spec.systemAppend).toContain('1인 팀');
+    expect(spec.systemAppend).not.toContain('직접 코드를 고치지 않는다');
+    expect(spec.systemAppend).toContain('승인 요청');
+    expect(spec.blockedPatterns?.length).toBeGreaterThan(0);
+  });
+
+  it('팀원이 있는 팀의 PM 은 기존대로 읽기·지휘 도구와 PM 프롬프트', async () => {
+    const env = setup(async (spec) => { tools(spec).report('done', 'ok'); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    const spec = env.runner.calls[0]!;
+    expect(spec.allowedTools).not.toContain('Edit');
+    expect(spec.allowedTools).not.toContain('Bash');
+    expect(spec.systemAppend).toContain('직접 코드를 고치지 않는다');
+    expect(spec.systemAppend).not.toContain('1인 팀');
+  });
+
   it('M7: 보관 기간이 지난 팀의 세부 기록과 처리된 PO 사건을 정리, 파일 색인은 바뀐 것만', async () => {
     const env = setup(async (spec) => { tools(spec).report('done', 'ok'); });
     const team = env.orch.createFromProposal(env.propose().id);

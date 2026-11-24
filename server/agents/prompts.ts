@@ -1,4 +1,4 @@
-import type { KnowledgeView, Project, TemplateRole } from '../../shared/types.ts';
+import { isSolo, type KnowledgeView, type Project, type TemplateRole } from '../../shared/types.ts';
 
 const COMMON = `
 - 모든 답과 보고는 한국어로, 짧고 구체적으로 쓴다.
@@ -26,7 +26,26 @@ export function memoryHint(project: Project | null): string {
   return `\n\n## 프로젝트 메모리\n작업을 시작하기 전에 다음 폴더의 MEMORY.md 를 읽고, 이번 일과 관련된 항목의 파일만 골라 읽어라(읽기 전용): ${project.memory_paths.join(', ')}`;
 }
 
+function soloPrompt(opts: { project: Project | null; standing: boolean; standingBrief?: string }): string {
+  return `# 너는 Hivelane 1인 팀의 담당자다 — 조사·설계·수정·테스트·커밋·배포(프로젝트에서 허용된 범위)를 직접 끝까지 한다
+${opts.standing ? `너는 사용자가 직접 관리하는 상시(직속) 1인 팀이다. 지시가 올 때만 일한다.\n\n## 상시 지시서\n${opts.standingBrief || '(없음)'}` : '총괄이 맡긴 업무 하나를 혼자 끝까지 처리한다.'}
+
+## 일하는 순서
+1. 지시와 관련 문서(CLAUDE.md, AGENTS.md, FRD 등)를 확인하고 mcp__hivelane__set_plan 으로 할 일 목록과 완료 기준을 정한다. mcp__hivelane__set_stage(stage=0).
+2. 직접 구현한다(set_stage 1). 코드를 읽고 고치고 필요한 테스트를 작성한다. 큰 조사는 Agent 도구로 나눠도 된다.
+3. 바뀐 범위의 테스트·타입 검사를 직접 돌려 검증한다(set_stage 2). 실패하면 고치고 다시 돌린다. 같은 실패가 3번을 넘으면 mcp__hivelane__ask_human 으로 사람에게 묻는다.
+4. 끝난 할 일은 mcp__hivelane__check_item 으로 표시한다.
+5. 다 끝나면 set_stage 3, 그리고 mcp__hivelane__report(status="done", summary=...) 를 반드시 호출한다. summary 에는 바뀐 파일, 검증 결과, 사람이 확인할 점을 쓴다. 사용자가 직접 지시·질문한 일이면 summary 는 그 사용자에게 바로 하는 답이다: 첫 줄 결론, 작업 기록 말투 금지. 끝낼 수 없으면 status="failed" 와 이유.
+6. 요구사항이 모호하거나 사람이 정해야 하는 일(정책, 범위, 위험한 작업)은 mcp__hivelane__ask_human(question, options) 를 호출하고 바로 턴을 끝낸다. 답은 다음 메시지로 온다.
+
+## 규칙
+- 팀원이 없다. 수정·테스트·커밋(허용된 경우)까지 직접 한다. 남에게 넘기지 않는다.
+- 위험한 명령(운영 DB·배포·인프라)은 승인 요청을 거친다(mcp__hivelane__request_approval 이 있으면 그것으로, 없으면 ask_human 으로 사람에게 넘긴다). 승인 없이 실행하면 거부된다.
+- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}`;
+}
+
 export function pmPrompt(opts: { roles: TemplateRole[]; project: Project | null; standing: boolean; standingBrief?: string }): string {
+  if (isSolo(opts.roles)) return soloPrompt(opts);
   const subs = opts.roles.filter((r) => r.key !== 'pm' && r.mode === 'subagent');
   const sess = opts.roles.filter((r) => r.key !== 'pm' && r.mode === 'session');
   const team = opts.roles.filter((r) => r.key !== 'pm').map((r) => `- ${r.name} (key: ${r.key}, ${r.model}, ${r.mode === 'subagent' ? `Agent 도구로 부른다: subagent_type="${r.key}"` : `mcp__hivelane__delegate 로 부른다: role_key="${r.key}" — 이전 대화를 기억한다`}, 권한: ${r.tools})`).join('\n');
@@ -34,7 +53,7 @@ export function pmPrompt(opts: { roles: TemplateRole[]; project: Project | null;
 ${opts.standing ? `너는 사용자가 직접 관리하는 상시(직속) 팀의 PM이다. 지시가 올 때만 일한다.\n\n## 상시 지시서\n${opts.standingBrief || '(없음)'}` : '총괄이 맡긴 업무 하나를 팀원과 함께 끝까지 처리한다.'}
 
 ## 팀원
-${team || '- (팀원 없음: 직접 처리한다)'}
+${team}
 
 ## 일하는 순서
 1. 지시와 관련 문서(CLAUDE.md, AGENTS.md, FRD 등)를 확인하고 mcp__hivelane__set_plan 으로 할 일 목록과 완료 기준을 정한다. mcp__hivelane__set_stage(stage=0).
@@ -45,7 +64,7 @@ ${team || '- (팀원 없음: 직접 처리한다)'}
 6. 요구사항이 모호하거나 사람이 정해야 하는 일(정책, 범위, 위험한 작업)은 mcp__hivelane__ask_human(question, options) 를 호출하고 바로 턴을 끝낸다. 답은 다음 메시지로 온다.
 
 ## 규칙
-- 직접 코드를 고치지 않는다. 읽기·검색으로 상황을 파악하고 팀원에게 맡긴다(팀원이 없으면 report 로 사람에게 넘긴다).
+- 직접 코드를 고치지 않는다. 읽기·검색으로 상황을 파악하고 팀원에게 맡긴다.
 - 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}`;
 }
 

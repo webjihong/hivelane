@@ -1,6 +1,6 @@
 import { MODEL_LABEL } from './art.ts';
 import { useState } from 'react';
-import { TOOL_PRESET_LABEL, type Model, type RunMode, type StateSnapshot, type TeamTemplate, type TemplateRole, type ToolPreset } from '../../shared/types.ts';
+import { isSolo, SOLO_TOOLS_LABEL, TOOL_PRESET_LABEL, type Model, type RunMode, type StateSnapshot, type TeamTemplate, type TemplateRole, type ToolPreset } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { ConfirmButton, Section } from './ui.tsx';
 
@@ -28,6 +28,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
   const id = isNew ? makeId(d.name, existing) : d.id;
   const dirty = isNew || JSON.stringify(d) !== JSON.stringify(tpl);
   const sessions = d.roles.filter((r) => r.mode === 'session' || r.key === 'pm').length;
+  const solo = isSolo(d.roles);
 
   const setRole = (i: number, patch: Partial<TemplateRole>) => setD((t) => ({ ...t, roles: t.roles.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
   const keyErr = d.roles.map((r, i) => !KEY_RE.test(r.key) ? '소문자·숫자·-·_ 만' : d.roles.findIndex((x) => x.key === r.key) !== i ? '중복' : r.key.length > 20 ? '20자 이하' : '');
@@ -77,9 +78,11 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
                     <option value="session">독립 세션</option><option value="subagent">서브에이전트</option>
                   </select>
                 )}</td>
-                <td><select disabled={readOnly || pm} value={r.tools} onChange={(e) => setRole(i, { tools: e.target.value as ToolPreset })} aria-label={`${r.name} 허용 도구`} title={TOOL_PRESET_LABEL[r.tools]}>
-                  {PRESETS.map((p) => <option key={p} value={p}>{TOOL_PRESET_LABEL[p]}</option>)}
-                </select></td>
+                <td>{pm && solo ? <span className="small" title="역할이 하나면 1인 팀으로 동작">{SOLO_TOOLS_LABEL}</span> : (
+                  <select disabled={readOnly || pm} value={r.tools} onChange={(e) => setRole(i, { tools: e.target.value as ToolPreset })} aria-label={`${r.name} 허용 도구`} title={TOOL_PRESET_LABEL[r.tools]}>
+                    {PRESETS.map((p) => <option key={p} value={p}>{TOOL_PRESET_LABEL[p]}</option>)}
+                  </select>
+                )}</td>
                 <td className="nowrap">
                   <button className="btn" type="button" onClick={() => setOpenPrompt(openPrompt === `${i}` ? null : `${i}`)}>{r.prompt ? '프롬프트 ✎' : '프롬프트'}</button>
                   {!readOnly && !pm && <button className="btn" type="button" onClick={() => setD({ ...d, roles: d.roles.filter((_, j) => j !== i) })}>빼기</button>}
@@ -94,6 +97,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
           })}
         </tbody>
       </table></div>
+      {solo && <div className="muted small" style={{ marginTop: 6 }}>역할이 하나면 1인 팀으로 동작: 혼자 수정·테스트·배포까지 함</div>}
       {!readOnly && (
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn" type="button" disabled={d.roles.length >= 8} onClick={() => setD({ ...d, roles: [...d.roles, { key: uniqueKey(d.roles, 'review'), name: '리뷰어', model: 'opus', mode: 'subagent', tools: 'read' }] })}>역할 추가</button>

@@ -337,6 +337,12 @@ export interface AgentDetail {
   runs: { id: number; tool: string; command: string | null; status: string; waited_ms: number; started_at: string; ended_at: string | null }[];
 }
 
+/** 1인 팀: pm 외 역할이 없으면 PM 이 조사·수정·테스트·배포까지 혼자 한다. */
+export function isSolo(roles: Pick<TemplateRole, 'key'>[]): boolean {
+  return !roles.some((r) => r.key !== 'pm');
+}
+export const SOLO_TOOLS_LABEL = '모두(조사·수정·실행·커밋)';
+
 export const TOOL_PRESET_LABEL: Record<ToolPreset, string> = {
   pm: '읽기·검색, 팀 지휘(delegate·ask·report)',
   write: '읽기·쓰기·Bash (커밋·푸시·운영 명령 차단)',

@@ -15,7 +15,7 @@ import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
 import { presetTools, TurnHandle, type TurnResult, type TurnSpec } from '../agents/runner.ts';
 import type { HeavySlots } from '../po/slots.ts';
 import { teamMcpServer, teamToolNames, type TeamTools } from './tools.ts';
-import type { Priority, Project, TemplateRole } from '../../shared/types.ts';
+import { isSolo, type Priority, type Project, type TemplateRole } from '../../shared/types.ts';
 
 const log = logger('team');
 
@@ -427,7 +427,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const env = this.envFor(team, project);
     return {
       agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote + env.note,
-      allowedTools: [...presetTools(env.envMine ? 'write' : 'pm'), ...teamToolNames(sessionRoles.length > 0, readable, !!env.approval)],
+      allowedTools: [...(isSolo(roles) ? [...presetTools('write'), 'Agent', 'WebFetch', 'WebSearch'] : presetTools(env.envMine ? 'write' : 'pm')), ...teamToolNames(sessionRoles.length > 0, readable, !!env.approval)],
       additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path), cfg.uploadsDir],
       writableRoots: [wt, ...env.extraWritable],
       heavyPatterns: project?.heavy_patterns ?? [],
