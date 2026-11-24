@@ -365,7 +365,8 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/ollama/stop', async (c) => { localOnly(c); ol().stop(); return c.json(await ol().status()); });
   app.post('/api/ollama/pull', async (c) => { localOnly(c); const b = await body(c, z.object({ model: z.string().min(1).max(100) })); olDo(() => ol().pull(b.model)); return c.json(await ol().status()); });
   app.get('/api/remote', async (c) => c.json({ ownerLogin: store.getSettings().ownerLogin, lastRemote: store.getKv('last_remote_login', null), remotePort: d.cfg.remotePort, tailscale: await tailscaleState(d.cfg.remotePort, !!c.req.query('fresh')).catch(() => null) }));
-  app.post('/api/search/reindex', async (c) => { localOnly(c); return c.json({ indexed: await search.reindexAll() }); });
+  app.post('/api/search/reindex', (c) => { localOnly(c); try { return c.json(search.startReindex()); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.get('/api/search/status', (c) => c.json(search.status()));
   app.get('/api/search', async (c) => c.json(await search.search(c.req.query('q') ?? '', { projectId: c.req.query('project') || null })));
 
   /* ---------- 푸시 ---------- */

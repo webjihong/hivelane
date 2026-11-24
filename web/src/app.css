@@ -656,3 +656,8 @@ a.fin-name:hover { text-decoration: underline; }
 .ol-job { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .ol-bar { width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; display: inline-block; }
 .ol-bar > i { display: block; height: 6px; background: var(--accent, #1F6F6A); }
+
+.ix { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ix-h { display: flex; align-items: center; gap: 8px; }
+.ix-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ix-k { width: 110px; flex: none; color: var(--muted); font-size: 12px; }

@@ -2,10 +2,14 @@ import * as sqliteVec from 'sqlite-vec';
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Store } from '../store.ts';
+import type { SearchStatusView } from '../../shared/types.ts';
 
 const log = logger('search');
 
 export interface Hit { source_type: string; source_id: string; project_id: string | null; task_id: string | null; team_id: string | null; created_at: string; text: string; score: number; via: 'fts' | 'like' | 'vector' }
+
+/** 벡터 색인 기록(kv vec_meta) */
+interface VecMeta { dim: number; provider?: string; model?: string; lastFullAt?: string; lastFullCount?: number; lastAddAt?: string; lastError?: string | null; lastErrorAt?: string }
 
 interface IndexedEvent { sourceType: string; sourceId: string; text: string; teamId: string | null; projectId: string | null }
 
@@ -15,10 +19,11 @@ export class Search {
   private dim = 0;
   private queue: IndexedEvent[] = [];
   private draining = false;
+  private job: { running: boolean; done: number; total: number; error: string | null; startedAt: string } | null = null;
 
   constructor(private store: Store) {
     try { sqliteVec.load(store.db); this.vecReady = true; } catch (e) { log.warn('sqlite-vec 로드 실패, 벡터 검색 꺼짐', e); }
-    const meta = store.getKv<{ dim: number } | null>('vec_meta', null);
+    const meta = store.getKv<VecMeta | null>('vec_meta', null);
     if (meta && this.vecReady) this.dim = meta.dim;
     bus.on('indexed', (e: IndexedEvent) => { if (this.enabled()) { this.queue.push(e); void this.drain(); } });
   }
@@ -47,7 +52,35 @@ export class Search {
     if (this.dim && this.dim !== dim) this.store.db.exec('DROP TABLE IF EXISTS search_vec');
     this.store.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS search_vec USING vec0(embedding float[${dim}])`);
     this.dim = dim;
-    this.store.setKv('vec_meta', { dim });
+    this.patchMeta({ dim });
+  }
+
+  private meta(): VecMeta { return this.store.getKv<VecMeta>('vec_meta', { dim: 0 }); }
+  private patchMeta(p: Partial<VecMeta>): void { this.store.setKv('vec_meta', { ...this.meta(), ...p }); }
+
+  /** 색인 상태(설정 화면): 기록 수·벡터 수·마지막 색인·모델·오류·진행 중 작업 */
+  status(): SearchStatusView {
+    const e = this.store.getSettings().embedding;
+    const m = this.meta();
+    const docs = (this.store.db.prepare('SELECT count(*) n FROM search_fts').get() as { n: number }).n;
+    let vectors = 0;
+    if (this.vecReady && this.dim) { try { vectors = (this.store.db.prepare('SELECT count(*) n FROM search_vec').get() as { n: number }).n; } catch { vectors = 0; } }
+    const indexedWith = m.model ? { provider: m.provider ?? null, model: m.model } : null;
+    return {
+      vecReady: this.vecReady, enabled: this.enabled(), provider: e.provider, model: e.model, dim: this.dim || null,
+      docs, vectors, indexedWith, modelMismatch: !!indexedWith && (indexedWith.provider !== e.provider || indexedWith.model !== e.model) && vectors > 0,
+      lastFullAt: m.lastFullAt ?? null, lastFullCount: m.lastFullCount ?? null, lastAddAt: m.lastAddAt ?? null,
+      lastError: m.lastError ?? null, lastErrorAt: m.lastErrorAt ?? null, job: this.job ? { ...this.job } : null,
+    };
+  }
+
+  /** 다시 색인을 백그라운드로 시작(진행률은 status().job) */
+  startReindex(): SearchStatusView {
+    if (!this.enabled()) throw new Error('임베딩이 꺼져 있습니다');
+    if (this.job?.running) return this.status();
+    this.job = { running: true, done: 0, total: 0, error: null, startedAt: new Date().toISOString() };
+    void this.reindexAll().catch((err) => { if (this.job) this.job = { ...this.job, running: false, error: err instanceof Error ? err.message : String(err) }; });
+    return this.status();
   }
 
   private async drain(): Promise<void> {
@@ -62,9 +95,11 @@ export class Search {
         this.ensureVecTable(vecs[0].length);
         const ins = this.store.db.prepare('INSERT OR REPLACE INTO search_vec(rowid, embedding) VALUES (?, ?)');
         vecs.forEach((v, i) => { const r = rows[i]; if (r) ins.run(BigInt(r.rowid), new Float32Array(v)); });
+        this.patchMeta({ lastAddAt: new Date().toISOString(), lastError: null });
       }
     } catch (e) {
       log.warn('벡터 색인 실패(나중에 「다시 색인」으로 채울 수 있음)', e);
+      this.patchMeta({ lastError: e instanceof Error ? e.message : String(e), lastErrorAt: new Date().toISOString() });
       this.queue = [];
     } finally { this.draining = false; }
   }
@@ -73,16 +108,29 @@ export class Search {
   async reindexAll(): Promise<number> {
     if (!this.enabled()) throw new Error('임베딩이 꺼져 있습니다');
     const rows = this.store.db.prepare('SELECT rowid, text FROM search_fts').all() as { rowid: number; text: string }[];
+    const e = this.store.getSettings().embedding;
+    const m = this.meta();
+    // 모델이 바뀌었으면 예전 벡터와 섞이지 않게 비우고 시작(차원이 같아도 뜻 공간이 다르다)
+    if (this.dim && (m.model !== e.model || m.provider !== e.provider)) { this.store.db.exec('DROP TABLE IF EXISTS search_vec'); this.dim = 0; }
+    if (this.job) this.job.total = rows.length;
     let n = 0;
-    for (let i = 0; i < rows.length; i += 32) {
-      const batch = rows.slice(i, i + 32);
-      const vecs = await this.embed(batch.map((r) => r.text.slice(0, 4000)));
-      if (!vecs[0]) continue;
-      this.ensureVecTable(vecs[0].length);
-      const ins = this.store.db.prepare('INSERT OR REPLACE INTO search_vec(rowid, embedding) VALUES (?, ?)');
-      vecs.forEach((v, j) => ins.run(BigInt(batch[j]!.rowid), new Float32Array(v)));
-      n += batch.length;
+    try {
+      for (let i = 0; i < rows.length; i += 32) {
+        const batch = rows.slice(i, i + 32);
+        const vecs = await this.embed(batch.map((r) => r.text.slice(0, 4000)));
+        if (!vecs[0]) continue;
+        this.ensureVecTable(vecs[0].length);
+        const ins = this.store.db.prepare('INSERT OR REPLACE INTO search_vec(rowid, embedding) VALUES (?, ?)');
+        vecs.forEach((v, j) => ins.run(BigInt(batch[j]!.rowid), new Float32Array(v)));
+        n += batch.length;
+        if (this.job) this.job.done = n;
+      }
+    } catch (err) {
+      this.patchMeta({ lastError: err instanceof Error ? err.message : String(err), lastErrorAt: new Date().toISOString() });
+      throw err;
     }
+    this.patchMeta({ provider: e.provider, model: e.model, lastFullAt: new Date().toISOString(), lastFullCount: n, lastError: null });
+    if (this.job) this.job = { ...this.job, running: false, done: n };
     return n;
   }
 
@@ -106,7 +154,9 @@ export class Search {
       const rows = this.store.db.prepare(`SELECT rowid, *, 0 AS score FROM search_fts WHERE ${like}${where} ORDER BY rowid DESC LIMIT ?`).all(...words.map((w) => `%${w}%`), ...args, limit) as (Hit & { rowid: number })[];
       hits.push(...rows.map((r) => ({ ...r, via: 'like' as const })));
     }
-    if (this.enabled() && this.dim) {
+    const vm = this.meta();
+    const sameModel = !vm.model || (vm.model === this.store.getSettings().embedding.model && vm.provider === this.store.getSettings().embedding.provider);
+    if (this.enabled() && this.dim && sameModel) {
       try {
         const [v] = await this.embed([term]);
         if (v && v.length === this.dim) {

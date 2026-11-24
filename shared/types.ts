@@ -194,6 +194,18 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** 검색 색인 상태 */
+export interface SearchStatusView {
+  vecReady: boolean; enabled: boolean; provider: string; model: string; dim: number | null;
+  /** 전문 검색에 들어간 기록 수 · 그중 벡터로도 들어간 수 */
+  docs: number; vectors: number;
+  /** 지금 벡터를 만든 방식·모델(다르면 다시 색인 필요) */
+  indexedWith: { provider: string | null; model: string } | null; modelMismatch: boolean;
+  lastFullAt: string | null; lastFullCount: number | null; lastAddAt: string | null;
+  lastError: string | null; lastErrorAt: string | null;
+  job: { running: boolean; done: number; total: number; error: string | null; startedAt: string } | null;
+}
+
 /** 벡터 검색용 Ollama 상태(설치·실행·모델·진행 중 작업) */
 export interface OllamaView {
   brew: boolean; installed: boolean; running: boolean; version: string | null;

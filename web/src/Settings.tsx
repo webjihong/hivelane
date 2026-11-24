@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { EngineSettings, Model, OllamaView, Project, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
@@ -402,6 +402,36 @@ function OllamaPanel({ ro, model }: { ro: boolean; model: string }) {
   );
 }
 
+const fmtAt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-');
+
+/** 색인 상태: 기록 수·벡터 수·모델·마지막 색인·오류 + 다시 색인(진행률) */
+function IndexStatus({ ro, provider, model }: { ro: boolean; provider: string; model: string }) {
+  const [v, setV] = useState<SearchStatusView | null>(null);
+  const load = () => api<SearchStatusView>('/api/search/status').then(setV).catch(() => {});
+  useEffect(() => { void load(); }, [provider, model]);
+  const running = !!v?.job?.running;
+  useEffect(() => { const t = setInterval(() => void load(), running ? 1000 : 15000); return () => clearInterval(t); }, [running]);
+  const start = async () => { const r = await act(() => api<SearchStatusView>('/api/search/reindex', 'POST', {}), '다시 색인을 시작했습니다'); if (r) setV(r); };
+  if (!v) return null;
+  const pct = v.docs ? Math.round((v.vectors / v.docs) * 100) : 0;
+  if (provider === 'off') return <div className="ix small muted">전문 검색 색인 {v.docs.toLocaleString()}건 · 기록이 생길 때마다 바로 들어갑니다</div>;
+  const needFull = v.vectors === 0 || v.modelMismatch;
+  const recentErr = v.lastError && (!v.lastAddAt || (v.lastErrorAt ?? '') > v.lastAddAt) && (!v.lastFullAt || (v.lastErrorAt ?? '') > v.lastFullAt);
+  return (
+    <div className="ix">
+      <div className="ix-h"><b>색인 상태</b>{needFull ? <span className="chip warn-t">다시 색인 필요</span> : pct >= 99 ? <span className="chip st-done">최신</span> : <span className="chip">일부</span>}</div>
+      <div className="ix-row"><span className="ix-k">벡터 색인</span><span className="ol-bar"><i style={{ width: `${Math.min(100, pct)}%` }} /></span><span className="mono">{v.vectors.toLocaleString()} / {v.docs.toLocaleString()}건 ({pct}%)</span></div>
+      <div className="ix-row"><span className="ix-k">색인 모델</span><span className="mono">{v.indexedWith ? `${v.indexedWith.model}${v.dim ? ` · ${v.dim}차원` : ''}` : v.vectors ? `기록 없음(이전 판에서 색인)${v.dim ? ` · ${v.dim}차원` : ''}` : '-'}</span>{v.modelMismatch && <span className="warn-t small">지금 모델({v.model})과 달라 벡터 검색을 쓰지 않습니다 → 다시 색인</span>}</div>
+      <div className="ix-row"><span className="ix-k">마지막 전체 색인</span><span>{v.lastFullAt ? `${fmtAt(v.lastFullAt)}${v.lastFullCount != null ? ` · ${v.lastFullCount.toLocaleString()}건` : ''}` : v.vectors ? '기록 없음(이전 판) · 다시 색인하면 남습니다' : '아직 없음'}</span></div>
+      <div className="ix-row"><span className="ix-k">마지막 추가</span><span>{fmtAt(v.lastAddAt)} <span className="muted small">(새 기록은 생길 때 자동으로 들어감)</span></span></div>
+      {recentErr && <div className="ix-row crit-t small"><span className="ix-k">오류</span><span>{fmtAt(v.lastErrorAt)} · {v.lastError}</span></div>}
+      {v.job?.running && <div className="ix-row"><span className="ix-k">다시 색인 중</span><span className="ol-bar"><i style={{ width: `${v.job.total ? Math.round((v.job.done / v.job.total) * 100) : 0}%` }} /></span><span className="mono">{v.job.done.toLocaleString()} / {v.job.total.toLocaleString()}</span></div>}
+      {v.job && !v.job.running && v.job.error && <div className="ix-row crit-t small">다시 색인 실패: {v.job.error}</div>}
+      {!ro && <div className="row"><button className={`btn${needFull ? ' primary' : ''}`} type="button" disabled={running || !v.enabled} onClick={() => void start()}>{running ? '색인 중…' : '다시 색인'}</button>{!v.enabled && <span className="muted small">{v.vecReady ? '임베딩이 준비되면 누를 수 있습니다' : '벡터 확장(sqlite-vec)을 불러오지 못했습니다'}</span>}</div>}
+    </div>
+  );
+}
+
 /** 검색 안내: 고른 방식에 따라 */
 function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
   return (
@@ -425,7 +455,6 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
   const [remote, setRemote] = useState<RemoteInfo | null>(null);
   const [rBusy, setRBusy] = useState(false);
   const [pushState, setPushState] = useState<'unknown' | 'on' | 'off'>('unknown');
-  const [indexing, setIndexing] = useState(false);
 
   useEffect(() => {
     api<RemoteInfo>('/api/remote').then(setRemote).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), 'crit'));
@@ -518,7 +547,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
             {s.embedding.provider === 'ollama' && <OllamaPanel ro={ro} model={s.embedding.model} />}
             {s.embedding.provider !== 'off' && <TextSetting label="모델" sub={s.embedding.provider === 'ollama' ? 'ollama pull 로 받은 이름' : 'Voyage 모델 이름'} value={s.embedding.model} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { model: v.trim() } })} />}
             {s.embedding.provider === 'ollama' && <TextSetting label="주소" sub="Ollama 서버" value={s.embedding.url} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { url: v.trim() } })} />}
-            {!ro && s.embedding.provider !== 'off' && <div className="row"><button className="btn" type="button" disabled={indexing} onClick={() => { setIndexing(true); void act(async () => { const r = await api<{ indexed: number }>('/api/search/reindex', 'POST', {}); toast(`${r.indexed}건 색인했습니다`, 'good'); }).finally(() => setIndexing(false)); }}>{indexing ? '색인 중…' : '다시 색인'}</button></div>}
+            <IndexStatus ro={ro} provider={s.embedding.provider} model={s.embedding.model} />
           </div>
         </Section>}
       </div>
