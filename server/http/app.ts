@@ -480,6 +480,11 @@ export function createApp(d: AppDeps): Hono<Env> {
     app.use('/*', async (c, next) => {
       await next();
       if (c.req.path.startsWith('/api/')) return;
+      // 화면 파일을 받아 가는 기기 기록(바로가기·설치 앱이 예전 화면을 쓰는지 가려내기용)
+      if (c.req.path === '/' || c.req.path === '/index.html' || c.req.path.endsWith('.css')) {
+        const h = (k: string) => c.req.header(k) ?? '-';
+        log.info(`화면 요청 ${c.req.path} → ${c.res.status} · 캐시 확인 ${h('if-modified-since') !== '-' || h('if-none-match') !== '-' ? '예' : '아니오'} · 앱 ${h('x-requested-with')} · ${h('sec-fetch-dest')}/${h('sec-fetch-mode')} · ${h('user-agent').slice(0, 140)}`);
+      }
       c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') && c.res.status === 200 ? 'public, max-age=31536000, immutable' : 'no-cache');
     });
     app.use('/*', serveStatic({ root: cfg.webDist, rewriteRequestPath: (p) => p }));
