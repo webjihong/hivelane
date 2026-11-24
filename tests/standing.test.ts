@@ -159,6 +159,46 @@ describe('작업 환경: 내 Claude Code 와 동일', () => {
     expect(specs[1]!.approval!.take('npm run db:prod:sync')).toBe(true);
     expect(specs[1]!.approval!.take('npm run db:prod:sync')).toBe(false);
   });
+  it('없는 도구는 임시 권한 요청 → 승인하면 팀 전체에 부여 → 지시가 끝나면 회수 · 거절하면 그대로', async () => {
+    const specs: TurnSpec[] = [];
+    let ask = true;
+    const env = setup((spec) => {
+      specs.push(spec);
+      const t = spec.toolsImpl as { requestTools: (x: string[], r: string) => string };
+      if (ask) { ask = false; t.requestTools(['Bash', 'Edit'], '외부 DB 조회'); }
+      return {};
+    });
+    const st = env.orch.createStanding({ name: '조사', project_id: null, template_id: 'tpl-research', brief: 'b' });
+    env.orch.message(st.id, '실측해', 'user');
+    await until(() => !!env.store.getTeam(st.id)!.question);
+    await env.orch.idle();
+    const s0 = specs[0]!;
+    expect(s0.allowedTools).not.toContain('Bash');
+    expect(s0.allowedTools).toContain('mcp__hivelane__request_tools');
+    const q = JSON.parse(env.store.getTeam(st.id)!.question!);
+    expect(q).toMatchObject({ kind: 'tools', tools: ['Bash', 'Edit'], options: ['승인', '거절'] });
+    env.orch.message(st.id, '승인', 'user');
+    await until(() => specs.length > 1);
+    await env.orch.idle();
+    const s1 = specs[1]!;
+    expect(s1.prompt).toContain('승인됨');
+    expect(s1.allowedTools).toEqual(expect.arrayContaining(['Bash', 'Edit', 'MultiEdit']));
+    expect(s1.subagents!.explore!.tools).toContain('Bash');
+    // 지시가 끝나면(idle) 회수
+    expect(env.orch.grants(st.id)).toEqual([]);
+    const acts = (env.store.db.prepare('SELECT action FROM po_decisions WHERE team_id = ?').all(st.id) as { action: string }[]).map((r) => r.action);
+    expect(acts).toEqual(expect.arrayContaining(['grant', 'revoke']));
+    // 거절하면 도구 없음
+    ask = true;
+    env.orch.message(st.id, '다시', 'user');
+    await until(() => !!env.store.getTeam(st.id)!.question);
+    await env.orch.idle();
+    env.orch.message(st.id, '거절', 'user');
+    await until(() => specs.length > 3);
+    await env.orch.idle();
+    expect(specs[3]!.prompt).toContain('거절됨');
+    expect(specs[3]!.allowedTools).not.toContain('Bash');
+  });
   it('격리 팀은 예전대로(운영 명령은 막힘, 승인 도구 없음)', async () => {
     const env = setup();
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });

@@ -12,8 +12,18 @@ export interface TeamTools {
   delegate(roleKey: string, instruction: string): Promise<string>;
   askHuman(question: string, options: string[]): string;
   requestApproval(command: string, reason: string): string;
+  requestTools(tools: string[], reason: string): string;
   report(status: 'done' | 'failed', summary: string): string;
   readTeamRecords(teamId: string, query: string): string;
+}
+
+/** 사람 승인으로 팀에 임시로 줄 수 있는 도구 */
+export const GRANTABLE_TOOLS = ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'] as const;
+/** 승인된 도구 → 실제로 열어 줄 도구(Edit 는 MultiEdit 도 함께) */
+export function expandGrant(tools: string[]): string[] {
+  const out = new Set<string>();
+  for (const t of tools) { if (!(GRANTABLE_TOOLS as readonly string[]).includes(t)) continue; out.add(t); if (t === 'Edit') out.add('MultiEdit'); }
+  return [...out];
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
@@ -31,6 +41,9 @@ export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: stri
     ...(opts.approval ? [T('request_approval', '운영 DB·배포·인프라처럼 사람 승인이 필요한 명령을 요청한다. 호출한 뒤 바로 턴을 끝내라. 승인되면 같은 명령을 그대로 실행한다.', {
       command: z.string().min(2).describe('실행할 명령 그대로(한 글자도 바꾸지 않는다)'), reason: z.string().min(3).describe('왜 필요한지, 무엇이 바뀌는지, 되돌리는 방법'),
     }, async (a) => text(impl.requestApproval(a.command, a.reason)))] : []),
+    T('request_tools', '이 팀에 없는 도구(Bash·파일 수정·웹 등)가 꼭 필요할 때 사람에게 임시 권한을 요청한다. 호출한 뒤 바로 턴을 끝내라. 승인되면 다음 메시지부터 팀 전체가 그 도구를 쓸 수 있다(업무가 끝나면 회수).', {
+      tools: z.array(z.enum(GRANTABLE_TOOLS)).min(1).describe('필요한 도구'), reason: z.string().min(3).describe('왜 필요한지, 그 도구로 무엇을 할지(예: 어떤 명령을 실행할지)'),
+    }, async (a) => text(impl.requestTools(a.tools, a.reason))),
     T('report', '업무를 끝낸다. 반드시 마지막에 호출한다.', {
       status: z.enum(['done', 'failed']), summary: z.string().min(5).describe('바뀐 파일, 검증 결과, 사람이 확인할 점'),
     }, async (a) => text(impl.report(a.status, a.summary))),
@@ -47,7 +60,7 @@ export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: stri
 }
 
 export function teamToolNames(sessionRoles: boolean, readable: boolean, approval = false): string[] {
-  const n = ['set_plan', 'check_item', 'set_stage', 'ask_human', 'report'];
+  const n = ['set_plan', 'check_item', 'set_stage', 'ask_human', 'request_tools', 'report'];
   if (sessionRoles) n.push('delegate');
   if (readable) n.push('read_team_records');
   if (approval) n.push('request_approval');

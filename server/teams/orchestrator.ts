@@ -14,7 +14,7 @@ import { descendants, listProcs, signalTree } from '../po/resources.ts';
 import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
 import { presetTools, TurnHandle, type TurnResult, type TurnSpec } from '../agents/runner.ts';
 import type { HeavySlots } from '../po/slots.ts';
-import { teamMcpServer, teamToolNames, type TeamTools } from './tools.ts';
+import { expandGrant, teamMcpServer, teamToolNames, type TeamTools } from './tools.ts';
 import { isSolo, type Priority, type Project, type TemplateRole } from '../../shared/types.ts';
 
 const log = logger('team');
@@ -33,7 +33,7 @@ interface Live {
   loop: Promise<void> | null;
   pending: string[];
   reported: { status: 'done' | 'failed'; summary: string } | null;
-  asked: { question: string; options: string[]; kind?: 'approval'; command?: string } | null;
+  asked: { question: string; options: string[]; kind?: 'approval' | 'tools'; command?: string; tools?: string[] } | null;
   /** 사람이 승인한 명령(한 번 실행하면 소진) */
   approved: Set<string>;
   pausePending: boolean;
@@ -215,6 +215,18 @@ export class Orchestrator {
     };
   }
 
+  /** 사람이 승인한 임시 도구(업무가 끝나면 회수) */
+  grants(teamId: string): string[] {
+    return this.deps.store.getKv<string[]>(`grant:${teamId}`, []);
+  }
+
+  private revokeGrants(teamId: string): void {
+    const g = this.grants(teamId);
+    if (!g.length) return;
+    this.deps.store.setKv(`grant:${teamId}`, []);
+    this.deps.store.addDecision(teamId, 'engine', 'revoke', `임시 권한 회수: ${g.join(', ')}`);
+  }
+
   rolesOf(teamId: string): TemplateRole[] {
     return this.deps.store.getKv<TemplateRole[]>(`roles:${teamId}`, []);
   }
@@ -316,7 +328,7 @@ export class Orchestrator {
       if (l.cancelled) {
         l.cancelled = false; l.reported = null; l.asked = null; l.pausePending = false;
         store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: '사용자가 진행 중이던 지시를 취소함' });
-        if (after.lifetime === 'standing') store.updateTeam(teamId, { state: 'idle' });
+        if (after.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.revokeGrants(teamId); }
         else store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify({ text: '진행 중이던 지시를 취소했습니다. 새로 지시하거나 이어서 진행할지 골라 주세요.', options: ['계속 진행', '여기서 마무리'], asked_at: nowIso() }) });
         return;
       }
@@ -332,7 +344,7 @@ export class Orchestrator {
         return;
       }
       if (l.asked) {
-        const q = { text: l.asked.question, options: l.asked.options, asked_at: nowIso(), ...(l.asked.kind ? { kind: l.asked.kind, command: l.asked.command } : {}) };
+        const q = { text: l.asked.question, options: l.asked.options, asked_at: nowIso(), ...(l.asked.kind ? { kind: l.asked.kind, command: l.asked.command, tools: l.asked.tools } : {}) };
         store.updateTeam(teamId, { state: after.lifetime === 'standing' ? 'idle' : 'waiting_human', question: JSON.stringify(q) });
         store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'question', body: l.asked.question + (l.asked.options.length ? `\n선택지: ${l.asked.options.join(' / ')}` : '') });
         store.addPoEvent('ask_human', teamId, { question: l.asked.question });
@@ -367,6 +379,7 @@ export class Orchestrator {
       if (l.pending.length) { prompt = l.pending.splice(0).join('\n\n'); continue; }
       if (after.lifetime === 'standing') {
         store.updateTeam(teamId, { state: 'idle' });
+        this.revokeGrants(teamId);
         if (res.text.trim()) {
           const asker = this.askerOf(teamId);
           store.addMessage({ team_id: teamId, from_label: 'PM', to_label: asker.from === 'PO' ? 'PO' : '사용자', kind: 'report', body: res.text.trim() });
@@ -414,10 +427,11 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const sessionRoles = roles.filter((r) => r.key !== 'pm' && r.mode === 'session');
     const readable = parseJson<string[]>(team.readable_team_ids, []).length > 0;
     const impl = this.toolsFor(team.id);
+    const granted = this.grants(team.id);
     const subagents: TurnSpec['subagents'] = {};
     for (const r of roles.filter((r) => r.key !== 'pm' && r.mode === 'subagent')) {
       const a = store.agentByRole(team.id, r.key)!;
-      subagents[r.key] = { description: `${r.name} 담당`, prompt: a.system_prompt, model: r.model, tools: presetTools(r.tools), roleAgentId: a.id, roleName: r.name } as AgentDefinition & { roleAgentId: string; roleName: string };
+      subagents[r.key] = { description: `${r.name} 담당`, prompt: a.system_prompt, model: r.model, tools: [...new Set([...presetTools(r.tools), ...granted])], roleAgentId: a.id, roleName: r.name } as AgentDefinition & { roleAgentId: string; roleName: string };
     }
     const wt = team.worktree_path ?? cfg.home;
     const l = this.L(team.id);
@@ -427,7 +441,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const env = this.envFor(team, project);
     return {
       agent: pm, team, prompt, cwd: wt, systemAppend: pm.system_prompt + readNote + env.note,
-      allowedTools: [...(isSolo(roles) ? [...presetTools('write'), 'Agent', 'WebFetch', 'WebSearch'] : presetTools(env.envMine ? 'write' : 'pm')), ...teamToolNames(sessionRoles.length > 0, readable, !!env.approval)],
+      allowedTools: [...new Set([...(isSolo(roles) ? [...presetTools('write'), 'Agent', 'WebFetch', 'WebSearch'] : presetTools(env.envMine ? 'write' : 'pm')), ...granted]), ...teamToolNames(sessionRoles.length > 0, readable, !!env.approval)],
       additionalDirectories: [...(project?.memory_paths ?? []), ...readAll.map((p) => p.path), cfg.uploadsDir],
       writableRoots: [wt, ...env.extraWritable],
       heavyPatterns: project?.heavy_patterns ?? [],
@@ -462,6 +476,16 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
         l.asked = { question: `이 명령을 실행해도 될까요?\n\n\`${command.trim()}\`\n\n이유: ${reason}`, options: ['승인', '거절'], kind: 'approval', command: command.trim() };
         return '승인을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지로 알려 주니 같은 명령을 그대로 실행해라.';
       },
+      requestTools: (tools, reason) => {
+        const want = expandGrant(tools).filter((t) => t !== 'MultiEdit');
+        if (!want.length) return '요청할 수 있는 도구가 없다(Bash·Edit·Write·NotebookEdit·WebFetch·WebSearch 중에서 고른다).';
+        const standing = store.getTeam(teamId)?.lifetime === 'standing';
+        l.asked = {
+          question: `이 팀에 임시 권한을 줄까요?\n\n요청 도구: ${want.join(', ')}\n\n이유: ${reason}\n\n승인하면 ${standing ? '이번 지시가 끝날 때까지' : '이 업무가 끝날 때까지'} 팀 전체(PM·팀원)가 이 도구를 씁니다. 막힌 명령·운영 명령 승인 규칙과 쓰기 가능한 폴더는 그대로입니다.`,
+          options: ['승인', '거절'], kind: 'tools', tools: want,
+        };
+        return '임시 권한을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지부터 그 도구를 쓸 수 있다.';
+      },
       report: (status, summary) => { l.reported = { status, summary }; return '보고를 받았다. 턴을 끝내라.'; },
       delegate: (roleKey, instruction) => this.delegate(teamId, roleKey, instruction),
       readTeamRecords: (otherId, q) => this.readTeamRecords(teamId, otherId, q),
@@ -484,7 +508,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     try {
       const env = this.envFor(team, project);
       const res = await this.deps.runner.runTurn({
-        agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt + env.note, allowedTools: presetTools(role.tools),
+        agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt + env.note, allowedTools: [...new Set([...presetTools(role.tools), ...this.grants(teamId)])],
         additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt, ...env.extraWritable], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: env.blocked,
         envMine: env.envMine, approval: env.approval,
         resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
@@ -521,6 +545,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   private finish(teamId: string, r: { status: 'done' | 'failed'; summary: string }): void {
     const { store } = this.deps;
     const team = store.getTeam(teamId)!;
+    this.revokeGrants(teamId);
     store.addSummary({ team_id: teamId, stage: '최종', body: r.summary });
     // 보고 받는 쪽: 이번 일을 시킨 쪽(사용자가 직접 지시했으면 사용자, 아니면 총괄)
     const asker = this.askerOf(teamId);
@@ -632,7 +657,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const team = store.getTeam(teamId);
     if (!team) throw new Error('팀이 없습니다');
     if (!team.question || !['waiting_human', 'paused', 'idle', 'down'].includes(team.state) || this.isRunning(teamId)) throw new ConflictError('지금은 답할 질문이 없습니다');
-    const q = parseJson<{ kind?: string; command?: string } | null>(team.question, null);
+    const q = parseJson<{ kind?: string; command?: string; tools?: string[] } | null>(team.question, null);
     this.L(teamId).errors = 0;
     store.addMessage({ team_id: teamId, from_label: '사용자', to_label: 'PM', kind: 'reply', body: text });
     store.addDecision(teamId, 'user', 'answer', truncate(text, 200));
@@ -645,6 +670,13 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       if (ok) this.L(teamId).approved.add(q.command);
       store.addDecision(teamId, 'user', ok ? 'approve' : 'reject', `${ok ? '명령 승인' : '명령 거절'}: ${truncate(q.command, 200)}`);
       text = ok ? `승인됨. 이 명령을 그대로(한 글자도 바꾸지 말고) 한 번 실행해라: ${q.command}` : `거절됨: ${text}. 그 명령은 실행하지 말고 다른 방법을 찾거나 report 해라.`;
+    }
+    if (q?.kind === 'tools' && q.tools?.length) {
+      const ok = /승인|허용|yes|ok|진행/i.test(text) && !/거절|안\s*돼|no\b|취소/i.test(text);
+      const tools = expandGrant(q.tools);
+      if (ok) store.setKv(`grant:${teamId}`, [...new Set([...this.grants(teamId), ...tools])]);
+      store.addDecision(teamId, 'user', ok ? 'grant' : 'reject', `${ok ? '임시 권한 승인' : '임시 권한 거절'}: ${q.tools.join(', ')}`);
+      text = ok ? `승인됨. 임시 권한(${q.tools.join(', ')})을 받았다. 이제 그 도구로 하던 일을 이어서 해라.` : `거절됨: ${text}. 그 도구 없이 할 수 있는 방법을 찾거나 report 해라.`;
     }
     if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
     store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });

@@ -133,7 +133,7 @@ export class AgentRunner {
       if (handle.pauseRequested) return deny('팀이 일시정지되었습니다. 지금 하던 일을 멈추고 기다려라.');
       const mine = toolsOf(input);
       if (!spec.envMine && !tool.startsWith('mcp__') && tool !== 'ToolSearch' && !mine.includes(tool)) {
-        return deny(`이 역할은 ${tool} 도구를 쓸 수 없습니다(쓸 수 있는 도구: ${mine.join(', ')}). ${tool in WRITE_TOOLS || tool === 'Bash' ? '구현·실행은 팀원에게 맡겨라.' : ''}`);
+        return deny(`이 역할은 ${tool} 도구를 쓸 수 없습니다(쓸 수 있는 도구: ${mine.join(', ')}). ${tool in WRITE_TOOLS || tool === 'Bash' ? '구현·실행은 그 도구가 있는 팀원에게 맡겨라. ' : ''}맡길 팀원이 없으면 PM 이 mcp__hivelane__request_tools 로 사람에게 임시 권한을 요청한다(실패로 끝내지 말 것).`);
       }
       if (tool === 'Agent' || tool === 'Task') {
         // 서브에이전트는 끝날 때까지 기다리게 한다(백그라운드·격리 실행 금지)
