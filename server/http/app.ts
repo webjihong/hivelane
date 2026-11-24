@@ -323,11 +323,14 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/github/accounts', async (c) => c.json({ accounts: await githubAccounts() }));
   app.post('/api/projects/:id/remote', async (c) => {
     localOnly(c);
-    const p = store.getProject(c.req.param('id'));
+    // :id 가 「path」 면 등록 전 폴더(body.path)에 연결
+    const pre = c.req.param('id') === 'path';
+    const raw = pre ? ((await c.req.raw.clone().json().catch(() => ({}))) as { path?: string }).path : null;
+    const p = pre ? (raw ? { name: raw.split('/').pop() ?? raw, path: (await inspectRepo(raw)).root } : null) : store.getProject(c.req.param('id'));
     if (!p) throw new HttpError(404, '프로젝트가 없습니다');
     const b = await body(c, z.discriminatedUnion('mode', [
-      z.object({ mode: z.literal('url'), url: z.string().min(5).max(500), push: z.boolean().default(true) }),
-      z.object({ mode: z.literal('github'), account: z.string().max(60).optional(), owner: z.string().max(60).optional(), name: z.string().min(1).max(100), visibility: z.enum(['private', 'public']).default('private'), description: z.string().max(200).optional() }),
+      z.object({ mode: z.literal('url'), url: z.string().min(5).max(500), push: z.boolean().default(true), path: z.string().optional() }),
+      z.object({ mode: z.literal('github'), path: z.string().optional(), account: z.string().max(60).optional(), owner: z.string().max(60).optional(), name: z.string().min(1).max(100), visibility: z.enum(['private', 'public']).default('private'), description: z.string().max(200).optional() }),
     ]));
     try {
       const r = b.mode === 'url' ? await linkRemoteUrl(p.path, b.url, b.push) : await createGithubRepo(p.path, b);

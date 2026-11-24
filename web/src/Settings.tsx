@@ -67,8 +67,8 @@ interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: s
 /** 연결된 원격 저장소 한 줄: 있으면 링크, 없으면 「이 맥에만」 */
 function RemoteLine({ remote }: { remote: RemoteRef | null | undefined }) {
   if (remote === undefined) return null;
-  if (!remote) return <span className="muted small">원격 저장소: <b>없음</b> — 이 맥에만 있는 저장소입니다. 팀 작업·diff 는 되고, PR·받기는 원격이 있어야 합니다(등록 뒤 프로젝트 목록의 「원격 연결」).</span>;
-  return <span className="small">원격 저장소({remote.name}): {remote.web ? <a href={remote.web} target="_blank" rel="noreferrer" className="mono">{remote.label}</a> : <span className="mono">{remote.label}</span>}</span>;
+  if (!remote) return <span className="muted small">원격 저장소: <b>연결 안 됨</b> — 이 맥에만 있는 저장소입니다. 팀 작업·diff 는 되고, PR·받기는 원격(GitHub 등)이 있어야 합니다.</span>;
+  return <span className="small">연동된 원격 저장소({remote.name}): {remote.web ? <a href={remote.web} target="_blank" rel="noreferrer" className="mono">{remote.label}</a> : <span className="mono">{remote.label}</span>}</span>;
 }
 
 const DEPS_OPTS: [Project['deps_strategy'], string][] = [
@@ -99,6 +99,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
   const [tpl, setTpl] = useState('tpl-dev');
   const [busy, setBusy] = useState(false);
   const [notGit, setNotGit] = useState<string | null>(null);
+  const [linkNow, setLinkNow] = useState(false);
   /** git 저장소인지 확인 · 아니면 「git 시작하기」를 보여 준다 */
   const check = async (p: string) => {
     setBusy(true); setNotGit(null);
@@ -155,6 +156,8 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
             <b>이 폴더를 프로젝트로 등록합니다</b>
             <span className="small">로컬 폴더: <span className="mono">{info.root}</span></span>
             <RemoteLine remote={info.remote} />
+            {!info.remote && !linkNow && <span><button className="btn" type="button" onClick={() => setLinkNow(true)}>지금 원격 저장소 연결하기</button> <span className="muted small">GitHub 에 새로 만들거나 이미 있는 저장소 주소를 연결 · 나중에 해도 됩니다</span></span>}
+            {!info.remote && linkNow && <RemoteLink p={{ name: info.name, path: info.root }} onDone={() => { setLinkNow(false); void check(info.root); }} />}
             <span className="muted small">Claude Code 메모리: {info.memoryPaths.length ? <span className="mono">{info.memoryPaths.join(', ')}</span> : '없음'} — {HELP.mem}</span>
           </div>
           <label>이름 <small className="muted">{HELP.name}</small><input className="txt" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
@@ -177,7 +180,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
 }
 
 /** 원격이 없는 프로젝트: GitHub 에 새로 만들기 또는 기존 주소 연결 */
-function RemoteLink({ p, onDone }: { p: Project; onDone: () => void }) {
+function RemoteLink({ p, onDone }: { p: { id?: string; name: string; path?: string }; onDone: () => void }) {
   const [mode, setMode] = useState<'github' | 'url'>('github');
   const [accounts, setAccounts] = useState<{ login: string; active: boolean }[] | null | undefined>(undefined);
   const [account, setAccount] = useState('');
@@ -190,7 +193,9 @@ function RemoteLink({ p, onDone }: { p: Project; onDone: () => void }) {
   useEffect(() => { void api<{ accounts: { login: string; active: boolean }[] | null }>('/api/github/accounts').then((r) => { setAccounts(r.accounts); const a = r.accounts?.find((x) => x.active) ?? r.accounts?.[0]; if (a) { setAccount(a.login); setOwner(a.login); } }).catch(() => setAccounts(null)); }, []);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => api<{ remote: { label: string }; log: string[] }>(`/api/projects/${encodeURIComponent(p.id)}/remote`, 'POST', mode === 'url' ? { mode, url: url.trim(), push } : { mode, account: account || undefined, owner: owner.trim() || undefined, name: name.trim(), visibility: vis }));
+    const target = p.id ? encodeURIComponent(p.id) : 'path';
+    const extra = p.id ? {} : { path: p.path };
+    const r = await act(() => api<{ remote: { label: string }; log: string[] }>(`/api/projects/${target}/remote`, 'POST', mode === 'url' ? { mode, url: url.trim(), push, ...extra } : { mode, account: account || undefined, owner: owner.trim() || undefined, name: name.trim(), visibility: vis, ...extra }));
     setBusy(false);
     if (r) { toast(`연결했습니다 · ${r.remote.label}${r.log.some((l) => l.includes('실패')) ? ' (올리기는 실패 — 대화창 기록 참고)' : ''}`, 'good'); onDone(); await refreshState(); }
   };
