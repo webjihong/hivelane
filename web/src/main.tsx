@@ -2,6 +2,9 @@ import { Component, StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { connect, refreshChat, refreshState } from './store.ts';
+import { applyPrefs, loadPrefs } from './themes.ts';
+
+applyPrefs(loadPrefs()); // 첫 그림 전에 테마·글자 크기
 
 /** 화면 한 군데 오류로 전체가 하얗게 멈추지 않게: 이유와 다시 불러오기를 보여 준다. */
 class Guard extends Component<{ children: ReactNode }, { error: Error | null }> {

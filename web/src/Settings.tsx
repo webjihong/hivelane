@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
+import { AREAS, SCALES, THEMES, loadPrefs, savePrefs, type UiPrefs } from './themes.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
 type SettingsPatch = Partial<Omit<SettingsT, 'engine' | 'embedding'>> & { engine?: Partial<EngineSettings>; embedding?: Partial<SettingsT['embedding']> };
@@ -402,6 +403,53 @@ function OllamaPanel({ ro, model }: { ro: boolean; model: string }) {
   );
 }
 
+/** 화면: 테마 프리셋 + 영역별 글자 크기(이 기기에만) */
+function DisplayPanel() {
+  const [p, setP] = useState<UiPrefs>(() => loadPrefs());
+  const set = (n: UiPrefs) => { setP(n); savePrefs(n); };
+  return (
+    <div className="stack-s">
+      <div className="panel">
+        <h3>테마 <small className="muted">색만 바뀌고 화면 구성은 그대로 · 이 기기에만 저장(맥·휴대폰 따로)</small></h3>
+        <div className="th-grid">
+          {THEMES.map((t) => {
+            const v = t.vars;
+            const on = p.theme === t.id;
+            return (
+              <button key={t.id} type="button" className={`th-card${on ? ' on' : ''}`} aria-pressed={on} onClick={() => set({ ...p, theme: t.id })}>
+                <span className="th-prev" aria-hidden="true" style={t.id === 'default' ? undefined : { background: v['--bg'] }}>
+                  <span className="th-side" style={t.id === 'default' ? undefined : { background: v['--sb-bg'] }}><i style={t.id === 'default' ? undefined : { background: v['--sb-amber'] }} /><i style={t.id === 'default' ? undefined : { background: v['--sb-dim'] }} /><i style={t.id === 'default' ? undefined : { background: v['--sb-dim'] }} /></span>
+                  <span className="th-body">
+                    <span className="th-card-in" style={t.id === 'default' ? undefined : { background: v['--surface'], borderColor: v['--line'] }}><i style={t.id === 'default' ? undefined : { background: v['--fg'] }} /><i className="s" style={t.id === 'default' ? undefined : { background: v['--muted'] }} /></span>
+                    <span className="th-btn" style={t.id === 'default' ? undefined : { background: v['--accent'] }} />
+                  </span>
+                </span>
+                <span className="th-name">{t.name}{on && <span className="th-check"> ✓</span>}</span>
+                <span className="th-desc">{t.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="panel">
+        <h3>글자 크기 <small className="muted">영역마다 따로 · 이 기기에만 저장</small></h3>
+        {AREAS.map((a) => {
+          const cur = p.scale[a.key] ?? 1;
+          return (
+            <Row key={a.key} label={a.label} sub={a.desc} htmlFor={`z-${a.key}`}>
+              <div className="z-ctl">
+                <input id={`z-${a.key}`} type="range" min={0} max={SCALES.length - 1} step={1} value={Math.max(0, SCALES.indexOf(cur))} onChange={(e) => set({ ...p, scale: { ...p.scale, [a.key]: SCALES[Number(e.target.value)] } })} />
+                <span className="mono z-v">{Math.round(cur * 100)}%</span>
+              </div>
+            </Row>
+          );
+        })}
+        <div className="row"><button className="btn" type="button" onClick={() => set({ ...p, scale: {} })}>글자 크기 처음대로</button><span className="muted small">화면 전체를 키우려면 브라우저 확대(⌘ +)도 됩니다</span></div>
+      </div>
+    </div>
+  );
+}
+
 const fmtBytes = (b: number | null) => (b == null ? '?' : b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
 
 /** 저장 공간: DB(무엇이 얼마나)·폴더·Ollama 모델 + DB 압축 */
@@ -501,7 +549,7 @@ function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
   );
 }
 
-export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search' | 'storage';
+export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search' | 'storage' | 'display';
 
 export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: SettingsTab }) {
   const ro = snap.access === 'remote';
@@ -591,6 +639,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
             </div>
           </div>
         </Section>}
+        {tab === 'display' && <Section title="화면" sub="테마와 글자 크기"><DisplayPanel /></Section>}
         {tab === 'storage' && <Section title="저장 공간" sub="DB·폴더가 디스크를 얼마나 쓰는지"><StoragePanel ro={ro} /></Section>}
         {tab === 'search' && <Section title="검색" sub="벡터 검색(선택)">
           <div className="panel stack-s">
