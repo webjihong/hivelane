@@ -15,7 +15,7 @@ describe('플랜 사용량', () => {
   });
   it('조회 실패는 이전 값을 두고 error 만 채운다 · poke 는 1분 안엔 다시 안 묻는다', async () => {
     let n = 0; let fail = false; const seen: number[] = [];
-    const u = new PlanUsage({ onChange: (x) => seen.push(x.windows.length), fetch: async () => { n++; if (fail) throw new Error('끊김'); return raw({ seven_day: { utilization: 50, resets_at: null } }); } });
+    const u = new PlanUsage({ login: async () => ({ loggedIn: true, method: 'claude.ai', expiresAt: null, email: null }), onChange: (x) => seen.push(x.windows.length), fetch: async () => { n++; if (fail) throw new Error('끊김'); return raw({ seven_day: { utilization: 50, resets_at: null } }); } });
     await u.refresh();
     expect(u.last.windows[0]!.pct).toBe(50);
     u.poke();

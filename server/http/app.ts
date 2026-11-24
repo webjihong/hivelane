@@ -4,6 +4,7 @@ import type { PrWatcher } from '../projects/prs.ts';
 import type { RepoWatcher } from '../projects/repos.ts';
 import type { ScriptRunner } from '../scripts.ts';
 import type { PlanUsage } from '../po/usage.ts';
+import type { AuthLogin } from '../po/auth.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -25,7 +26,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -156,6 +157,12 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 스크립트 버튼 (등록·수정은 맥에서만, 실행은 원격도) ---------- */
   const scripts = () => { if (!d.scripts) throw new HttpError(409, '스크립트 기능이 꺼져 있습니다'); return d.scripts; };
   const scriptZ = z.object({ project_id: z.string().nullable(), name: z.string().trim().min(1).max(60), command: z.string().trim().min(1).max(4000), cwd: z.string().max(500).default(''), confirm: z.boolean().default(false) });
+  /* ---------- Claude 재로그인(claude auth login 대행: 링크 보여 주고 코드 받기) ---------- */
+  const auth = () => { if (!d.auth) throw new HttpError(404, '재로그인을 쓸 수 없습니다'); return d.auth; };
+  app.get('/api/auth/login', (c) => c.json(auth().view));
+  app.post('/api/auth/login', (c) => c.json(auth().start()));
+  app.post('/api/auth/login/code', async (c) => { const b = await body(c, z.object({ code: z.string().min(4).max(2000) })); try { return c.json(auth().code(b.code)); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/auth/login/cancel', (c) => c.json(auth().cancel()));
   app.post('/api/scripts', async (c) => { localOnly(c); const b = await body(c, scriptZ); return c.json(scripts().save(b)); });
   app.patch('/api/scripts/:id', async (c) => { localOnly(c); const b = await body(c, scriptZ); if (!scripts().get(c.req.param('id'))) throw new HttpError(404, '없는 스크립트입니다'); return c.json(scripts().save({ ...b, id: c.req.param('id') })); });
   app.delete('/api/scripts/:id', (c) => { localOnly(c); try { return c.json({ ok: scripts().remove(c.req.param('id')) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });

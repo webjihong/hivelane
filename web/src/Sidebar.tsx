@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { PrView, RepoView, StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { AuthLoginView, PrView, RepoView, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { DOT_LABEL, dotOf, isActiveTask, isDoneTask, isStandingCh, nowCount, sideNote } from './chan.ts';
 import { act, api, clock, conn, refreshState, route, useBox, type Route } from './store.ts';
 
@@ -20,6 +20,50 @@ function resetLabel(iso: string): string {
   if (diff === 1) return '내일';
   if (diff < 7) return d.toLocaleDateString('ko-KR', { weekday: 'long' });
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** claude auth login 대행: 서버가 로그인 명령을 띄우고, 여기서 링크를 열어 로그인 → 코드가 보이면 붙여 넣기 */
+function AuthModal({ onClose }: { onClose: () => void }) {
+  const [v, setV] = useState<AuthLoginView | null>(null);
+  const [code, setCode] = useState('');
+  const [sending, setSending] = useState(false);
+  useEffect(() => { void api<AuthLoginView>('/api/auth/login').then(setV).catch(() => {}); }, []);
+  useEffect(() => {
+    if (v?.phase !== 'waiting') return;
+    const t = setInterval(() => { void api<AuthLoginView>('/api/auth/login').then((n) => { setV(n); if (n.phase === 'done') void refreshState(); }).catch(() => {}); }, 1000);
+    return () => clearInterval(t);
+  }, [v?.phase]);
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', h); return () => removeEventListener('keydown', h); }, [onClose]);
+  const start = () => act(async () => setV(await api<AuthLoginView>('/api/auth/login', 'POST', {})));
+  const send = async () => { setSending(true); await act(async () => { setV(await api<AuthLoginView>('/api/auth/login/code', 'POST', { code })); setCode(''); }, '코드를 보냈습니다'); setSending(false); };
+  const cancel = () => act(async () => setV(await api<AuthLoginView>('/api/auth/login/cancel', 'POST', {})));
+  const waiting = v?.phase === 'waiting';
+  return createPortal(
+    <>
+      <div className="scrim" onClick={onClose} />
+      <aside className="drawer" aria-label="Claude 재인증">
+        <div className="drawer-h"><div><h2>Claude 재인증</h2><div className="drawer-sub muted">터미널의 claude auth login 과 같습니다 · 팀·PO 가 쓰는 로그인이 바뀝니다</div></div><div className="row"><button className="btn" type="button" onClick={onClose}>닫기</button></div></div>
+        <div className="drawer-b au">
+          {v?.phase === 'done' && <p className="au-ok">다시 로그인했습니다. 사용량·인증 표시가 곧 새로 고쳐집니다.</p>}
+          {v?.phase === 'failed' && <p className="crit-t">끝나지 않았습니다: {v.error}</p>}
+          {!waiting && <p><button className="btn primary" type="button" onClick={() => void start()}>{v?.phase === 'done' ? '한 번 더 로그인' : '로그인 시작'}</button></p>}
+          {waiting && (
+            <ol className="au-steps">
+              <li>{v.url ? <a className="btn primary" href={v.url} target="_blank" rel="noreferrer">로그인 페이지 열기</a> : <span className="muted">로그인 주소 받는 중…</span>} <span className="muted small">맥에서는 브라우저가 저절로 열릴 수도 있습니다</span></li>
+              <li>열린 페이지에서 Claude 계정으로 로그인하고 「승인」을 누릅니다.</li>
+              <li>
+                맥 브라우저면 그대로 끝납니다. 휴대폰처럼 <b>인증 코드</b>가 화면에 보이면 복사해 여기에 붙여 넣으세요.
+                <div className="au-code"><input value={code} onChange={(e) => setCode(e.target.value)} placeholder="인증 코드 붙여 넣기" aria-label="인증 코드" autoComplete="off" /><button className="btn" type="button" disabled={code.trim().length < 4 || sending} onClick={() => void send()}>보내기</button></div>
+              </li>
+              <li className="muted small">10분 안에 끝내지 않으면 저절로 멈춥니다 · <button type="button" className="link-btn" onClick={() => void cancel()}>취소</button></li>
+            </ol>
+          )}
+          {v?.output && <details className="au-log"><summary className="muted small">명령 출력</summary><pre>{v.output}</pre></details>}
+        </div>
+      </aside>
+    </>,
+    document.body,
+  );
 }
 
 type DiagData = {
@@ -167,6 +211,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
   const c = useBox(conn);
   const [showDone, setShowDone] = useState(() => { try { return localStorage.getItem('hl.done') === '1'; } catch { return false; } });
   const [diag, setDiag] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const toggleDone = () => { setShowDone(!showDone); try { localStorage.setItem('hl.done', showDone ? '0' : '1'); } catch { /* 저장 안 됨 */ } };
   const standing = snap.teams.filter(isStandingCh);
   const tasks = snap.teams.filter(isActiveTask).sort((a, b) => ({ waiting_human: 0, failed: 1, running: 2, paused: 3, queued: 4 } as Record<string, number>)[a.state]! - ({ waiting_human: 0, failed: 1, running: 2, paused: 3, queued: 4 } as Record<string, number>)[b.state]! || b.created_at.localeCompare(a.created_at));
@@ -250,6 +295,16 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
           ))
         )}
       </button>
+      {usage.login && (
+        <div className="sb-auth">
+          <span className={`sb-zone ${usage.login.loggedIn ? 'tok' : 'red'}`}>인증</span>
+          <span className="sb-k" title={usage.login.expiresAt ? `${new Date(usage.login.expiresAt).toLocaleString('ko-KR')}까지 로그인 유지` : undefined}>
+            {usage.login.loggedIn ? (usage.login.expiresAt ? `${new Date(usage.login.expiresAt).getMonth() + 1}/${new Date(usage.login.expiresAt).getDate()}까지` : '로그인됨') : '로그인 필요'}
+          </span>
+          <button type="button" className="sb-authbtn" onClick={() => setAuthOpen(true)}>재인증</button>
+        </div>
+      )}
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
       {diag && <ResourceModal onClose={() => setDiag(false)} />}
     </nav>
   );

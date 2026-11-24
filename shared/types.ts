@@ -193,7 +193,11 @@ export interface ResourceView {
 
 /** Claude 플랜 사용량: 한도 창별 사용 %(0~100) */
 export interface UsageWindow { key: string; label: string; pct: number; resets_at: string | null }
-export interface UsageView { available: boolean; plan: string | null; windows: UsageWindow[]; takenAt: string | null; error: string | null }
+export interface UsageView { available: boolean; plan: string | null; windows: UsageWindow[]; takenAt: string | null; error: string | null; login?: LoginInfo | null }
+/** claude auth status 요약 */
+export interface LoginInfo { loggedIn: boolean; method: string | null; expiresAt: string | null; email: string | null; error?: string }
+/** 화면에서 띄운 claude auth login 진행 */
+export interface AuthLoginView { phase: 'idle' | 'waiting' | 'done' | 'failed'; url: string | null; output: string; startedAt: string | null; error: string | null }
 
 /** PO 가 배운 것. skill = 절차(필요할 때 꺼내 씀), note = 늘 기억할 사실·선호 */
 export interface KnowledgeView {

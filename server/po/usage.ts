@@ -1,6 +1,7 @@
 import { tmpdir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { UsageView, UsageWindow } from '../../shared/types.ts';
+import type { LoginInfo, UsageView, UsageWindow } from '../../shared/types.ts';
+import { loginInfo } from './auth.ts';
 import { logger } from '../log.ts';
 
 const log = logger('usage');
@@ -55,19 +56,20 @@ export class PlanUsage {
   private running: Promise<void> | null = null;
   private lastTry = 0;
 
-  constructor(private opts: { onChange: (u: UsageView) => void; fetch?: () => Promise<RawUsage>; pathToClaude?: string }) {}
+  constructor(private opts: { onChange: (u: UsageView) => void; fetch?: () => Promise<RawUsage>; login?: () => Promise<LoginInfo>; pathToClaude?: string }) {}
 
   refresh(): Promise<void> {
     if (this.running) return this.running;
     this.lastTry = Date.now();
     this.running = (async () => {
+      const login = await (this.opts.login ?? loginInfo)().catch(() => null);
       try {
         const raw = await (this.opts.fetch ?? (() => sdkFetch(this.opts.pathToClaude)))();
-        this.last = toView(raw);
+        this.last = { ...toView(raw), login };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         log.warn('플랜 사용량 조회 실패', msg);
-        this.last = { ...this.last, error: msg.slice(0, 200) };
+        this.last = { ...this.last, error: msg.slice(0, 200), login };
       } finally {
         this.running = null;
       }

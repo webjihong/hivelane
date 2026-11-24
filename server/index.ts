@@ -9,6 +9,7 @@ import { RepoWatcher } from './projects/repos.ts';
 import { ScriptRunner } from './scripts.ts';
 import { AgentRunner } from './agents/runner.ts';
 import { PlanUsage } from './po/usage.ts';
+import { AuthLogin } from './po/auth.ts';
 import { bus } from './bus.ts';
 import { Engine, realSampler } from './po/engine.ts';
 import { PoAgent } from './po/agent.ts';
@@ -32,6 +33,7 @@ const usage = new PlanUsage({ onChange: (u) => bus.emitEvent({ type: 'usage', us
 void usage.refresh();
 const usageTimer = setInterval(() => void usage.refresh(), 300_000);
 usageTimer.unref();
+const auth = new AuthLogin({ onDone: () => { void usage.refresh(); bus.emitEvent({ type: 'state', reason: 'auth' }); } });
 const runner = new AgentRunner({ store, slots, onRateLimit: () => usage.poke() });
 const orch = new Orchestrator({ cfg, store, runner, slots, notifier });
 const search = new Search(store);
@@ -50,7 +52,7 @@ void repos.refresh(true);
 const repoTimer = setInterval(() => void repos.refresh(true), 300_000);
 repoTimer.unref();
 const scripts = new ScriptRunner(store);
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage });
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });

@@ -291,6 +291,16 @@ body { margin: 0; overflow: hidden; }
 .sb-zone { min-width: 34px; text-align: center; }
 .sb-zone.tok { background: #2B4D4A; color: #CFE3E1; }
 .sb-zone.tok.ghost { background: none; }
+.sb-auth { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--sb-fg); padding: 0 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+.sb-res:has(+ .sb-auth) { padding-bottom: 6px; }
+.sb-authbtn { margin-left: auto; border: 1px solid #3A6663; background: none; color: #CFE3E1; font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+.sb-authbtn:hover { background: var(--sb-hover); }
+.au p { margin: 0 0 12px; }
+.au-ok { color: var(--good, #2E8B57); font-weight: 600; }
+.au-steps { margin: 0; padding-left: 20px; display: grid; gap: 12px; line-height: 1.6; }
+.au-code { display: flex; gap: 6px; margin-top: 6px; }
+.au-code input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: inherit; }
+.au-log pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 200px; overflow: auto; }
 .sb-bar { width: 32px; height: 5px; border-radius: 3px; background: #2B4D4A; display: inline-block; overflow: hidden; }
 .sb-bar > span { display: block; height: 5px; border-radius: 3px; }
 .sb-down { color: var(--sb-crit); margin-left: auto; }
