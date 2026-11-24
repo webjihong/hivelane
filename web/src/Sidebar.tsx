@@ -298,8 +298,8 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
       {usage.login && (
         <div className="sb-auth">
           <span className={`sb-zone ${usage.login.loggedIn ? 'tok' : 'red'}`}>인증</span>
-          <span className="sb-k" title={usage.login.expiresAt ? `${new Date(usage.login.expiresAt).toLocaleString('ko-KR')}까지 로그인 유지` : undefined}>
-            {usage.login.loggedIn ? (usage.login.expiresAt ? `${new Date(usage.login.expiresAt).getMonth() + 1}/${new Date(usage.login.expiresAt).getDate()}까지` : '로그인됨') : '로그인 필요'}
+          <span className="sb-k" title={usage.login.expiresAt ? `${new Date(usage.login.expiresAt).toLocaleString('ko-KR')} 로그인 만료 · 그 전에 재인증하면 연장` : undefined}>
+            {usage.login.loggedIn ? (usage.login.expiresAt ? `로그인 ${new Date(usage.login.expiresAt).getMonth() + 1}/${new Date(usage.login.expiresAt).getDate()} 만료` : '로그인됨') : '로그인 필요'}
           </span>
           <button type="button" className="sb-authbtn" onClick={() => setAuthOpen(true)}>재인증</button>
         </div>
