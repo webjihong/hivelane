@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "로컬 맥에서 AI 팀(PO·PM·개발·QA)을 여러 개 돌리고 리소스에 맞춰 지휘하는 관제실",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
