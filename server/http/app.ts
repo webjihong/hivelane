@@ -465,6 +465,12 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json({ known: store.pushSubs().some((s) => s.endpoint === b.endpoint) });
   });
 
+  // 화면 진단: 기기에서 화면이 가로로 넘치면 무엇이 넘치는지 서버 기록(logs/server.log)에 남긴다
+  app.post('/api/client/layout', async (c) => {
+    const b = await body(c, z.object({ ua: z.string().max(400), standalone: z.boolean(), build: z.string().max(200).nullable(), vw: z.number(), dpr: z.number(), fontPx: z.number(), doc: z.number(), main: z.number().nullable(), chat: z.number().nullable(), over: z.array(z.string().max(300)).max(15) }));
+    log.info(`화면 진단 · ${b.standalone ? '설치 앱' : '브라우저'} · ${b.ua}\n  빌드 ${b.build} · 화면 ${b.vw}px · dpr ${b.dpr} · 기본 글자 ${b.fontPx}px · 문서 ${b.doc} · 본문 ${b.main} · 대화창 ${b.chat}${b.over.length ? `\n  넘침:\n  ${b.over.join('\n  ')}` : ''}`);
+    return c.json({ ok: true });
+  });
   app.get('/api/health', (c) => c.json({ ok: true, version: VERSION, build: webBuild(cfg.webDist) }));
 
   /* ---------- 화면 ---------- */

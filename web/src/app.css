@@ -736,3 +736,6 @@ a.fin-name:hover { text-decoration: underline; }
 .rt code { overflow-wrap: anywhere; word-break: break-all; white-space: pre-wrap; }
 .rt a { color: var(--accent); overflow-wrap: anywhere; word-break: break-all; }
 .c.user .rt a, .tc-bub.me .rt a { color: inherit; text-decoration: underline; }
+
+/* 크롬 안드로이드(특히 설치한 앱)의 글자 자동 확대(font boosting)를 끈다: 칸보다 큰 글자로 화면이 넓어지는 것 방지 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }

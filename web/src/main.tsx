@@ -50,3 +50,23 @@ async function checkBuild(): Promise<void> {
 document.addEventListener('visibilitychange', () => void checkBuild());
 setInterval(() => void checkBuild(), 60_000);
 void checkBuild();
+
+// 화면 진단: 열고 3초 뒤 한 번, 가로로 넘치는 요소가 있으면 무엇인지 서버 기록에 남긴다(기기별 화면 문제 추적용)
+function reportLayout(): void {
+  const vw = innerWidth;
+  const main = document.querySelector<HTMLElement>('.app-main');
+  const over: string[] = [];
+  for (const el of document.querySelectorAll<HTMLElement>('.app-main *')) {
+    const r = el.getBoundingClientRect();
+    const p = el.parentElement?.getBoundingClientRect();
+    if (r.width > 0 && r.right > vw + 1 && (!p || p.right <= vw + 1)) over.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 60)} 폭 ${Math.round(r.width)} 글자 ${getComputedStyle(el).fontSize} · ${(el.textContent ?? '').slice(0, 80)}`);
+    if (over.length >= 15) break;
+  }
+  void fetch('/api/client/layout', { method: 'POST', headers: { 'content-type': 'application/json', 'x-hivelane': '1' }, body: JSON.stringify({
+    ua: navigator.userAgent, standalone: matchMedia('(display-mode: standalone)').matches, build: myBuild, vw, dpr: devicePixelRatio,
+    fontPx: parseFloat(getComputedStyle(document.documentElement).fontSize), doc: document.documentElement.scrollWidth,
+    main: main?.scrollWidth ?? null, chat: document.querySelector<HTMLElement>('.po-chan')?.offsetWidth ?? null, over,
+  }) }).catch(() => {});
+}
+setTimeout(reportLayout, 3000);
+addEventListener('hashchange', () => setTimeout(reportLayout, 1500));
