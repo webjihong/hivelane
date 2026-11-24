@@ -153,6 +153,8 @@ export interface TeamView {
   last_check_at: string | null;
   last_check_ok: boolean | null;
   readable_team_ids: string[];
+  /** 팀을 만든 템플릿(직속 팀은 kv standing_tpl:팀id · 업무 팀은 업무의 템플릿 · 모르면 null) */
+  template_id: string | null;
   agents: AgentView[];
   busy_note: string | null;
 }

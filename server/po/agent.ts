@@ -42,7 +42,7 @@ export interface PoTools {
   systemStatus(): Promise<string>;
   learn(k: { kind: 'skill' | 'note'; name: string; when_to_use?: string; body: string; source?: string }): string; recall(name: string): string; forget(name: string): string;
   createStanding(p: { name: string; project: string | null; template_id: string; brief: string; roles?: TemplateRole[]; check_command?: string | null; check_interval_sec?: number | null }): string;
-  updateStanding(teamId: string, p: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null }): string;
+  updateStanding(teamId: string, p: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null; project?: string | null; template_id?: string }): Promise<string>;
   endStanding(teamId: string, reason: string): Promise<string>;
   scanGitCleanup(project: string): Promise<string>;
   gitCleanup(p: { project: string; ids: string[]; discard_changes?: boolean; reason: string }): Promise<string>;
@@ -297,10 +297,19 @@ ${chat}
         store.addChat({ role: 'event', body: `직속 팀 생성 · 「${t.name}」 (총괄이 사용자 지시로 만듦)`, team_id: t.id, tone: 'good' });
         return `직속 팀 ${t.id} 「${t.name}」 를 만들었다. 평소 대기하다가 지시·점검 이상 때 깨어나고, 사용자가 끝내라고 할 때까지 유지된다.`;
       },
-      updateStanding: (teamId, p) => {
+      updateStanding: async (teamId, p) => {
         const t = store.getTeam(teamId);
         if (!t || t.lifetime !== 'standing') return '직속 팀이 아니다.';
-        orch.updateStanding(teamId, { ...p, ...(p.check_command ? { check_interval_sec: p.check_interval_sec ?? t.check_interval_sec ?? 300 } : {}) });
+        const { project, ...rest } = p;
+        let pid: string | null | undefined;
+        if (project !== undefined) {
+          pid = projectId(project);
+          if (project && !pid) return `거절: 프로젝트 「${project}」 없음. list_projects 로 확인해라.`;
+        }
+        if (p.template_id && !store.getTemplate(p.template_id)) return `거절: 템플릿 ${p.template_id} 없음.`;
+        try {
+          await orch.updateStanding(teamId, { ...rest, ...(pid !== undefined ? { project_id: pid } : {}), ...(p.check_command ? { check_interval_sec: p.check_interval_sec ?? t.check_interval_sec ?? 300 } : {}) }, '총괄');
+        } catch (e) { return `거절: ${e instanceof Error ? e.message : String(e)}`; }
         return '바꿨다.';
       },
       endStanding: async (teamId, reason) => {
@@ -370,8 +379,10 @@ function poMcpServer(impl: PoTools) {
       roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'),
       check_command: z.string().max(2000).nullable().optional().describe('선택: 주기 점검 쉘 명령(종료 코드≠0 이면 팀을 깨움). 읽기 명령만'), check_interval_sec: z.number().int().min(30).max(86400).optional(),
     }, async (a) => text(impl.createStanding({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
-    T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기를 바꾼다', { team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional() },
-      async (a) => { const { team_id, ...rest } = a; return text(impl.updateStanding(team_id, rest)); }),
+    T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기·프로젝트·템플릿을 바꾼다. 프로젝트·템플릿을 바꾸면 이전 작업 폴더 변경은 패치로 보관되고 팀원 대화가 새로 시작된다(일하는 중이면 거절)', {
+      team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional(),
+      project: z.string().nullable().optional().describe('바꿀 때만: 프로젝트 id 또는 이름. null 이면 프로젝트 없음'), template_id: z.string().optional().describe('바꿀 때만: list_templates 의 템플릿 id'),
+    }, async (a) => { const { team_id, ...rest } = a; return text(await impl.updateStanding(team_id, rest)); }),
     T('read_team_patch', 'worktree 를 정리한 팀이 남긴 변경 패치(diff)를 읽는다. path 를 주면 그 파일만. 정리된 팀이 「무엇을 어떻게 바꿨는지」 물을 때', { team_id: z.string(), path: z.string().optional().describe('저장소 기준 파일 경로') }, async (a) => text(impl.readTeamPatch(a.team_id, a.path))),
     T('scan_git_cleanup', '프로젝트 저장소의 worktree·로컬 브랜치를 살펴 [정리 가능]/[확인 필요]/[남김] 으로 나눈다(지우지 않음). 정리 전에 반드시 먼저 본다', { project: z.string().describe('프로젝트 이름 또는 id') }, async (a) => text(await impl.scanGitCleanup(a.project))),
     T('git_cleanup', 'scan_git_cleanup 의 id 들을 정리한다. 사용자가 이번 대화에서 정리하라고 했을 때만. [남김] 은 절대 안 지우고, [확인 필요] 는 사용자가 버려도 된다고 했을 때 discard_changes: true 로만', {

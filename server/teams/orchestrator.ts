@@ -98,32 +98,83 @@ export class Orchestrator {
 
   createStanding(input: { name: string; project_id: string | null; template_id: string | null; roles?: TemplateRole[]; brief: string; check_command?: string | null; check_interval_sec?: number | null; readable_team_ids?: string[] }): TeamRow {
     const { store } = this.deps;
+    const tplId = store.getTemplate(input.template_id) ? input.template_id : input.roles ? null : 'tpl-ops';
     const roles = normalizeRoles(input.roles ?? store.getTemplate(input.template_id)?.roles ?? store.getTemplate('tpl-ops')!.roles);
     const team = store.insertTeam({
       name: input.name, project_id: input.project_id, managed_by: 'user', lifetime: 'standing', standing_brief: input.brief, state: 'idle', priority: 'urgent',
       check_command: input.check_command || null, check_interval_sec: input.check_interval_sec || null, readable_team_ids: JSON.stringify(input.readable_team_ids ?? []),
     });
     this.createAgents(team, roles, store.getProject(input.project_id), true, input.brief);
+    store.setKv(`standing_tpl:${team.id}`, tplId);
     store.updateTeam(team.id, { last_heartbeat_at: nowIso() });
     store.addDecision(team.id, 'user', 'create', '직속 팀 생성');
     return store.getTeam(team.id)!;
   }
 
-  updateStanding(teamId: string, patch: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null; readable_team_ids?: string[] }): void {
-    const { store } = this.deps;
+  /** 직속 팀 수정. 프로젝트·템플릿을 바꾸면 작업 폴더를 정리(패치 보관)하고 팀원 대화를 새로 시작한다. */
+  async updateStanding(teamId: string, patch: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null; readable_team_ids?: string[]; project_id?: string | null; template_id?: string }, by = '사용자'): Promise<void> {
+    const { store, cfg } = this.deps;
     const t = store.getTeam(teamId);
     if (!t || t.lifetime !== 'standing') throw new Error('직속 팀이 아닙니다');
+    const curTpl = store.getKv<string | null>(`standing_tpl:${teamId}`, null);
+    const projectChanged = patch.project_id !== undefined && (patch.project_id || null) !== t.project_id;
+    const templateChanged = !!patch.template_id && patch.template_id !== curTpl;
+    const newProjectId = projectChanged ? (patch.project_id || null) : t.project_id;
+    const tpl = templateChanged ? store.getTemplate(patch.template_id!) : null;
+    const actor = by === '총괄' ? 'agent' as const : 'user' as const;
+    if (projectChanged || templateChanged) {
+      if (this.isRunning(teamId) || t.state === 'running') throw new ConflictError('일하는 중에는 프로젝트·템플릿을 바꿀 수 없습니다. 멈추거나 끝난 뒤 바꾸세요.');
+      if (projectChanged && newProjectId && !store.getProject(newProjectId)) throw new ConflictError('프로젝트를 찾을 수 없습니다');
+      if (templateChanged && !tpl) throw new ConflictError('템플릿을 찾을 수 없습니다');
+    }
     store.updateTeam(teamId, {
       ...(patch.name ? { name: patch.name } : {}), ...(patch.brief !== undefined ? { standing_brief: patch.brief } : {}),
       ...(patch.check_command !== undefined ? { check_command: patch.check_command || null } : {}),
       ...(patch.check_interval_sec !== undefined ? { check_interval_sec: patch.check_interval_sec || null } : {}),
       ...(patch.readable_team_ids ? { readable_team_ids: JSON.stringify(patch.readable_team_ids) } : {}),
     });
-    if (patch.brief !== undefined) {
-      const pm = store.agentByRole(teamId, 'pm');
-      const roles = this.rolesOf(teamId);
-      if (pm) store.updateAgent(pm.id, { system_prompt: pmPrompt({ roles, project: store.getProject(t.project_id), standing: true, standingBrief: patch.brief }) });
+    if (projectChanged) {
+      const oldP = store.getProject(t.project_id);
+      // 프로젝트 워크트리였으면 archive 처럼 변경을 패치로 남기고 지운다(standingDir 폴더는 그대로 둔다)
+      if (oldP && t.worktree_path) {
+        const patchFile = await saveWorktreePatch(cfg, t.worktree_path, t.base_sha, t.id).catch((e) => { log.warn(`패치 저장 실패 ${teamId}`, e); return null; });
+        await removeWorktree(oldP.path, t.worktree_path);
+        store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: false, patch_path: patchFile?.path ?? null, patch_files: patchFile?.files ?? 0, note: `프로젝트 변경으로 정리 · ${patchFile ? `변경 ${patchFile.files}개 파일을 패치로 보관` : '변경 없음'}` });
+      }
+      store.updateTeam(teamId, { project_id: newProjectId, worktree_path: null, branch: null, base_sha: null });
+      store.addDecision(teamId, actor, 'project', `프로젝트 변경: ${oldP?.name ?? '없음'} → ${store.getProject(newProjectId)?.name ?? '없음'}`);
     }
+    if (templateChanged && tpl) {
+      const fresh = store.getTeam(teamId)!;
+      this.rebuildAgents(fresh, normalizeRoles(tpl.roles));
+      store.setKv(`standing_tpl:${teamId}`, tpl.id);
+      store.addDecision(teamId, actor, 'template', `템플릿 변경: ${store.getTemplate(curTpl)?.name ?? curTpl ?? '알 수 없음'} → ${tpl.name}`);
+    }
+    if (projectChanged || templateChanged) {
+      for (const a of store.teamAgents(teamId)) store.updateAgent(a.id, { session_id: null });
+    }
+    if (patch.brief !== undefined || projectChanged || templateChanged) this.refreshPrompts(store.getTeam(teamId)!);
+    bus.changed('team');
+  }
+
+  /** 새 역할 구성으로 팀원을 맞춘다: PM 은 그대로 두고 고치며, 같은 역할 키는 고쳐 쓰고, 없어진 역할은 지우고, 새 역할은 만든다. */
+  private rebuildAgents(team: TeamRow, roles: TemplateRole[]): void {
+    const { store } = this.deps;
+    const project = store.getProject(team.project_id);
+    store.db.transaction(() => {
+      const pmRole = roles.find((r) => r.key === 'pm')!;
+      const pm = store.agentByRole(team.id, 'pm')!;
+      store.updateAgent(pm.id, { role_name: pmRole.name, model: pmRole.model, session_id: null });
+      const existing = new Map(store.teamAgents(team.id).filter((a) => a.role_key !== 'pm').map((a) => [a.role_key, a]));
+      for (const r of roles.filter((r) => r.key !== 'pm')) {
+        const fields = { role_name: r.name, model: r.model, run_mode: r.mode, parent_agent_id: r.mode === 'subagent' ? pm.id : null, system_prompt: rolePrompt(r, project), allowed_tools: JSON.stringify(presetTools(r.tools)), session_id: null };
+        const a = existing.get(r.key);
+        if (a) { store.updateAgent(a.id, fields); existing.delete(r.key); }
+        else store.insertAgent({ team_id: team.id, role_key: r.key, role_name: r.name, model: r.model, run_mode: r.mode, parent_agent_id: fields.parent_agent_id, system_prompt: fields.system_prompt, allowed_tools: presetTools(r.tools) });
+      }
+      for (const a of existing.values()) store.deleteAgent(a.id);
+      store.setKv(`roles:${team.id}`, roles);
+    })();
   }
 
   private createAgents(team: TeamRow, roles: TemplateRole[], project: Project | null, standing: boolean, brief: string): void {

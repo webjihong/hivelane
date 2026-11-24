@@ -351,3 +351,86 @@ describe('화면 git 정리(사이드바 버튼)', () => {
     expect(snapshotTeams(recent, now).filter((t) => t.id.startsWith('n'))).toHaveLength(25);
   });
 });
+
+describe('직속 팀 수정: 프로젝트·템플릿 바꾸기', () => {
+  const proj = (store: ReturnType<typeof testEnv>['store'], name: string) => store.insertProject({ name, path: makeRepo(), base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [`/mem/${name}`], default_template_id: null });
+  const decisions = (store: ReturnType<typeof testEnv>['store'], id: string) => (store.db.prepare('SELECT reason FROM po_decisions WHERE team_id = ? ORDER BY id').all(id) as { reason: string }[]).map((r) => r.reason);
+
+  it('프로젝트를 바꾸면 이전 worktree 변경을 패치로 보관·제거하고, 작업 폴더·세션을 비운 뒤 다음 지시에 새 프로젝트로 만든다', async () => {
+    const env = setup();
+    const a = proj(env.store, 'alpha');
+    const b = proj(env.store, 'beta');
+    const st = env.orch.createStanding({ name: '점검', project_id: a.id, template_id: 'tpl-ops', brief: 'b' });
+    env.orch.message(st.id, '확인', 'user');
+    await until(() => env.prompts.length > 0);
+    await env.orch.idle();
+    const before = env.store.getTeam(st.id)!;
+    expect(before.worktree_path).toContain('alpha');
+    expect(env.store.agentByRole(st.id, 'pm')!.session_id).toBe('s');
+    writeFileSync(join(before.worktree_path!, 'README.md'), '# changed\n');
+
+    await env.orch.updateStanding(st.id, { project_id: b.id });
+    const after = env.store.getTeam(st.id)!;
+    expect(after).toMatchObject({ project_id: b.id, worktree_path: null, branch: null, base_sha: null });
+    expect(existsSync(before.worktree_path!)).toBe(false);
+    const log = env.store.cleanupLog({ teamId: st.id }).items;
+    expect(log).toHaveLength(1);
+    expect(log[0]!.patch_files).toBe(1);
+    for (const ag of env.store.teamAgents(st.id)) expect(ag.session_id).toBeNull();
+    expect(env.store.agentByRole(st.id, 'pm')!.system_prompt).toContain('/mem/beta');
+    expect(decisions(env.store, st.id)).toContain('프로젝트 변경: alpha → beta');
+
+    // 같은 값이면 아무것도 하지 않는다
+    await env.orch.updateStanding(st.id, { project_id: b.id });
+    expect(decisions(env.store, st.id).filter((d) => d.startsWith('프로젝트 변경'))).toHaveLength(1);
+
+    env.orch.message(st.id, '다시 확인', 'user');
+    await until(() => env.prompts.length > 1);
+    await env.orch.idle();
+    expect(env.store.getTeam(st.id)!.worktree_path).toContain('beta');
+    await expect(env.orch.updateStanding(st.id, { project_id: 'nope' })).rejects.toThrow(/프로젝트/);
+  });
+
+  it('템플릿을 바꾸면 팀원 구성이 새 템플릿대로 바뀌고 세션이 새로 시작된다', async () => {
+    const env = setup();
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    expect(env.store.teamView(env.store.getTeam(st.id)!).template_id).toBe('tpl-ops');
+    const pm0 = env.store.agentByRole(st.id, 'pm')!;
+    env.store.updateAgent(pm0.id, { session_id: 'old' });
+    await env.orch.updateStanding(st.id, { template_id: 'tpl-dev' });
+    const keys = env.store.teamAgents(st.id).map((a) => a.role_key).sort();
+    expect(keys).toEqual(['dev', 'pm', 'qa']);
+    expect(env.orch.rolesOf(st.id).map((r) => r.key).sort()).toEqual(['dev', 'pm', 'qa']);
+    const pm = env.store.agentByRole(st.id, 'pm')!;
+    expect(pm.id).toBe(pm0.id);
+    expect(pm).toMatchObject({ model: 'opus', session_id: null });
+    expect(env.store.agentByRole(st.id, 'dev')!.parent_agent_id).toBe(pm.id);
+    expect(env.store.teamView(env.store.getTeam(st.id)!).template_id).toBe('tpl-dev');
+    expect(decisions(env.store, st.id)).toContain('템플릿 변경: 운영 점검팀 → 기본 개발팀');
+    await expect(env.orch.updateStanding(st.id, { template_id: 'tpl-none' })).rejects.toThrow(/템플릿/);
+    // 바뀐 팀원으로 일을 해도 문제없다
+    env.orch.message(st.id, '확인', 'user');
+    await until(() => env.prompts.length > 0);
+    await env.orch.idle();
+    expect(env.store.getTeam(st.id)!.state).toBe('idle');
+  });
+
+  it('일하는 중에는 프로젝트·템플릿 변경을 거부한다(이름 등은 바꿀 수 있음)', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const env = setup();
+    const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
+    const slow: TurnRunner = { async runTurn() { await gate; return { ok: true, subtype: 'success', text: '', costUsd: 0, sessionId: 's', interrupted: false, error: null, contextTokens: 10 }; } };
+    const orch = new Orchestrator({ cfg: env.cfg, store: env.store, runner: slow, slots: new HeavySlots(2), notifier: new NullNotifier() });
+    orch.message(st.id, '오래 걸리는 일', 'user');
+    await until(() => orch.isRunning(st.id));
+    const { ConflictError } = await import('../server/teams/orchestrator.ts');
+    await expect(orch.updateStanding(st.id, { template_id: 'tpl-dev' })).rejects.toBeInstanceOf(ConflictError);
+    await expect(orch.updateStanding(st.id, { project_id: proj(env.store, 'gamma').id })).rejects.toThrow(/일하는 중/);
+    await orch.updateStanding(st.id, { name: '새 이름' });
+    expect(env.store.getTeam(st.id)).toMatchObject({ name: '새 이름', project_id: null });
+    expect(env.store.teamAgents(st.id).map((a) => a.role_key).sort()).toEqual(['ops', 'pm']);
+    release();
+    await orch.idle();
+  });
+});

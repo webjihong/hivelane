@@ -291,12 +291,11 @@ function StandingFields({ f, set, snap, isNew, selfId }: { f: StandingForm; set:
   return (
     <>
       <label>이름<input className="txt" value={f.name} maxLength={60} onChange={(e) => set({ ...f, name: e.target.value })} /></label>
-      {isNew && (
-        <>
-          <label>프로젝트<select value={f.project_id} onChange={(e) => set({ ...f, project_id: e.target.value })}><option value="">(없음)</option>{snap.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-          <label>템플릿<select value={f.template_id} onChange={(e) => set({ ...f, template_id: e.target.value })}>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-        </>
-      )}
+      <label>프로젝트<select value={f.project_id} onChange={(e) => set({ ...f, project_id: e.target.value })}><option value="">(없음)</option>{snap.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>템플릿<select value={f.template_id} onChange={(e) => set({ ...f, template_id: e.target.value })}>
+        {!isNew && !f.template_id && <option value="">(지금 구성 유지)</option>}
+        {snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select></label>
       <label className="wide">상시 지시서<textarea className="txt area" rows={4} maxLength={8000} value={f.brief} placeholder="예: 에러율 2% 넘으면 최근 배포 팀 기록부터 확인하고 보고" onChange={(e) => set({ ...f, brief: e.target.value })} /></label>
       <label className="wide">점검 명령 <small className="muted">선택 · 종료 코드가 0이 아니면 팀을 깨움</small><input className="txt mono" value={f.check_command} maxLength={2000} placeholder="예: curl -fsS https://example.com/health" onChange={(e) => set({ ...f, check_command: e.target.value })} /></label>
       <label>점검 주기(초)<input className="num" type="number" min={30} max={86400} value={f.check_interval_sec} onChange={(e) => set({ ...f, check_interval_sec: e.target.value })} /></label>
@@ -312,10 +311,21 @@ function StandingFields({ f, set, snap, isNew, selfId }: { f: StandingForm; set:
   );
 }
 
-function standingBody(f: StandingForm, isNew: boolean, readableTouched: boolean): Record<string, unknown> {
+/** 수정 폼에서 프로젝트·템플릿이 바뀌었는지(바뀐 값만 보낸다) */
+function standingMoves(f: StandingForm, t: TeamView | null): { project: boolean; template: boolean } {
+  if (!t) return { project: false, template: false };
+  return { project: (f.project_id || null) !== t.project_id, template: !!f.template_id && f.template_id !== (t.template_id ?? '') };
+}
+
+function standingBody(f: StandingForm, isNew: boolean, readableTouched: boolean, cur: TeamView | null = null): Record<string, unknown> {
   const iv = f.check_interval_sec.trim() === '' ? null : Number(f.check_interval_sec);
   const b: Record<string, unknown> = { name: f.name.trim(), brief: f.brief, check_command: f.check_command.trim() || null, check_interval_sec: f.check_command.trim() ? iv : null };
   if (isNew) { b.project_id = f.project_id || null; b.template_id = f.template_id || null; }
+  else {
+    const mv = standingMoves(f, cur);
+    if (mv.project) b.project_id = f.project_id || null;
+    if (mv.template) b.template_id = f.template_id;
+  }
   if (isNew || readableTouched) b.readable_team_ids = f.readable;
   return b;
 }
@@ -340,9 +350,9 @@ function StandingNew({ snap, onDone }: { snap: StateSnapshot; onDone: () => void
 function StandingItem({ t, snap, ro }: { t: TeamView; snap: StateSnapshot; ro: boolean }) {
   const [open, setOpen] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [f, setF] = useState<StandingForm>({ name: t.name, project_id: t.project_id ?? '', template_id: '', brief: t.standing_brief, check_command: t.check_command ?? '', check_interval_sec: t.check_interval_sec ? String(t.check_interval_sec) : '300', readable: t.readable_team_ids });
+  const [f, setF] = useState<StandingForm>({ name: t.name, project_id: t.project_id ?? '', template_id: t.template_id ?? '', brief: t.standing_brief, check_command: t.check_command ?? '', check_interval_sec: t.check_interval_sec ? String(t.check_interval_sec) : '300', readable: t.readable_team_ids });
   const save = async () => {
-    const r = await act(() => api(`/api/standing/${encodeURIComponent(t.id)}`, 'PATCH', standingBody(f, false, touched)), '직속 팀을 저장했습니다');
+    const r = await act(() => api(`/api/standing/${encodeURIComponent(t.id)}`, 'PATCH', standingBody(f, false, touched, t)), '직속 팀을 저장했습니다');
     if (r !== undefined) { await refreshState(); setOpen(false); }
   };
   const archive = async () => { const r = await act(() => api(`/api/teams/${encodeURIComponent(t.id)}/cancel`, 'POST', {}), '직속 팀을 종료했습니다'); if (r !== undefined) await refreshState(); };
@@ -355,6 +365,7 @@ function StandingItem({ t, snap, ro }: { t: TeamView; snap: StateSnapshot; ro: b
       {open && (
         <div className="form-grid">
           <StandingFields f={f} set={(n) => { if (n.readable !== f.readable) setTouched(true); setF(n); }} snap={snap} isNew={false} selfId={t.id} />
+          {(() => { const mv = standingMoves(f, t); return (mv.project || mv.template) && <div className="wide small muted">저장하면 팀원 대화가 새로 시작되고, 이전 작업 폴더의 변경은 패치로 보관됩니다{t.state === 'running' ? ' · 지금 일하는 중이라 멈추거나 끝난 뒤에 바꿀 수 있습니다' : ''}</div>; })()}
           <div className="row wide"><button className="btn primary" type="button" disabled={!f.name.trim()} onClick={() => void save()}>저장</button></div>
         </div>
       )}
@@ -825,7 +836,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
 
       {tab === 'standing' && <Section title="직속 팀" right={!ro && !newStanding ? <button className="back" type="button" onClick={() => setNewStanding(true)}>+ 직속 팀 추가</button> : <span>총괄을 거치지 않고 바로 지시하는 상시 팀</span>}>
         <div className="panel stack-s">
-          {standing.length ? standing.map((t) => <StandingItem key={`${t.id}:${t.name}:${t.standing_brief}:${t.check_command ?? ''}:${t.check_interval_sec ?? ''}`} t={t} snap={snap} ro={ro} />) : <div className="muted">직속 팀이 없습니다.</div>}
+          {standing.length ? standing.map((t) => <StandingItem key={`${t.id}:${t.name}:${t.standing_brief}:${t.check_command ?? ''}:${t.check_interval_sec ?? ''}:${t.project_id ?? ''}:${t.template_id ?? ''}`} t={t} snap={snap} ro={ro} />) : <div className="muted">직속 팀이 없습니다.</div>}
           {newStanding && <StandingNew snap={snap} onDone={() => setNewStanding(false)} />}
         </div>
       </Section>}

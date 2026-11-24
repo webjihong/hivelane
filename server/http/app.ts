@@ -318,7 +318,13 @@ export function createApp(d: AppDeps): Hono<Env> {
     readable_team_ids: z.array(z.string()).optional(),
   });
   app.post('/api/standing', async (c) => { localOnly(c); const b = await body(c, standingZ); const t = orch.createStanding({ ...b, roles: b.roles as TemplateRole[] | undefined }); return c.json({ team: store.teamView(t) }); });
-  app.patch('/api/standing/:id', async (c) => { localOnly(c); const b = await body(c, standingZ.partial().omit({ project_id: true, template_id: true, roles: true })); orch.updateStanding(c.req.param('id'), b); return c.json({ ok: true }); });
+  // 수정: 보낸 값만 바꾼다(기본값을 채우지 않도록 따로 정의 · roles 는 받지 않음)
+  const standingPatchZ = z.object({
+    name: z.string().min(1).max(60).optional(), project_id: z.string().nullable().optional(), template_id: z.string().min(1).optional(),
+    brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).nullable().optional(),
+    readable_team_ids: z.array(z.string()).optional(),
+  });
+  app.patch('/api/standing/:id', async (c) => { localOnly(c); const b = await body(c, standingPatchZ); await orch.updateStanding(c.req.param('id'), b, '사용자'); return c.json({ ok: true }); });
 
   /* ---------- 프로젝트 ---------- */
   /** 맥에서 Finder 폴더 고르기 창을 띄운다(맥 화면에서만 · 취소하면 path null) */

@@ -281,6 +281,11 @@ export class Store {
     this.db.prepare(`UPDATE agents SET ${keys.map((k) => `${k} = @${k}`).join(', ')}, updated_at = @__ts WHERE id = @__id`).run({ ...patch, __ts: nowIso(), __id: id });
     bus.changed('agent');
   }
+  /** 팀원 행만 지운다. agents 를 가리키는 외래키는 없어 기록(agent_events·runs·messages)은 팀 id 로 그대로 남는다. */
+  deleteAgent(id: string): void {
+    this.db.prepare('DELETE FROM agents WHERE id = ?').run(id);
+    bus.changed('agent');
+  }
   addAgentUsage(id: string, u: { cost: number; inTok: number; outTok: number; context: number }): void {
     this.db.prepare('UPDATE agents SET cost_usd = cost_usd + ?, tokens_in = tokens_in + ?, tokens_out = tokens_out + ?, context_tokens = ?, updated_at = ? WHERE id = ?')
       .run(u.cost, u.inTok, u.outTok, u.context, nowIso(), id);
@@ -585,6 +590,7 @@ export class Store {
       started_at: t.started_at, finished_at: t.finished_at, created_at: t.created_at, last_activity_at: t.last_activity_at, last_heartbeat_at: t.last_heartbeat_at,
       revived_count: t.revived_count, standing_brief: t.standing_brief, check_command: t.check_command, check_interval_sec: t.check_interval_sec,
       last_check_at: t.last_check_at, last_check_ok: t.last_check_ok == null ? null : !!t.last_check_ok, readable_team_ids: parseJson<string[]>(t.readable_team_ids, []), agents,
+      template_id: t.lifetime === 'standing' ? this.getKv<string | null>(`standing_tpl:${t.id}`, null) : task?.template_id ?? null,
       busy_note: busy ? `${busy.role_name}: ${busy.current_step}` : null,
       unread: this.teamUnread(t.id),
       env_mode: t.env_mode === 'mine' ? 'mine' : 'isolated',
