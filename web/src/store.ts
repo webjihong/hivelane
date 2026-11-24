@@ -1,6 +1,6 @@
 /** 화면 상태: 스냅샷·대화·연결·라우트·토스트. useSyncExternalStore 로 구독한다. SSE 로 서버 변경을 받는다. */
 import { useSyncExternalStore } from 'react';
-import type { ChatView, ResourceView, StateSnapshot } from '../../shared/types.ts';
+import type { ChatView, ResourceView, StateSnapshot, UsageView } from '../../shared/types.ts';
 
 /* ---------- 작은 스토어 ---------- */
 export interface Box<T> { get(): T; set(v: T | ((p: T) => T)): void; subscribe(fn: () => void): () => void }
@@ -90,7 +90,7 @@ export const proposalOutcome = box<Record<string, 'approved' | 'rejected'>>({});
 
 /** 서버가 화면보다 옛 버전(재시작 전)이어도 새 목록 값이 비지 않게 */
 function withDefaults(s: StateSnapshot): StateSnapshot {
-  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
+  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], usage: s.usage ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
 }
 
 export async function refreshState(): Promise<void> {
@@ -140,6 +140,10 @@ export function connect(): void {
   s.addEventListener('resource', (ev) => {
     const d = parse<{ sample: ResourceView }>(ev);
     if (d?.sample) snapshot.set((p) => (p ? { ...p, resource: d.sample } : p));
+  });
+  s.addEventListener('usage', (ev) => {
+    const d = parse<{ usage: UsageView }>(ev);
+    if (d?.usage) snapshot.set((p) => (p ? { ...p, usage: d.usage } : p));
   });
   s.addEventListener('chat', (ev) => {
     const d = parse<{ row: RawChatRow }>(ev);

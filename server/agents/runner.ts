@@ -82,6 +82,8 @@ export interface RunnerDeps {
   store: Store;
   slots: HeavySlots;
   pathToClaude?: string;
+  /** 스트림에 플랜 한도 이벤트가 오면(사용량 갱신 신호) */
+  onRateLimit?: () => void;
 }
 
 const PRESET_TOOLS = {
@@ -260,6 +262,7 @@ export class AgentRunner {
   }): void {
     const { store } = this.deps;
     const pmLabel = spec.label ?? spec.agent.role_name;
+    if (m.type === 'rate_limit_event') { this.deps.onRateLimit?.(); return; }
     if (m.type === 'system' && m.subtype === 'init') {
       c.result.sessionId = m.session_id;
       store.updateAgent(spec.agent.id, { session_id: m.session_id });

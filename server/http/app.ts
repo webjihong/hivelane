@@ -3,6 +3,7 @@ import { readUpload, saveUpload } from '../uploads.ts';
 import type { PrWatcher } from '../projects/prs.ts';
 import type { RepoWatcher } from '../projects/repos.ts';
 import type { ScriptRunner } from '../scripts.ts';
+import type { PlanUsage } from '../po/usage.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -24,7 +25,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -91,7 +92,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 상태·스트림 ---------- */
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
-      version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, projects: store.listProjects(), templates: store.listTemplates(),
+      version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, projects: store.listProjects(), templates: store.listTemplates(),
       teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);

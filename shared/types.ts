@@ -191,6 +191,10 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** Claude 플랜 사용량: 한도 창별 사용 %(0~100) */
+export interface UsageWindow { key: string; label: string; pct: number; resets_at: string | null }
+export interface UsageView { available: boolean; plan: string | null; windows: UsageWindow[]; takenAt: string | null; error: string | null }
+
 /** PO 가 배운 것. skill = 절차(필요할 때 꺼내 씀), note = 늘 기억할 사실·선호 */
 export interface KnowledgeView {
   id: string; kind: 'skill' | 'note'; name: string; when_to_use: string; body: string; source: string;
@@ -247,6 +251,7 @@ export interface StateSnapshot {
   access: 'local' | 'remote';
   settings: Settings;
   resource: ResourceView;
+  usage: UsageView;
   projects: Project[];
   templates: TeamTemplate[];
   teams: TeamView[];

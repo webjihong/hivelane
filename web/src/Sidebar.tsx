@@ -11,6 +11,13 @@ function Bar({ v, y, r }: { v: number; y: number; r: number }) {
   return <span className="sb-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(2, v))}%`, background: c }} /></span>;
 }
 
+/** 초기화 시각: 오늘이면 시:분, 아니면 요일 시:분 */
+function resetLabel(iso: string): string {
+  const d = new Date(iso);
+  const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} ${hm}`;
+}
+
 type DiagData = {
   cpu: number; mem: number; load: number; cores: number; ownShare: number;
   groups: { pid: number; label: string; detail: string; kind: string; cpu: number; share: number; rssMb: number; count: number }[];
@@ -164,6 +171,8 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
   const { need, news } = nowCount(snap);
   const res = snap.resource;
   const e = snap.settings.engine;
+  const usage = snap.usage;
+  const usageTip = `Claude 플랜 사용량${usage.plan ? ` (${usage.plan})` : ''} · ${usage.windows.map((w) => `${w.label} ${Math.round(w.pct)}%${w.resets_at ? ` · ${resetLabel(w.resets_at)} 초기화` : ''}`).join(' / ')}${usage.takenAt ? ` · ${new Date(usage.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준, 5분마다 갱신` : ''}`;
   const nowOn = r.name === 'now' || r.name === 'home';
   const prFocus = r.name === 'prs' ? r.focus : undefined;
   const poPending = snap.proposals.filter((p) => p.status === 'pending').length;
@@ -220,10 +229,20 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
       </div>
 
       <button type="button" className="sb-res" onClick={() => setDiag(true)} title={`${ZONE[res.zone]} · 무거운 명령 ${res.heavyRunning} 실행 · ${res.heavyWaiting} 대기 · ${c === 'down' ? '서버 연결 끊김' : '서버 연결됨'} — 누르면 누가 쓰는지 보기`}>
-        <span className={`sb-zone ${res.zone}`}>{ZONE[res.zone]}</span>
-        <span className="sb-k">CPU</span><Bar v={res.cpu} y={e.cpuY} r={e.cpuR} /><span className="mono">{Math.round(res.cpu)}%</span>
-        <span className="sb-k">메모리</span><Bar v={res.mem} y={e.memY} r={e.memR} /><span className="mono">{Math.round(res.mem)}%</span>
-        {c === 'down' && <span className="sb-down" aria-label="서버 연결 끊김">●</span>}
+        <span className="sb-row">
+          <span className={`sb-zone ${res.zone}`}>{ZONE[res.zone]}</span>
+          <span className="sb-k">CPU</span><Bar v={res.cpu} y={e.cpuY} r={e.cpuR} /><span className="mono">{Math.round(res.cpu)}%</span>
+          <span className="sb-k">메모리</span><Bar v={res.mem} y={e.memY} r={e.memR} /><span className="mono">{Math.round(res.mem)}%</span>
+          {c === 'down' && <span className="sb-down" aria-label="서버 연결 끊김">●</span>}
+        </span>
+        {usage.available && (
+          <span className="sb-row" title={usageTip}>
+            <span className="sb-zone tok">토큰</span>
+            {usage.windows.slice(0, 2).map((w) => (
+              <span key={w.key} className="sb-win"><span className="sb-k">{w.label}</span><Bar v={w.pct} y={80} r={95} /><span className="mono">{Math.round(w.pct)}%</span></span>
+            ))}
+          </span>
+        )}
       </button>
       {diag && <ResourceModal onClose={() => setDiag(false)} />}
     </nav>
