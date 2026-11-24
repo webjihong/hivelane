@@ -8,8 +8,9 @@ import { Search } from '../server/search/index.ts';
 import { Orchestrator, type TurnRunner } from '../server/teams/orchestrator.ts';
 import { makeRepo, testEnv } from './helpers.ts';
 
-function app() {
+function app(webDist?: string) {
   const { cfg, store } = testEnv();
+  if (webDist) cfg.webDist = webDist;
   const runner: TurnRunner = { runTurn: async () => ({ ok: true, subtype: 'success', text: '-', costUsd: 0, sessionId: 's', interrupted: false, error: null, contextTokens: 0 }) };
   const slots = new HeavySlots(1);
   const notifier = new NullNotifier();
@@ -92,5 +93,22 @@ describe('HTTP 접근 제어', () => {
     expect((await req('/api/teams/none')).status).toBe(404);
     // 질문이 없는 팀에 답하기 → 409
     expect((await req(`/api/teams/${team.id}/answer`, { body: { text: '네' } })).status).toBe(409);
+  });
+});
+
+describe('화면 캐시', () => {
+  it('index.html 은 매번 확인(no-cache), 해시 붙은 assets 는 오래 캐시, health 는 지금 빌드를 알려 준다', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'hl-web-'));
+    mkdirSync(join(dir, 'assets'));
+    writeFileSync(join(dir, 'index.html'), '<html><script type="module" crossorigin src="/assets/index-AbC123.js"></script></html>');
+    writeFileSync(join(dir, 'assets', 'index-AbC123.js'), 'x');
+    const { req } = app(dir);
+    const home = await req('/');
+    expect(home.headers.get('cache-control')).toBe('no-cache');
+    expect((await req('/assets/index-AbC123.js')).headers.get('cache-control')).toContain('immutable');
+    expect(await (await req('/api/health')).json()).toMatchObject({ ok: true, build: '/assets/index-AbC123.js' });
   });
 });

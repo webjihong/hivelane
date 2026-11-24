@@ -53,6 +53,11 @@ export function snapshotTeams<T extends { lifetime: string; state: string; finis
 
 const httpLog = logger('http');
 
+/** 지금 서버가 내보내는 화면 빌드(index.html 이 부르는 /assets 스크립트 이름). 화면이 자기 것과 다르면 새로 불러온다. */
+export function webBuild(dir: string): string | null {
+  try { return readFileSync(join(dir, 'index.html'), 'utf8').match(/\/assets\/[\w.-]+\.js/)?.[0] ?? null; } catch { return null; }
+}
+
 export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
   const app = new Hono<Env>();
@@ -460,10 +465,17 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json({ known: store.pushSubs().some((s) => s.endpoint === b.endpoint) });
   });
 
-  app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
+  app.get('/api/health', (c) => c.json({ ok: true, version: VERSION, build: webBuild(cfg.webDist) }));
 
   /* ---------- 화면 ---------- */
   if (existsSync(cfg.webDist)) {
+    // 이름에 내용 해시가 붙은 /assets 는 오래 캐시, 나머지(index.html·sw.js·manifest)는 매번 새로 확인한다.
+    // 홈 화면 앱(PWA)이 예전 index.html 을 붙잡고 예전 화면을 계속 보여 주는 것을 막는다.
+    app.use('/*', async (c, next) => {
+      await next();
+      if (c.req.path.startsWith('/api/')) return;
+      c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') && c.res.status === 200 ? 'public, max-age=31536000, immutable' : 'no-cache');
+    });
     app.use('/*', serveStatic({ root: cfg.webDist, rewriteRequestPath: (p) => p }));
     const index = join(cfg.webDist, 'index.html');
     app.get('*', (c) => c.html(readFileSync(index, 'utf8')));

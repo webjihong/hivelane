@@ -34,3 +34,19 @@ connect();
 
 // 푸시 알림을 이미 켠 기기는 서비스 워커를 계속 등록해 둔다.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration('/sw.js').then((r) => { if (r) void r.update(); }).catch(() => {});
+
+// 서버가 새 화면으로 바뀌었으면 새로 불러온다(홈 화면 앱이 예전 화면을 붙잡고 있지 않게).
+// 같은 빌드로는 한 번만 시도해 무한 새로고침을 막는다.
+const myBuild = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src') ?? null;
+async function checkBuild(): Promise<void> {
+  if (!myBuild || document.visibilityState !== 'visible') return;
+  try {
+    const j = await (await fetch('/api/health', { cache: 'no-store' })).json() as { build?: string | null };
+    if (!j.build || j.build === myBuild || sessionStorage.getItem('hl-reload-for') === j.build) return;
+    sessionStorage.setItem('hl-reload-for', j.build);
+    location.replace(`/?b=${encodeURIComponent(j.build.replace(/^.*index-|\.js$/g, ''))}${location.hash}`);
+  } catch { /* 서버 재시작 중이면 다음에 */ }
+}
+document.addEventListener('visibilitychange', () => void checkBuild());
+setInterval(() => void checkBuild(), 60_000);
+void checkBuild();
