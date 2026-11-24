@@ -74,6 +74,37 @@ export class Search {
     };
   }
 
+  /**
+   * 벡터가 빠진 기록만 채운다(임베딩이 잠깐 꺼져 있었을 때 등). 모델이 바뀐 상태면 하지 않는다(전체 다시 색인 몫).
+   * 한 번에 limit 건까지.
+   */
+  async fillMissing(limit = 5000): Promise<number> {
+    if (!this.enabled() || this.job?.running || this.draining) return 0;
+    const e = this.store.getSettings().embedding;
+    const m = this.meta();
+    if (m.model && (m.model !== e.model || m.provider !== e.provider)) return 0;
+    const rows = (this.dim
+      ? this.store.db.prepare('SELECT rowid, text FROM search_fts WHERE rowid NOT IN (SELECT rowid FROM search_vec) ORDER BY rowid LIMIT ?').all(limit)
+      : this.store.db.prepare('SELECT rowid, text FROM search_fts ORDER BY rowid LIMIT ?').all(limit)) as { rowid: number; text: string }[];
+    let n = 0;
+    try {
+      for (let i = 0; i < rows.length; i += 32) {
+        const batch = rows.slice(i, i + 32);
+        const vecs = await this.embed(batch.map((r) => r.text.slice(0, 4000)));
+        if (!vecs[0]) continue;
+        this.ensureVecTable(vecs[0].length);
+        const ins = this.store.db.prepare('INSERT OR REPLACE INTO search_vec(rowid, embedding) VALUES (?, ?)');
+        vecs.forEach((v, j) => ins.run(BigInt(batch[j]!.rowid), new Float32Array(v)));
+        n += batch.length;
+      }
+    } catch (err) {
+      this.patchMeta({ lastError: err instanceof Error ? err.message : String(err), lastErrorAt: new Date().toISOString() });
+      return n;
+    }
+    if (n) this.patchMeta({ lastAddAt: new Date().toISOString(), lastError: null, ...(m.model ? {} : { provider: e.provider, model: e.model }) });
+    return n;
+  }
+
   /** 다시 색인을 백그라운드로 시작(진행률은 status().job) */
   startReindex(): SearchStatusView {
     if (!this.enabled()) throw new Error('임베딩이 꺼져 있습니다');

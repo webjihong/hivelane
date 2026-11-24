@@ -8,6 +8,7 @@ import type { AuthLogin } from '../po/auth.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { tailscaleState } from '../remote.ts';
+import { compactDb, storageReport } from '../storage.ts';
 import type { OllamaManager } from '../search/ollama.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
@@ -367,6 +368,8 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/remote', async (c) => c.json({ ownerLogin: store.getSettings().ownerLogin, lastRemote: store.getKv('last_remote_login', null), remotePort: d.cfg.remotePort, tailscale: await tailscaleState(d.cfg.remotePort, !!c.req.query('fresh')).catch(() => null) }));
   app.post('/api/search/reindex', (c) => { localOnly(c); try { return c.json(search.startReindex()); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.get('/api/search/status', (c) => c.json(search.status()));
+  app.get('/api/storage', async (c) => c.json(await storageReport(cfg, store, !!c.req.query('fresh'))));
+  app.post('/api/storage/compact', (c) => { localOnly(c); return c.json(compactDb(store)); });
   app.get('/api/search', async (c) => c.json(await search.search(c.req.query('q') ?? '', { projectId: c.req.query('project') || null })));
 
   /* ---------- 푸시 ---------- */

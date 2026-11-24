@@ -57,6 +57,11 @@ repoTimer.unref();
 const scripts = new ScriptRunner(store);
 const ollama = new OllamaManager({ store, logsDir: cfg.logsDir, onChange: () => {} });
 void ollama.ensure(); // 검색 방식이 Ollama 면 Hivelane 과 함께 켠다
+try { const n = store.backfillChatIndex(); if (n) log.info(`총괄 대화 ${n}줄 검색 색인`); } catch (e) { log.warn('총괄 대화 색인 실패', e); }
+// 빠진 벡터 채우기: 부팅 1분 뒤, 그다음 10분마다(빠진 것만이라 가볍다)
+setTimeout(() => void search.fillMissing(), 60_000).unref();
+const fillTimer = setInterval(() => void search.fillMissing(), 600_000);
+fillTimer.unref();
 setTimeout(() => void gitClean.refresh(), 20_000).unref();
 const gitCleanTimer = setInterval(() => void gitClean.refresh(), 600_000);
 gitCleanTimer.unref();

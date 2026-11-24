@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
@@ -402,6 +402,61 @@ function OllamaPanel({ ro, model }: { ro: boolean; model: string }) {
   );
 }
 
+const fmtBytes = (b: number | null) => (b == null ? '?' : b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
+
+/** 저장 공간: DB(무엇이 얼마나)·폴더·Ollama 모델 + DB 압축 */
+function StoragePanel({ ro }: { ro: boolean }) {
+  const [v, setV] = useState<StorageView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);
+  const load = (fresh = false) => { setBusy(true); void api<StorageView>(`/api/storage${fresh ? '?fresh=1' : ''}`).then(setV).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), 'crit')).finally(() => setBusy(false)); };
+  useEffect(() => load(), []);
+  const compact = async () => { setSure(false); setBusy(true); const r = await act(() => api<{ before: number; after: number }>('/api/storage/compact', 'POST', {})); setBusy(false); if (r) { toast(`DB 압축 · ${fmtBytes(r.before)} → ${fmtBytes(r.after)}`, 'good'); load(true); } };
+  if (!v) return <div className="panel muted">재는 중… (폴더 크기를 세느라 몇 초)</div>;
+  const dbTotal = v.db.file + v.db.wal + v.db.shm;
+  const dirTotal = v.dirs.filter((d) => d.key !== 'ollama').reduce((a, d) => a + (d.bytes ?? 0), 0);
+  const maxG = Math.max(1, ...v.groups.map((g) => g.bytes));
+  return (
+    <div className="stack-s">
+      <div className="panel st-sum">
+        <div><small>DB</small><b>{fmtBytes(dbTotal)}</b><span className="muted small">본 파일 {fmtBytes(v.db.file)} · 쓰기 대기(WAL) {fmtBytes(v.db.wal)}</span></div>
+        <div><small>폴더</small><b>{fmtBytes(dirTotal)}</b><span className="muted small">worktree·패치·로그·이미지 등</span></div>
+        <div><small>Hivelane 합계</small><b>{fmtBytes(dbTotal + dirTotal)}</b><span className="muted small mono">{v.home.replace(/^\/Users\/[^/]+/, '~')}</span></div>
+      </div>
+      <div className="panel">
+        <h3>DB 안에서 차지하는 것 <small className="muted">기록 {v.counts.docs.toLocaleString()}건 검색 가능 · 팀 {v.counts.teams} · 팀 대화 {v.counts.messages.toLocaleString()} · 총괄 대화 {v.counts.chat.toLocaleString()} · 진행 기록 {v.counts.events.toLocaleString()}</small></h3>
+        <div className="st-list">
+          {v.groups.map((g) => (
+            <div key={g.label} className="st-row">
+              <span className="st-l">{g.label}{g.note && <span className="muted small"> · {g.note}</span>}</span>
+              <span className="st-bar"><i style={{ width: `${Math.max(1, (g.bytes / maxG) * 100)}%` }} /></span>
+              <span className="mono st-n">{fmtBytes(g.bytes)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="row st-act">
+          <span className="muted small">지운 기록이 남긴 빈 공간 {fmtBytes(v.db.free)}{v.db.free > 0 ? ' · 압축하면 돌려받습니다' : ''}</span>
+          {!ro && (!sure
+            ? <button className="btn" type="button" disabled={busy} onClick={() => setSure(true)}>DB 압축</button>
+            : <span className="confirm"><span>몇 초 동안 기록 쓰기가 멈춥니다. 팀이 쉴 때 권장.</span><button className="btn danger" type="button" onClick={() => void compact()}>압축</button><button className="btn" type="button" onClick={() => setSure(false)}>취소</button></span>)}
+        </div>
+      </div>
+      <div className="panel">
+        <h3>폴더</h3>
+        <div className="st-list">
+          {v.dirs.map((d) => (
+            <div key={d.key} className="st-row">
+              <span className="st-l">{d.label}<span className="muted small mono"> · {d.path.replace(/^\/Users\/[^/]+/, '~')}</span>{d.note && <span className="muted small"> · {d.note}</span>}{d.key === 'archive' && v.counts.patches > 0 && <span className="muted small"> · 패치 {v.counts.patches}개</span>}</span>
+              <span className="mono st-n">{fmtBytes(d.bytes)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="muted small">자동 정리: 팀원 진행·명령 실행 기록은 팀이 끝나고 14일 뒤, 리소스 측정은 하루, 끝난 팀 worktree 는 7일(설정 › 총괄·엔진) 뒤. 대화·요약·바뀐 파일·패치는 계속 남습니다. · {new Date(v.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준 <button className="link-btn" type="button" disabled={busy} onClick={() => load(true)}>{busy ? '재는 중…' : '다시 재기'}</button></p>
+    </div>
+  );
+}
+
 const fmtAt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-');
 
 /** 색인 상태: 기록 수·벡터 수·모델·마지막 색인·오류 + 다시 색인(진행률) */
@@ -446,7 +501,7 @@ function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
   );
 }
 
-export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search';
+export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search' | 'storage';
 
 export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: SettingsTab }) {
   const ro = snap.access === 'remote';
@@ -536,6 +591,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
             </div>
           </div>
         </Section>}
+        {tab === 'storage' && <Section title="저장 공간" sub="DB·폴더가 디스크를 얼마나 쓰는지"><StoragePanel ro={ro} /></Section>}
         {tab === 'search' && <Section title="검색" sub="벡터 검색(선택)">
           <div className="panel stack-s">
             <Row label="임베딩" htmlFor="set-emb">

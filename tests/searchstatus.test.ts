@@ -39,3 +39,35 @@ describe('검색 색인 상태', () => {
     expect(search.status().lastError).toBe('연결 거부');
   });
 });
+
+import { storageReport } from '../server/storage.ts';
+describe('총괄 대화 색인 · 빠진 벡터 채우기 · 저장 공간', () => {
+  it('총괄 대화가 검색되고, 예전 대화는 한 번 채우며, 빠진 벡터만 채운다', async () => {
+    const { cfg, store } = testEnv();
+    const search = new Search(store);
+    store.addChat({ role: 'user', body: '어제 정산 배치 다시 돌렸어?' });
+    store.addChat({ role: 'po', body: '정산 배치는 오늘 새벽에 다시 돌렸습니다' });
+    expect((await search.search('정산 배치')).some((h) => h.source_type === 'chat')).toBe(true);
+    // 예전 기록(색인 전) 흉내: fts 에서 지우고 다시 채우기
+    store.db.prepare("DELETE FROM search_fts WHERE rowid IN (SELECT rowid FROM fts_map WHERE source_type = 'chat')").run();
+    store.db.prepare("DELETE FROM fts_map WHERE source_type = 'chat'").run();
+    store.setKv('chat_indexed_upto', 0);
+    expect(store.backfillChatIndex()).toBe(2);
+    expect(store.backfillChatIndex()).toBe(0);
+
+    store.saveSettings({ embedding: { provider: 'ollama', model: 'm1', url: 'http://127.0.0.1:11434' } });
+    if (!search.status().vecReady) return;
+    let calls = 0;
+    search.embed = async (texts: string[]) => { calls += texts.length; return texts.map(() => [1, 0, 0]); };
+    expect(await search.fillMissing()).toBe(search.status().docs);
+    expect(search.status().vectors).toBe(search.status().docs);
+    const before = calls;
+    expect(await search.fillMissing()).toBe(0); // 다 찼으면 할 일 없음
+    expect(calls).toBe(before);
+
+    const r = await storageReport(cfg, store, true);
+    expect(r.db.file).toBeGreaterThan(0);
+    expect(r.groups.some((g) => g.label === '총괄 대화')).toBe(true);
+    expect(r.counts.chat).toBe(2);
+  });
+});

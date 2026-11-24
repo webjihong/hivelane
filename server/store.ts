@@ -506,7 +506,23 @@ export class Store {
       .run(c.role, c.body, c.proposal_id ?? null, c.links ? JSON.stringify(c.links) : null, c.tone ?? null, c.team_id ?? null, ts);
     const row: ChatRow = { id: Number(r.lastInsertRowid), role: c.role, body: c.body, proposal_id: c.proposal_id ?? null, links: c.links ? JSON.stringify(c.links) : null, tone: c.tone ?? null, team_id: c.team_id ?? null, created_at: ts };
     bus.emitEvent({ type: 'chat', row });
+    this.indexChat(row.id, c.role, c.body, c.team_id ?? null);
     return row;
+  }
+  /** 총괄 대화도 검색 대상으로(내 말·총괄 답·이벤트 줄) */
+  private indexChat(id: number, role: string, body: string, teamId: string | null): void {
+    if (!body.trim() || body.trim() === '-') return;
+    const who = role === 'user' ? '사용자 → 총괄' : role === 'po' ? '총괄 답' : '총괄 기록';
+    this.index('chat', String(id), `[${who}] ${body}`, teamId ? this.getTeam(teamId) : null);
+  }
+  /** 예전 총괄 대화를 한 번 색인(이 기능 전 기록). 이미 한 곳 다음부터 */
+  backfillChatIndex(): number {
+    const upto = this.getKv<number>('chat_indexed_upto', 0);
+    const rows = this.db.prepare('SELECT id, role, body, team_id FROM po_chat WHERE id > ? AND id NOT IN (SELECT CAST(source_id AS INTEGER) FROM fts_map WHERE source_type = ?) ORDER BY id').all(upto, 'chat') as { id: number; role: string; body: string; team_id: string | null }[];
+    for (const r of rows) this.indexChat(r.id, r.role, r.body, r.team_id);
+    const max = (this.db.prepare('SELECT max(id) m FROM po_chat').get() as { m: number | null }).m ?? 0;
+    this.setKv('chat_indexed_upto', max);
+    return rows.length;
   }
   chat(limit = 200, beforeId?: number): ChatView[] {
     const rows = (beforeId

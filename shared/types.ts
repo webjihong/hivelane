@@ -194,6 +194,15 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** 저장 공간 */
+export interface StorageView {
+  takenAt: string; home: string;
+  db: { file: number; wal: number; shm: number; free: number };
+  groups: { label: string; note: string; bytes: number }[];
+  counts: { teams: number; messages: number; events: number; chat: number; docs: number; patches: number };
+  dirs: { key: string; label: string; path: string; bytes: number | null; note: string }[];
+}
+
 /** 검색 색인 상태 */
 export interface SearchStatusView {
   vecReady: boolean; enabled: boolean; provider: string; model: string; dim: number | null;

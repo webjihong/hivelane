@@ -661,3 +661,16 @@ a.fin-name:hover { text-decoration: underline; }
 .ix-h { display: flex; align-items: center; gap: 8px; }
 .ix-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ix-k { width: 110px; flex: none; color: var(--muted); font-size: 12px; }
+
+/* 저장 공간 */
+.st-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.st-sum > div { display: flex; flex-direction: column; gap: 2px; }
+.st-sum b { font-size: 20px; }
+.st-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.st-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.st-l { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.st-bar { width: 120px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: none; }
+.st-bar > i { display: block; height: 6px; background: var(--accent, #1F6F6A); }
+.st-n { width: 72px; text-align: right; flex: none; }
+.st-act { margin-top: 10px; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 760px) { .st-sum { grid-template-columns: 1fr; } .st-bar { width: 60px; } }
