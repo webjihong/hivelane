@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { connect, refreshChat, refreshState } from './store.ts';
 import { applyPrefs, loadPrefs } from './themes.ts';
+import { installPullToRefresh } from './pull.ts';
 
 applyPrefs(loadPrefs()); // 첫 그림 전에 테마·글자 크기
 
@@ -31,6 +32,7 @@ createRoot(el).render(<StrictMode><Guard><App /></Guard></StrictMode>);
 void refreshState();
 void refreshChat();
 connect();
+installPullToRefresh();
 
 // 푸시 알림을 이미 켠 기기는 서비스 워커를 계속 등록해 둔다.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration('/sw.js').then((r) => { if (r) void r.update(); }).catch(() => {});

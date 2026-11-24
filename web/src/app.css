@@ -739,3 +739,7 @@ a.fin-name:hover { text-decoration: underline; }
 
 /* 크롬 안드로이드(특히 설치한 앱)의 글자 자동 확대(font boosting)를 끈다: 칸보다 큰 글자로 화면이 넓어지는 것 방지 */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* 휴대폰 당겨서 새로고침 표시 */
+.ptr { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 0px); left: 50%; transform: translate(-50%, -44px); opacity: 0; z-index: 50; pointer-events: none; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.12); transition: opacity .1s; }
+.ptr.ready { color: var(--accent); border-color: var(--accent); }
