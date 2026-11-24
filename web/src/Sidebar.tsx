@@ -251,12 +251,6 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
           {poPending > 0 ? <span className="sb-badge ask">제안 {poPending}</span> : snap.poUnread > 0 ? <span className="sb-badge">{snap.poUnread}</span> : <span className={`sb-note ${snap.poBusy ? 't-run' : 't-muted'}`}>{snap.poBusy ? '생각 중' : '대기'}</span>}
         </a>
 
-        <a href="#scripts" className={`sb-item sb-po${r.name === 'scripts' ? ' on' : ''}`}>
-          <span className={`sdot ${snap.scripts.some((s) => s.running_run_id) ? 'run' : 'idle'}`} />
-          <span className="sb-name">스크립트</span>
-          {snap.scripts.some((s) => s.running_run_id) ? <span className="sb-note t-run">실행 중 {snap.scripts.filter((s) => s.running_run_id).length}</span> : <span className="sb-note t-muted">{snap.scripts.length || ''}</span>}
-        </a>
-
         <div className="sb-h">직속 팀<a href="#settings" className="sb-add" aria-label="직속 팀 추가" title="직속 팀 추가(설정)">＋</a></div>
         {standing.length ? standing.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">없음 · PO에게 「직속팀 만들어줘」</div>}
 
@@ -268,6 +262,11 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
       </div>
 
       <div className="sb-bottom">
+        <a href="#scripts" className={`sb-item sb-po sb-scripts${r.name === 'scripts' ? ' on' : ''}`}>
+          <span className={`sdot ${snap.scripts.some((s) => s.running_run_id) ? 'run' : 'idle'}`} />
+          <span className="sb-name">스크립트</span>
+          {snap.scripts.some((s) => s.running_run_id) ? <span className="sb-note t-run">실행 중 {snap.scripts.filter((s) => s.running_run_id).length}</span> : <span className="sb-note t-muted">{snap.scripts.length || ''}</span>}
+        </a>
         <div className="sb-h">저장소 · PR<a href="#prs" className="sb-add sb-h-link" title="PR 전체(최근 병합·닫힘 포함)">PR 전체</a><button type="button" className="sb-add" title="원격에서 새로 확인(fetch)" onClick={() => void act(async () => { await api('/api/repos/refresh', 'POST', {}); await refreshState(); }, '저장소 상태를 다시 확인했습니다')}>↻</button></div>
         {snap.repos.length ? snap.repos.map((r) => (
           <div key={r.project_id} className="sb-repo-g">
