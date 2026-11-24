@@ -7,6 +7,7 @@ import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
+import { run } from '../util.ts';
 import { tailscaleState } from '../remote.ts';
 import { compactDb, storageReport } from '../storage.ts';
 import type { OllamaManager } from '../search/ollama.ts';
@@ -306,6 +307,17 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.patch('/api/standing/:id', async (c) => { localOnly(c); const b = await body(c, standingZ.partial().omit({ project_id: true, template_id: true, roles: true })); orch.updateStanding(c.req.param('id'), b); return c.json({ ok: true }); });
 
   /* ---------- 프로젝트 ---------- */
+  /** 맥에서 Finder 폴더 고르기 창을 띄운다(맥 화면에서만 · 취소하면 path null) */
+  app.post('/api/pick-folder', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({ prompt: z.string().max(100).default('폴더 고르기') }));
+    // activate: 창이 다른 앱 뒤에 숨지 않게 앞으로(권한 필요 없음)
+    const script = `activate\ntry\n  set f to choose folder with prompt ${JSON.stringify(b.prompt)} default location (path to home folder)\n  return POSIX path of f\non error number -128\n  return ""\nend try`;
+    const out = await run('osascript', ['-e', script], { timeoutMs: 300_000 });
+    if (out.code !== 0) throw new HttpError(409, `폴더 창을 띄우지 못했습니다: ${out.stderr.trim().slice(0, 200)}`);
+    const path = out.stdout.trim().replace(/\/$/, '');
+    return c.json({ path: path || null });
+  });
   app.post('/api/projects/inspect', async (c) => { localOnly(c); const b = await body(c, z.object({ path: z.string().min(1) })); return c.json(await inspectRepo(b.path)); });
   const projectZ = z.object({
     path: z.string().min(1), name: z.string().min(1).max(60).optional(), base_ref: z.string().min(1).optional(), deps_strategy: z.enum(['symlink', 'install', 'none']).default('symlink'),

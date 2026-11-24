@@ -77,6 +77,18 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
     setBusy(false);
     if (r) { setInfo(r); setName(r.name); setBaseRef(r.baseRef); }
   };
+  /** Finder 로 폴더 고르기 → 경로를 채우고 바로 확인 */
+  const pick = async () => {
+    setBusy(true);
+    const r = await act(() => api<{ path: string | null }>('/api/pick-folder', 'POST', { prompt: 'Hivelane 에 등록할 git 저장소 폴더를 고르세요' }));
+    setBusy(false);
+    if (!r?.path) return;
+    setPath(r.path); setInfo(null);
+    setBusy(true);
+    const i = await act(() => api<RepoInfo>('/api/projects/inspect', 'POST', { path: r.path }));
+    setBusy(false);
+    if (i) { setInfo(i); setName(i.name); setBaseRef(i.baseRef); }
+  };
   const add = async () => {
     if (!info) return;
     setBusy(true);
@@ -89,6 +101,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
       <h4>새 프로젝트 등록</h4>
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void inspect(); }}>
         <input value={path} onChange={(e) => { setPath(e.target.value); setInfo(null); }} placeholder="저장소 경로 (예: ~/code/my-app)" aria-label="저장소 경로" />
+        <button className="btn" type="button" disabled={busy} onClick={() => void pick()} title="맥 화면에 Finder 폴더 고르기 창이 뜹니다">Finder에서 고르기</button>
         <button className="btn" type="submit" disabled={!path.trim() || busy}>확인</button>
       </form>
       {info && (
