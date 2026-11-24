@@ -36,3 +36,20 @@ describe('git 이 아닌 폴더에서 git 시작하기', () => {
     await expect(initRepo(join(homedir(), 'Desktop'))).rejects.toThrow(/이 위치에서는/);
   });
 });
+
+import { describeRemote } from '../server/projects/git.ts';
+describe('원격 저장소 표시', () => {
+  it('ssh·https 주소를 웹 주소로 · 토큰은 가린다', () => {
+    expect(describeRemote('origin', 'git@github.com:webjihong/hivelane.git\n')).toMatchObject({ web: 'https://github.com/webjihong/hivelane', label: 'github.com/webjihong/hivelane' });
+    expect(describeRemote('origin', 'https://github.com/acme/app.git')).toMatchObject({ web: 'https://github.com/acme/app' });
+    const t = describeRemote('origin', 'https://x-access-token:ghp_SECRET@github.com/a/b.git');
+    expect(t.url).not.toContain('SECRET');
+    expect(t.web).toBe('https://github.com/a/b');
+    expect(describeRemote('up', '/Volumes/backup/repo.git')).toMatchObject({ web: null, label: '/Volumes/backup/repo.git' });
+  });
+  it('git 시작한 폴더는 원격이 없다', async () => {
+    const { mkdtempSync, mkdirSync } = await import('node:fs');
+    const d = join(mkdtempSync(join(tmpdir(), 'hl-init-')), 'c'); mkdirSync(d);
+    expect((await initRepo(d)).remote).toBeNull();
+  });
+});

@@ -1,5 +1,6 @@
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
+import { remoteOf } from './git.ts';
 import type { Store } from '../store.ts';
 import { run } from '../util.ts';
 import type { RepoView } from '../../shared/types.ts';
@@ -20,12 +21,13 @@ export class RepoWatcher {
   async status(projectId: string, fetch: boolean): Promise<RepoView | null> {
     const p = this.deps.store.getProject(projectId);
     if (!p) return null;
-    const v: RepoView = { project_id: p.id, project_name: p.name, path: p.path, branch: null, upstream: null, ahead: 0, behind: 0, dirty: 0, incoming: 0, overlap: [], fetched_at: null, error: null, pulling: false };
-    if (fetch) {
+    const v: RepoView = { project_id: p.id, project_name: p.name, path: p.path, branch: null, upstream: null, remote: null, ahead: 0, behind: 0, dirty: 0, incoming: 0, overlap: [], fetched_at: null, error: null, pulling: false };
+    v.remote = await remoteOf(p.path);
+    if (fetch && v.remote) {
       const f = await this.git(p.path, ['fetch', '--quiet', '--prune']);
       if (f.code === 0) v.fetched_at = new Date().toISOString();
       else v.error = `fetch 실패: ${f.stderr.trim().slice(0, 160)}`;
-    } else v.fetched_at = this.list.find((x) => x.project_id === p.id)?.fetched_at ?? null;
+    } else if (v.remote) v.fetched_at = this.list.find((x) => x.project_id === p.id)?.fetched_at ?? null;
     const b = await this.git(p.path, ['rev-parse', '--abbrev-ref', 'HEAD']);
     v.branch = b.code === 0 ? b.stdout.trim() : null;
     const u = await this.git(p.path, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);

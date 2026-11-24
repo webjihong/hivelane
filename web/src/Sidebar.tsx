@@ -140,7 +140,7 @@ function RepoItem({ r: raw }: { r: RepoView }) {
   // 서버가 옛 버전이어도 화면이 멈추지 않게 빠진 값은 기본값으로
   const r: RepoView = { ...raw, incoming: raw.incoming ?? 0, overlap: raw.overlap ?? [] };
   const pull = () => act(async () => { const x = await api<{ message: string }>(`/api/repos/${encodeURIComponent(r.project_id)}/pull`, 'POST', {}); await refreshState(); return x; }, `${r.project_name}: 받았습니다`);
-  const tip = [r.path, r.branch ? `브랜치 ${r.branch}${r.upstream ? ` ← ${r.upstream}` : ' (원격 연결 없음)'}` : '', r.behind ? `받을 것: 커밋 ${r.behind}개 · 파일 ${r.incoming}개` : '받을 것 없음(최신)', r.overlap.length ? `겹침: 받을 파일 중 로컬에서 고친 파일 ${r.overlap.length}개 → 받기가 거절될 수 있음\n  ${r.overlap.join('\n  ')}` : '', r.ahead ? `안 올린 내 커밋 ${r.ahead}개` : '', r.dirty ? `커밋 안 한 로컬 변경 파일 ${r.dirty}개` : '', r.error ?? ''].filter(Boolean).join('\n');
+  const tip = [r.path, r.remote ? `원격: ${r.remote.label}` : '원격 저장소 없음(이 맥에만)', r.branch ? `브랜치 ${r.branch}${r.upstream ? ` ← ${r.upstream}` : ' (원격 연결 없음)'}` : '', r.behind ? `받을 것: 커밋 ${r.behind}개 · 파일 ${r.incoming}개` : '받을 것 없음(최신)', r.overlap.length ? `겹침: 받을 파일 중 로컬에서 고친 파일 ${r.overlap.length}개 → 받기가 거절될 수 있음\n  ${r.overlap.join('\n  ')}` : '', r.ahead ? `안 올린 내 커밋 ${r.ahead}개` : '', r.dirty ? `커밋 안 한 로컬 변경 파일 ${r.dirty}개` : '', r.error ?? ''].filter(Boolean).join('\n');
   return (
     <div className="sb-item sb-repo" title={tip}>
       <span className="sb-name">{r.project_name}<span className="sb-branch">{r.branch ?? '?'}</span></span>

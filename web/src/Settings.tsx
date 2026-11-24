@@ -61,7 +61,28 @@ const CONC_ROWS: [keyof EngineSettings, string, string, string][] = [
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 
 /* ---------- 프로젝트 ---------- */
-interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: string[] }
+interface RemoteRef { name: string; url: string; web: string | null; label: string }
+interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: string[]; hasNode: boolean; remote: RemoteRef | null }
+
+/** 연결된 원격 저장소 한 줄: 있으면 링크, 없으면 「이 맥에만」 */
+function RemoteLine({ remote }: { remote: RemoteRef | null | undefined }) {
+  if (remote === undefined) return null;
+  if (!remote) return <span className="muted small">원격 저장소: <b>없음</b> — 이 맥에만 있는 저장소입니다. 팀 작업·diff 는 되고, PR·받기는 GitHub 등 원격을 연결해야 합니다(<code className="mono">git remote add origin &lt;주소&gt;</code>).</span>;
+  return <span className="small">원격 저장소({remote.name}): {remote.web ? <a href={remote.web} target="_blank" rel="noreferrer" className="mono">{remote.label}</a> : <span className="mono">{remote.label}</span>}</span>;
+}
+
+const DEPS_OPTS: [Project['deps_strategy'], string][] = [
+  ['symlink', '원래 폴더 것 빌려 쓰기 (빠름 · 권장)'],
+  ['install', '팀마다 새로 설치 (느림 · 용량 큼)'],
+  ['none', '준비 안 함 (Node 프로젝트가 아님)'],
+];
+const HELP = {
+  name: '목록과 총괄 대화에서 부를 이름',
+  base: '팀이 일을 시작할 때 출발점이 되는 브랜치 · 보통 main, 원격이 있으면 origin/main·origin/dev',
+  deps: 'node_modules 준비 방법 · 팀은 따로 복사된 폴더(worktree)에서 일해서 패키지를 어떻게 줄지 정합니다',
+  tpl: '총괄이 이 저장소에 팀을 꾸릴 때 먼저 고르는 팀 구성 · 팀마다 바꿀 수 있음',
+  mem: '이 폴더에서 Claude Code 를 써 왔다면 그 메모리(MEMORY.md)를 팀이 먼저 읽습니다',
+};
 
 function ProjectNew({ snap }: { snap: StateSnapshot }) {
   const [path, setPath] = useState('');
@@ -79,7 +100,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
     setBusy(false);
     if (!r) return;
     if ('notGit' in r) { setNotGit(r.path); return; }
-    setInfo(r); setName(r.name); setBaseRef(r.baseRef);
+    setInfo(r); setName(r.name); setBaseRef(r.baseRef); setDeps(r.hasNode ? 'symlink' : 'none');
   };
   const inspect = () => check(path.trim());
   const gitInit = async () => {
@@ -87,7 +108,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
     setBusy(true);
     const r = await act(() => api<RepoInfo>('/api/projects/git-init', 'POST', { path: notGit }), 'git 을 시작했습니다(첫 커밋 완료)');
     setBusy(false);
-    if (r) { setNotGit(null); setInfo(r); setName(r.name); setBaseRef(r.baseRef); }
+    if (r) { setNotGit(null); setInfo(r); setName(r.name); setBaseRef(r.baseRef); setDeps(r.hasNode ? 'symlink' : 'none'); }
   };
   /** Finder 로 폴더 고르기 → 경로를 채우고 바로 확인 */
   const pick = async () => {
@@ -123,19 +144,24 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
         </div>
       )}
       {info && (
-        <div className="form-grid">
-          <div className="muted small">경로: <span className="mono">{info.root}</span></div>
-          <div className="muted small">참조 메모리: {info.memoryPaths.length ? <span className="mono">{info.memoryPaths.join(', ')}</span> : '없음'}</div>
-          <label>이름<input className="txt" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
-          <label>기준 ref<input className="txt mono" value={baseRef} onChange={(e) => setBaseRef(e.target.value)} /></label>
-          <label>의존성
+        <div className="form-grid pj-new">
+          <div className="wide pj-sum">
+            <b>이 폴더를 프로젝트로 등록합니다</b>
+            <span className="small">로컬 폴더: <span className="mono">{info.root}</span></span>
+            <RemoteLine remote={info.remote} />
+            <span className="muted small">Claude Code 메모리: {info.memoryPaths.length ? <span className="mono">{info.memoryPaths.join(', ')}</span> : '없음'} — {HELP.mem}</span>
+          </div>
+          <label>이름 <small className="muted">{HELP.name}</small><input className="txt" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
+          <label>기준 브랜치 <small className="muted">{HELP.base}</small><input className="txt mono" value={baseRef} onChange={(e) => setBaseRef(e.target.value)} /></label>
+          <label>패키지(node_modules) 준비 <small className="muted">{HELP.deps}</small>
             <select value={deps} onChange={(e) => setDeps(e.target.value as Project['deps_strategy'])}>
-              <option value="symlink">symlink (메인 트리 node_modules 링크)</option><option value="install">install (매번 설치)</option><option value="none">none</option>
+              {DEPS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
-          <label>기본 템플릿
+          <label>기본 팀 구성 <small className="muted">{HELP.tpl}</small>
             <select value={tpl} onChange={(e) => setTpl(e.target.value)}>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           </label>
+          <div className="wide muted small">git 권한(팀의 커밋·푸시 허용)과 막을 명령은 등록한 뒤 「수정」에서 정합니다. 처음엔 커밋·푸시가 막혀 있습니다.</div>
           <div className="row"><button className="btn primary" type="button" disabled={busy} onClick={() => void add()}>등록</button><button className="btn" type="button" onClick={() => setInfo(null)}>취소</button></div>
         </div>
       )}
@@ -157,7 +183,7 @@ function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boo
   return (
     <div className="item">
       <div className="item-h">
-        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span> <span className={`chip${p.git_mode === 'push' ? ' git-on' : ''}`}>{p.git_mode === 'push' ? 'git 커밋·푸시 허용' : 'git 막음'}</span><div className="muted small mono ellipsis">{p.path}</div></div>
+        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span> <span className={`chip${p.git_mode === 'push' ? ' git-on' : ''}`}>{p.git_mode === 'push' ? 'git 커밋·푸시 허용' : 'git 막음'}</span><div className="muted small mono ellipsis">{p.path}</div><div className="ellipsis"><RemoteLine remote={snap.repos.find((r) => r.project_id === p.id)?.remote} /></div></div>
         <div className="row">
           <button className="btn" type="button" onClick={() => setOpen(!open)}>{open ? '닫기' : ro ? '보기' : '수정'}</button>
           {!ro && <ConfirmButton label="삭제" confirmLabel="등록을 지울까요? (저장소는 그대로)" onConfirm={() => void del()} />}
@@ -166,24 +192,24 @@ function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boo
       {open && (
         <fieldset className="form-grid" disabled={ro}>
           <label>이름<input className="txt" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} maxLength={60} /></label>
-          <label>기준 ref<input className="txt mono" value={d.base_ref} onChange={(e) => setD({ ...d, base_ref: e.target.value })} /></label>
-          <label>의존성
+          <label>기준 브랜치 <small className="muted">{HELP.base}</small><input className="txt mono" value={d.base_ref} onChange={(e) => setD({ ...d, base_ref: e.target.value })} /></label>
+          <label>패키지(node_modules) 준비 <small className="muted">{HELP.deps}</small>
             <select value={d.deps_strategy} onChange={(e) => setD({ ...d, deps_strategy: e.target.value as Project['deps_strategy'] })}>
-              <option value="symlink">symlink</option><option value="install">install</option><option value="none">none</option>
+              {DEPS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
-          <label>기본 템플릿
+          <label>기본 팀 구성 <small className="muted">{HELP.tpl}</small>
             <select value={d.tpl} onChange={(e) => setD({ ...d, tpl: e.target.value })}><option value="">(없음)</option>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           </label>
-          <label>git 권한
+          <label>git 권한 <small className="muted">팀이 직접 커밋·푸시·PR 을 만들 수 있는지</small>
             <select value={d.git} onChange={(e) => setD({ ...d, git: e.target.value as Project['git_mode'] })}>
               <option value="none">막음 (커밋·푸시는 사람이)</option><option value="push">커밋·푸시·PR 만들기 허용</option>
             </select>
           </label>
           <label>보호 브랜치 <small className="muted">팀이 직접 푸시 못 함 · PR 만 · 쉼표로</small><input className="txt mono" value={d.prot} disabled={d.git !== 'push'} onChange={(e) => setD({ ...d, prot: e.target.value })} /></label>
-          <label className="wide">무거운 명령 패턴 <small className="muted">한 줄에 하나 · 정규식</small><textarea className="txt area mono" rows={4} value={d.heavy} onChange={(e) => setD({ ...d, heavy: e.target.value })} /></label>
-          <label className="wide">막을 명령 패턴 <small className="muted">한 줄에 하나 · 정규식</small><textarea className="txt area mono" rows={4} value={d.blocked} onChange={(e) => setD({ ...d, blocked: e.target.value })} /></label>
-          <label className="wide">참조 메모리 경로 <small className="muted">한 줄에 하나</small><textarea className="txt area mono" rows={2} value={d.memory} onChange={(e) => setD({ ...d, memory: e.target.value })} /></label>
+          <label className="wide">무거운 명령 <small className="muted">테스트·빌드처럼 맥을 많이 쓰는 명령 · 여러 팀이 동시에 돌리지 않게 줄을 세움 · 한 줄에 하나(정규식)</small><textarea className="txt area mono" rows={4} value={d.heavy} onChange={(e) => setD({ ...d, heavy: e.target.value })} /></label>
+          <label className="wide">막을 명령 <small className="muted">팀이 실행하지 못하게 막는 명령(운영 배포·DB 등) · 한 줄에 하나(정규식)</small><textarea className="txt area mono" rows={4} value={d.blocked} onChange={(e) => setD({ ...d, blocked: e.target.value })} /></label>
+          <label className="wide">Claude Code 메모리 폴더 <small className="muted">{HELP.mem} · 한 줄에 하나</small><textarea className="txt area mono" rows={2} value={d.memory} onChange={(e) => setD({ ...d, memory: e.target.value })} /></label>
           {!ro && <div className="row wide"><button className="btn primary" type="button" onClick={() => void save()}>저장</button></div>}
         </fieldset>
       )}

@@ -15,7 +15,28 @@ async function gitOk(cwd: string, args: string[], timeoutMs?: number): Promise<s
   return r.stdout.trim();
 }
 
-export interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: string[] }
+export interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: string[]; hasNode: boolean; remote: RemoteInfo | null }
+export interface RemoteInfo { name: string; url: string; web: string | null; label: string }
+
+/** git 원격 주소 → 웹 주소·짧은 이름(github.com/owner/repo). 비밀번호·토큰이 박힌 주소는 가린다 */
+export function describeRemote(name: string, raw: string): RemoteInfo {
+  const url = raw.trim().replace(/\/\/[^/@\s]+@/, '//');
+  let host = '', path = '';
+  const ssh = url.match(/^(?:ssh:\/\/)?[\w.-]+@([\w.-]+)[:/](.+?)(?:\.git)?\/?$/);
+  const http = url.match(/^https?:\/\/([\w.-]+(?::\d+)?)\/(.+?)(?:\.git)?\/?$/);
+  if (http) { host = http[1]!; path = http[2]!; } else if (ssh) { host = ssh[1]!; path = ssh[2]!; }
+  const label = host ? `${host}/${path}` : url;
+  return { name, url, web: host ? `https://${host}/${path}` : null, label };
+}
+
+/** origin(없으면 첫 번째 원격)의 주소 */
+export async function remoteOf(root: string): Promise<RemoteInfo | null> {
+  const names = (await git(root, ['remote'])).stdout.split('\n').map((x) => x.trim()).filter(Boolean);
+  if (!names.length) return null;
+  const name = names.includes('origin') ? 'origin' : names[0]!;
+  const u = await git(root, ['remote', 'get-url', name]);
+  return u.code === 0 && u.stdout.trim() ? describeRemote(name, u.stdout) : null;
+}
 
 /** 경로가 git 저장소인지 확인하고 기본값을 추정한다. */
 export async function inspectRepo(path: string): Promise<RepoInfo> {
@@ -33,7 +54,10 @@ export async function inspectRepo(path: string): Promise<RepoInfo> {
   }
   // Claude Code 자동 메모리는 경로를 '-' 로 바꾼 폴더에 있다.
   const memDir = join(homedir(), '.claude', 'projects', root.replace(/[/.]/g, '-'), 'memory');
-  return { root, name: basename(root), baseRef, memoryPaths: existsSync(memDir) ? [memDir] : [] };
+  // Node 프로젝트인지(어디든 package.json 이 있는지) — 패키지 준비 방식 기본값을 고르는 데 쓴다
+  const pkgs = await git(root, ['ls-files', '--', 'package.json', '**/package.json']);
+  const hasNode = !!pkgs.stdout.trim() || existsSync(join(root, 'package.json'));
+  return { root, name: basename(root), baseRef, memoryPaths: existsSync(memDir) ? [memDir] : [], hasNode, remote: await remoteOf(root) };
 }
 
 const DEFAULT_IGNORE = ['node_modules/', '.env', '.env.*', '!.env.example', '*.log', '.DS_Store', 'dist/', 'build/', '.next/', 'coverage/', '.venv/', '__pycache__/', '*.pyc', '.idea/', '.vscode/'];

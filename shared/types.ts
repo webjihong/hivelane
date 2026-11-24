@@ -271,6 +271,8 @@ export interface PrView {
 export interface RepoView {
   project_id: string; project_name: string; path: string;
   branch: string | null; upstream: string | null;
+  /** 연결된 원격 저장소(origin) · 없으면 이 맥에만 있는 저장소 */
+  remote: { name: string; url: string; web: string | null; label: string } | null;
   /** 원격보다 앞선/뒤처진 커밋 수 */
   ahead: number; behind: number;
   /** 커밋 안 된 로컬 변경 파일 수 */
