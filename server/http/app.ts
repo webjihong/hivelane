@@ -23,7 +23,7 @@ import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
 import type { Engine } from '../po/engine.ts';
 import type { PoAgent } from '../po/agent.ts';
-import { diffText, inspectRepo } from '../projects/git.ts';
+import { diffText, initRepo, inspectRepo } from '../projects/git.ts';
 import type { Search } from '../search/index.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY, type Store } from '../store.ts';
 import { ConflictError, type Orchestrator } from '../teams/orchestrator.ts';
@@ -318,7 +318,20 @@ export function createApp(d: AppDeps): Hono<Env> {
     const path = out.stdout.trim().replace(/\/$/, '');
     return c.json({ path: path || null });
   });
-  app.post('/api/projects/inspect', async (c) => { localOnly(c); const b = await body(c, z.object({ path: z.string().min(1) })); return c.json(await inspectRepo(b.path)); });
+  app.post('/api/projects/inspect', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({ path: z.string().min(1) }));
+    try { return c.json(await inspectRepo(b.path)); } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith('git 저장소가 아닙니다')) return c.json({ notGit: true, path: msg.replace(/^git 저장소가 아닙니다:\s*/, '') });
+      throw new HttpError(400, msg);
+    }
+  });
+  app.post('/api/projects/git-init', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({ path: z.string().min(1) }));
+    try { return c.json(await initRepo(b.path)); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); }
+  });
   const projectZ = z.object({
     path: z.string().min(1), name: z.string().min(1).max(60).optional(), base_ref: z.string().min(1).optional(), deps_strategy: z.enum(['symlink', 'install', 'none']).default('symlink'),
     heavy_patterns: z.array(z.string()).optional(), blocked_patterns: z.array(z.string()).optional(), memory_paths: z.array(z.string()).optional(), default_template_id: z.string().nullable().optional(),

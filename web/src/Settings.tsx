@@ -71,11 +71,23 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
   const [deps, setDeps] = useState<Project['deps_strategy']>('symlink');
   const [tpl, setTpl] = useState('tpl-dev');
   const [busy, setBusy] = useState(false);
-  const inspect = async () => {
-    setBusy(true);
-    const r = await act(() => api<RepoInfo>('/api/projects/inspect', 'POST', { path: path.trim() }));
+  const [notGit, setNotGit] = useState<string | null>(null);
+  /** git 저장소인지 확인 · 아니면 「git 시작하기」를 보여 준다 */
+  const check = async (p: string) => {
+    setBusy(true); setNotGit(null);
+    const r = await act(() => api<RepoInfo | { notGit: true; path: string }>('/api/projects/inspect', 'POST', { path: p }));
     setBusy(false);
-    if (r) { setInfo(r); setName(r.name); setBaseRef(r.baseRef); }
+    if (!r) return;
+    if ('notGit' in r) { setNotGit(r.path); return; }
+    setInfo(r); setName(r.name); setBaseRef(r.baseRef);
+  };
+  const inspect = () => check(path.trim());
+  const gitInit = async () => {
+    if (!notGit) return;
+    setBusy(true);
+    const r = await act(() => api<RepoInfo>('/api/projects/git-init', 'POST', { path: notGit }), 'git 을 시작했습니다(첫 커밋 완료)');
+    setBusy(false);
+    if (r) { setNotGit(null); setInfo(r); setName(r.name); setBaseRef(r.baseRef); }
   };
   /** Finder 로 폴더 고르기 → 경로를 채우고 바로 확인 */
   const pick = async () => {
@@ -84,10 +96,7 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
     setBusy(false);
     if (!r?.path) return;
     setPath(r.path); setInfo(null);
-    setBusy(true);
-    const i = await act(() => api<RepoInfo>('/api/projects/inspect', 'POST', { path: r.path }));
-    setBusy(false);
-    if (i) { setInfo(i); setName(i.name); setBaseRef(i.baseRef); }
+    await check(r.path);
   };
   const add = async () => {
     if (!info) return;
@@ -100,10 +109,19 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
     <div className="sub-panel">
       <h4>새 프로젝트 등록</h4>
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void inspect(); }}>
-        <input value={path} onChange={(e) => { setPath(e.target.value); setInfo(null); }} placeholder="저장소 경로 (예: ~/code/my-app)" aria-label="저장소 경로" />
+        <input value={path} onChange={(e) => { setPath(e.target.value); setInfo(null); setNotGit(null); }} placeholder="저장소 경로 (예: ~/code/my-app)" aria-label="저장소 경로" />
         <button className="btn" type="button" disabled={busy} onClick={() => void pick()} title="맥 화면에 Finder 폴더 고르기 창이 뜹니다">Finder에서 고르기</button>
         <button className="btn" type="submit" disabled={!path.trim() || busy}>확인</button>
       </form>
+      {notGit && (
+        <div className="rg warn small">
+          <div>
+            <b>git 저장소가 아닙니다</b> · <span className="mono">{notGit}</span><br />
+            Hivelane 은 git 으로 팀마다 따로 작업하고 바뀐 것을 셉니다. 여기서 git 을 시작하면 기본 <code className="mono">.gitignore</code>(node_modules·.env·빌드 결과 등 제외)를 만들고 지금 상태로 첫 커밋을 합니다. 폴더 안 파일은 그대로이고 <code className="mono">.git</code> 폴더가 생깁니다. GitHub 원격은 없어도 됩니다.
+            <div className="row" style={{ marginTop: 8 }}><button className="btn primary" type="button" disabled={busy} onClick={() => void gitInit()}>{busy ? '시작하는 중…' : '여기서 git 시작하기'}</button><button className="btn" type="button" onClick={() => setNotGit(null)}>취소</button></div>
+          </div>
+        </div>
+      )}
       {info && (
         <div className="form-grid">
           <div className="muted small">경로: <span className="mono">{info.root}</span></div>

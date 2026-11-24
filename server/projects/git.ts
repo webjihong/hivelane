@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { logger } from '../log.ts';
@@ -34,6 +34,33 @@ export async function inspectRepo(path: string): Promise<RepoInfo> {
   // Claude Code 자동 메모리는 경로를 '-' 로 바꾼 폴더에 있다.
   const memDir = join(homedir(), '.claude', 'projects', root.replace(/[/.]/g, '-'), 'memory');
   return { root, name: basename(root), baseRef, memoryPaths: existsSync(memDir) ? [memDir] : [] };
+}
+
+const DEFAULT_IGNORE = ['node_modules/', '.env', '.env.*', '!.env.example', '*.log', '.DS_Store', 'dist/', 'build/', '.next/', 'coverage/', '.venv/', '__pycache__/', '*.pyc', '.idea/', '.vscode/'];
+
+/**
+ * git 이 아닌 폴더를 저장소로 시작한다: (없으면) 기본 .gitignore → git init → 첫 커밋.
+ * 홈·루트처럼 넓은 곳, 다른 저장소 안쪽, 이미 저장소인 곳은 거절한다.
+ */
+export async function initRepo(path: string): Promise<RepoInfo> {
+  const abs = resolve(path.replace(/^~(?=$|\/)/, homedir()));
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(`폴더가 없습니다: ${abs}`);
+  const home = homedir();
+  const parts = abs.split('/').filter(Boolean);
+  if (abs === '/' || abs === home || parts.length < 3 || ['/Applications', '/System', '/Library', '/usr', '/opt', '/private', '/Volumes'].some((p) => abs === p || abs.startsWith(`${p}/`)) || [join(home, 'Desktop'), join(home, 'Documents'), join(home, 'Downloads'), join(home, 'Library')].includes(abs)) {
+    throw new Error(`이 위치에서는 git 을 시작하지 않습니다(너무 넓거나 시스템 폴더): ${abs}`);
+  }
+  const inside = await git(abs, ['rev-parse', '--show-toplevel']);
+  if (inside.code === 0) throw new Error(`이미 git 저장소(또는 그 안쪽)입니다: ${inside.stdout.trim()}`);
+  const ignore = join(abs, '.gitignore');
+  if (!existsSync(ignore)) writeFileSync(ignore, `# Hivelane 이 git 을 시작하며 만든 기본 목록\n${DEFAULT_IGNORE.join('\n')}\n`);
+  await gitOk(abs, ['init', '-b', 'main']);
+  await gitOk(abs, ['add', '-A'], 300_000);
+  // 이름·메일이 설정돼 있지 않아도 첫 커밋은 되게(설정돼 있으면 그것을 씀)
+  const who = (await git(abs, ['config', 'user.email'])).stdout.trim() ? [] : ['-c', 'user.name=Hivelane', '-c', 'user.email=hivelane@localhost'];
+  await gitOk(abs, [...who, 'commit', '--allow-empty', '-q', '-m', 'Hivelane: 처음 상태'], 300_000);
+  log.info(`git 시작 ${abs}`);
+  return inspectRepo(abs);
 }
 
 export async function resolveRef(root: string, ref: string): Promise<string> {
