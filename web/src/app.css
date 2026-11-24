@@ -290,6 +290,7 @@ body { margin: 0; overflow: hidden; }
 .sb-win { display: inline-flex; align-items: center; gap: 6px; }
 .sb-zone { min-width: 34px; text-align: center; }
 .sb-zone.tok { background: #2B4D4A; color: #CFE3E1; }
+.sb-zone.tok.ghost { background: none; }
 .sb-bar { width: 32px; height: 5px; border-radius: 3px; background: #2B4D4A; display: inline-block; overflow: hidden; }
 .sb-bar > span { display: block; height: 5px; border-radius: 3px; }
 .sb-down { color: var(--sb-crit); margin-left: auto; }

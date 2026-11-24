@@ -11,11 +11,15 @@ function Bar({ v, y, r }: { v: number; y: number; r: number }) {
   return <span className="sb-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(2, v))}%`, background: c }} /></span>;
 }
 
-/** 초기화 시각: 오늘이면 시:분, 아니면 요일 시:분 */
+/** 초기화 시각: 오늘이면 「14:00」, 내일이면 「내일」, 일주일 안이면 「수요일」, 그 뒤면 「12/3」 */
 function resetLabel(iso: string): string {
   const d = new Date(iso);
-  const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} ${hm}`;
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(new Date())) / 86_400_000);
+  if (diff <= 0) return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (diff === 1) return '내일';
+  if (diff < 7) return d.toLocaleDateString('ko-KR', { weekday: 'long' });
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 type DiagData = {
@@ -172,7 +176,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
   const res = snap.resource;
   const e = snap.settings.engine;
   const usage = snap.usage;
-  const usageTip = `Claude 플랜 사용량${usage.plan ? ` (${usage.plan})` : ''} · ${usage.windows.map((w) => `${w.label} ${Math.round(w.pct)}%${w.resets_at ? ` · ${resetLabel(w.resets_at)} 초기화` : ''}`).join(' / ')}${usage.takenAt ? ` · ${new Date(usage.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준, 5분마다 갱신` : ''}`;
+  const usageTip = `Claude 플랜 사용량${usage.plan ? ` (${usage.plan})` : ''} · ${usage.windows.map((w) => `${w.label} ${Math.round(w.pct)}%${w.resets_at ? ` · ${new Date(w.resets_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })} 초기화` : ''}`).join(' / ')}${usage.takenAt ? ` · ${new Date(usage.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 기준, 5분마다 갱신` : ''}`;
   const nowOn = r.name === 'now' || r.name === 'home';
   const prFocus = r.name === 'prs' ? r.focus : undefined;
   const poPending = snap.proposals.filter((p) => p.status === 'pending').length;
@@ -236,12 +240,14 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
           {c === 'down' && <span className="sb-down" aria-label="서버 연결 끊김">●</span>}
         </span>
         {usage.available && (
-          <span className="sb-row" title={usageTip}>
-            <span className="sb-zone tok">토큰</span>
-            {usage.windows.slice(0, 2).map((w) => (
-              <span key={w.key} className="sb-win"><span className="sb-k">{w.label}</span><Bar v={w.pct} y={80} r={95} /><span className="mono">{Math.round(w.pct)}%</span></span>
-            ))}
-          </span>
+          usage.windows.slice(0, 2).map((w, i) => (
+            <span key={w.key} className="sb-row" title={usageTip}>
+              <span className={`sb-zone tok${i ? ' ghost' : ''}`}>{i ? '' : '토큰'}</span>
+              {usage.windows.length > 1 && <span className="sb-k">{w.label}</span>}
+              <Bar v={w.pct} y={80} r={95} />
+              <span><span className="mono">{Math.round(w.pct)}%</span> 사용 중{w.resets_at && <span className="sb-k"> ({resetLabel(w.resets_at)} 초기화)</span>}</span>
+            </span>
+          ))
         )}
       </button>
       {diag && <ResourceModal onClose={() => setDiag(false)} />}
