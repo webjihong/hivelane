@@ -64,9 +64,10 @@ export function gitPushBlocked(protectedBranches: string[]): string[] {
   ];
 }
 /** 「내 환경」 팀에서는 막지 않고 사람 승인 뒤 실행하는 명령(운영 DB·배포·인프라) */
-export const APPROVABLE = new Set(['db:prod', 'prod:sync', '--profile\\s+\\S*prod', '\\bterraform\\s+(apply|destroy)', 'npm\\s+publish']);
+/** 운영 DB·배포·클라우드 프로필·인프라·패키지 배포 계열의 막을 명령이면 승인 대상(패턴 글자가 아니라 종류로 판정 → 프로젝트마다 바꾼 패턴도 그대로) */
+export const isApprovable = (p: string): boolean => /db:prod|prod:sync|--profile|terraform|npm\\s\+publish|npm\s+publish/.test(p);
 export function splitApproval(blocked: string[]): { hard: string[]; approval: string[] } {
-  return { hard: blocked.filter((p) => !APPROVABLE.has(p)), approval: blocked.filter((p) => APPROVABLE.has(p)) };
+  return { hard: blocked.filter((p) => !isApprovable(p)), approval: blocked.filter((p) => isApprovable(p)) };
 }
 
 /** 팀이 실제로 쓰는 막을 명령 */

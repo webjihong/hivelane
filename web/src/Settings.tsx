@@ -67,19 +67,25 @@ interface RepoInfo { root: string; name: string; baseRef: string; memoryPaths: s
 /** 연결된 원격 저장소 한 줄: 있으면 링크, 없으면 「이 맥에만」 */
 function RemoteLine({ remote }: { remote: RemoteRef | null | undefined }) {
   if (remote === undefined) return null;
-  if (!remote) return <span className="muted small">원격 저장소: <b>없음</b> — 이 맥에만 있는 저장소입니다. 팀 작업·diff 는 되고, PR·받기는 GitHub 등 원격을 연결해야 합니다(<code className="mono">git remote add origin &lt;주소&gt;</code>).</span>;
+  if (!remote) return <span className="muted small">원격 저장소: <b>없음</b> — 이 맥에만 있는 저장소입니다. 팀 작업·diff 는 되고, PR·받기는 원격이 있어야 합니다(등록 뒤 프로젝트 목록의 「원격 연결」).</span>;
   return <span className="small">원격 저장소({remote.name}): {remote.web ? <a href={remote.web} target="_blank" rel="noreferrer" className="mono">{remote.label}</a> : <span className="mono">{remote.label}</span>}</span>;
 }
 
 const DEPS_OPTS: [Project['deps_strategy'], string][] = [
-  ['symlink', '원래 폴더 것 빌려 쓰기 (빠름 · 권장)'],
-  ['install', '팀마다 새로 설치 (느림 · 용량 큼)'],
-  ['none', '준비 안 함 (Node 프로젝트가 아님)'],
+  ['symlink', '원래 폴더 것을 연결해 같이 쓰기 (권장)'],
+  ['install', '팀마다 새로 설치하기'],
+  ['none', '아무것도 안 하기'],
 ];
+/** 고른 방식이 실제로 무엇을 하는지 */
+const DEPS_EXPLAIN: Record<Project['deps_strategy'], string> = {
+  symlink: '팀이 일할 복사본 폴더에 원래 폴더의 node_modules 를 바로가기로 연결합니다. 설치 시간·추가 용량이 없습니다. 원래 폴더에서 npm install 을 해 둬야 하고, 팀이 package-lock 을 바꾼 하위 폴더만 따로 설치합니다.',
+  install: '팀마다 복사본 폴더에서 npm ci 로 새로 설치합니다. 원래 폴더와 완전히 분리되지만 팀마다 몇 분씩 걸리고 수백 MB 씩 더 씁니다.',
+  none: '패키지를 준비하지 않습니다. Node(JavaScript) 프로젝트가 아니거나, 팀이 테스트·빌드를 돌리지 않을 때 고릅니다.',
+};
 const HELP = {
   name: '목록과 총괄 대화에서 부를 이름',
   base: '팀이 일을 시작할 때 출발점이 되는 브랜치 · 보통 main, 원격이 있으면 origin/main·origin/dev',
-  deps: 'node_modules 준비 방법 · 팀은 따로 복사된 폴더(worktree)에서 일해서 패키지를 어떻게 줄지 정합니다',
+  deps: '팀은 원래 폴더가 아니라 따로 복사한 폴더에서 일합니다. 그 복사본에 설치된 패키지(node_modules)를 어떻게 마련할지 고릅니다',
   tpl: '총괄이 이 저장소에 팀을 꾸릴 때 먼저 고르는 팀 구성 · 팀마다 바꿀 수 있음',
   mem: '이 폴더에서 Claude Code 를 써 왔다면 그 메모리(MEMORY.md)를 팀이 먼저 읽습니다',
 };
@@ -153,10 +159,11 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
           </div>
           <label>이름 <small className="muted">{HELP.name}</small><input className="txt" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
           <label>기준 브랜치 <small className="muted">{HELP.base}</small><input className="txt mono" value={baseRef} onChange={(e) => setBaseRef(e.target.value)} /></label>
-          <label>패키지(node_modules) 준비 <small className="muted">{HELP.deps}</small>
+          <label>팀 작업 폴더의 패키지 <small className="muted">{HELP.deps}</small>
             <select value={deps} onChange={(e) => setDeps(e.target.value as Project['deps_strategy'])}>
               {DEPS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
+            <small className="dep-x">{DEPS_EXPLAIN[deps]}{!info.hasNode && deps !== 'none' ? ' · 이 폴더엔 package.json 이 없어 「아무것도 안 하기」를 권합니다' : ''}</small>
           </label>
           <label>기본 팀 구성 <small className="muted">{HELP.tpl}</small>
             <select value={tpl} onChange={(e) => setTpl(e.target.value)}>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
@@ -169,8 +176,59 @@ function ProjectNew({ snap }: { snap: StateSnapshot }) {
   );
 }
 
+/** 원격이 없는 프로젝트: GitHub 에 새로 만들기 또는 기존 주소 연결 */
+function RemoteLink({ p, onDone }: { p: Project; onDone: () => void }) {
+  const [mode, setMode] = useState<'github' | 'url'>('github');
+  const [accounts, setAccounts] = useState<{ login: string; active: boolean }[] | null | undefined>(undefined);
+  const [account, setAccount] = useState('');
+  const [owner, setOwner] = useState('');
+  const [name, setName] = useState(p.name.replace(/[^\w.-]+/g, '-'));
+  const [vis, setVis] = useState<'private' | 'public'>('private');
+  const [url, setUrl] = useState('');
+  const [push, setPush] = useState(true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void api<{ accounts: { login: string; active: boolean }[] | null }>('/api/github/accounts').then((r) => { setAccounts(r.accounts); const a = r.accounts?.find((x) => x.active) ?? r.accounts?.[0]; if (a) { setAccount(a.login); setOwner(a.login); } }).catch(() => setAccounts(null)); }, []);
+  const go = async () => {
+    setBusy(true);
+    const r = await act(() => api<{ remote: { label: string }; log: string[] }>(`/api/projects/${encodeURIComponent(p.id)}/remote`, 'POST', mode === 'url' ? { mode, url: url.trim(), push } : { mode, account: account || undefined, owner: owner.trim() || undefined, name: name.trim(), visibility: vis }));
+    setBusy(false);
+    if (r) { toast(`연결했습니다 · ${r.remote.label}${r.log.some((l) => l.includes('실패')) ? ' (올리기는 실패 — 대화창 기록 참고)' : ''}`, 'good'); onDone(); await refreshState(); }
+  };
+  return (
+    <div className="sub-panel rl">
+      <div className="set-tabs rl-tabs"><a href="#" className={mode === 'github' ? 'on' : ''} onClick={(e) => { e.preventDefault(); setMode('github'); }}>GitHub 에 새로 만들기</a><a href="#" className={mode === 'url' ? 'on' : ''} onClick={(e) => { e.preventDefault(); setMode('url'); }}>이미 있는 주소 연결</a></div>
+      {mode === 'github' ? (
+        accounts === undefined ? <p className="muted small">GitHub 계정 확인 중…</p>
+          : !accounts?.length ? <p className="muted small">GitHub CLI(gh)에 로그인된 계정이 없습니다. 맥 터미널에서 <code className="mono">gh auth login</code> 후 다시 여세요. 또는 「이미 있는 주소 연결」을 쓰세요.</p>
+          : (
+            <div className="form-grid">
+              <label>계정 <small className="muted">이 계정 권한으로 만듭니다(gh 활성 계정은 바꾸지 않음)</small>
+                <select value={account} onChange={(e) => { setAccount(e.target.value); setOwner(e.target.value); }}>{accounts.map((a) => <option key={a.login} value={a.login}>{a.login}{a.active ? ' (gh 활성)' : ''}</option>)}</select>
+              </label>
+              <label>소유자 <small className="muted">계정 이름 그대로 또는 조직 이름</small><input className="txt mono" value={owner} onChange={(e) => setOwner(e.target.value)} /></label>
+              <label>저장소 이름<input className="txt mono" value={name} onChange={(e) => setName(e.target.value)} /></label>
+              <label>공개 여부
+                <select value={vis} onChange={(e) => setVis(e.target.value as 'private' | 'public')}><option value="private">비공개 (권장)</option><option value="public">공개 — 누구나 볼 수 있음</option></select>
+              </label>
+              <div className="wide muted small">github.com/{owner || '…'}/{name || '…'} 을 만들고 origin 으로 연결한 뒤 지금 브랜치의 커밋을 올립니다. .gitignore 에 든 파일(.env·node_modules 등)은 올라가지 않습니다.</div>
+              <div className="row wide"><button className="btn primary" type="button" disabled={busy || !name.trim()} onClick={() => void go()}>{busy ? '만드는 중…' : '만들고 올리기'}</button></div>
+            </div>
+          )
+      ) : (
+        <div className="form-grid">
+          <label className="wide">원격 저장소 주소 <small className="muted">GitHub·GitLab 등에서 「Clone」 주소 (https://… 또는 git@…) · 빈 저장소여야 합니다</small><input className="txt mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/me/my-app.git" /></label>
+          <label className="chk"><input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} /> 연결하고 지금 브랜치를 바로 올리기</label>
+          <div className="row wide"><button className="btn primary" type="button" disabled={busy || url.trim().length < 5} onClick={() => void go()}>{busy ? '연결 중…' : '연결'}</button></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boolean }) {
   const [open, setOpen] = useState(false);
+  const [link, setLink] = useState(false);
+  const repo = snap.repos.find((r) => r.project_id === p.id);
   const [d, setD] = useState({ name: p.name, base_ref: p.base_ref, deps_strategy: p.deps_strategy, heavy: p.heavy_patterns.join('\n'), blocked: p.blocked_patterns.join('\n'), memory: p.memory_paths.join('\n'), tpl: p.default_template_id ?? '', git: p.git_mode, prot: p.protected_branches.join(', ') });
   const save = async () => {
     const r = await act(() => api(`/api/projects/${encodeURIComponent(p.id)}`, 'PATCH', {
@@ -183,20 +241,23 @@ function ProjectItem({ p, snap, ro }: { p: Project; snap: StateSnapshot; ro: boo
   return (
     <div className="item">
       <div className="item-h">
-        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span> <span className={`chip${p.git_mode === 'push' ? ' git-on' : ''}`}>{p.git_mode === 'push' ? 'git 커밋·푸시 허용' : 'git 막음'}</span><div className="muted small mono ellipsis">{p.path}</div><div className="ellipsis"><RemoteLine remote={snap.repos.find((r) => r.project_id === p.id)?.remote} /></div></div>
+        <div style={{ minWidth: 0 }}><b>{p.name}</b> <span className="muted small mono">{p.base_ref}</span> <span className={`chip${p.git_mode === 'push' ? ' git-on' : ''}`}>{p.git_mode === 'push' ? 'git 커밋·푸시 허용' : 'git 막음'}</span><div className="muted small mono ellipsis">{p.path}</div><div className="ellipsis"><RemoteLine remote={repo?.remote} /></div></div>
         <div className="row">
+          {!ro && repo && !repo.remote && <button className="btn" type="button" onClick={() => setLink(!link)}>{link ? '연결 닫기' : '원격 연결'}</button>}
           <button className="btn" type="button" onClick={() => setOpen(!open)}>{open ? '닫기' : ro ? '보기' : '수정'}</button>
           {!ro && <ConfirmButton label="삭제" confirmLabel="등록을 지울까요? (저장소는 그대로)" onConfirm={() => void del()} />}
         </div>
       </div>
+      {link && !ro && <RemoteLink p={p} onDone={() => setLink(false)} />}
       {open && (
         <fieldset className="form-grid" disabled={ro}>
           <label>이름<input className="txt" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} maxLength={60} /></label>
           <label>기준 브랜치 <small className="muted">{HELP.base}</small><input className="txt mono" value={d.base_ref} onChange={(e) => setD({ ...d, base_ref: e.target.value })} /></label>
-          <label>패키지(node_modules) 준비 <small className="muted">{HELP.deps}</small>
+          <label>팀 작업 폴더의 패키지 <small className="muted">{HELP.deps}</small>
             <select value={d.deps_strategy} onChange={(e) => setD({ ...d, deps_strategy: e.target.value as Project['deps_strategy'] })}>
               {DEPS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
+            <small className="dep-x">{DEPS_EXPLAIN[d.deps_strategy]}</small>
           </label>
           <label>기본 팀 구성 <small className="muted">{HELP.tpl}</small>
             <select value={d.tpl} onChange={(e) => setD({ ...d, tpl: e.target.value })}><option value="">(없음)</option>{snap.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>

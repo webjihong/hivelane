@@ -53,3 +53,30 @@ describe('원격 저장소 표시', () => {
     expect((await initRepo(d)).remote).toBeNull();
   });
 });
+
+import { splitApproval } from '../server/store.ts';
+describe('승인 대상 판정(종류로)', () => {
+  it('프로젝트마다 바꾼 운영 명령 패턴도 승인 대상 · 나머지는 그대로 막음', () => {
+    const r = splitApproval(['db:prod', '--profile\\s+acme', '--profile\\s+\\S*prod', '\\bterraform\\s+(apply|destroy)', 'npm\\s+publish', '\\bsudo\\b', 'prod:sync']);
+    expect(r.approval.sort()).toEqual(['--profile\\s+\\S*prod', '--profile\\s+acme', '\\bterraform\\s+(apply|destroy)', 'db:prod', 'npm\\s+publish', 'prod:sync'].sort());
+    expect(r.hard).toEqual(['\\bsudo\\b']);
+  });
+});
+
+import { linkRemoteUrl } from '../server/projects/link.ts';
+import { remoteOf } from '../server/projects/git.ts';
+describe('원격 저장소 연결', () => {
+  it('기존 주소를 origin 으로 연결하고 올린다 · 이미 있으면 거절 · 이상한 주소 거절', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'hl-link-'));
+    const bare = join(base, 'remote.git');
+    execFileSync('git', ['init', '--bare', '-q', bare]);
+    const dir = join(base, 'app'); mkdirSync(dir); writeFileSync(join(dir, 'a.txt'), 'a\n');
+    await initRepo(dir);
+    await expect(linkRemoteUrl(dir, '/just/a/path', true)).rejects.toThrow(/형태/);
+    const r = await linkRemoteUrl(dir, `file://${bare}`, true);
+    expect(r.log.join('\n')).toContain('main 브랜치를 올렸습니다');
+    expect((await remoteOf(dir))?.name).toBe('origin');
+    expect(execFileSync('git', ['-C', bare, 'log', '--oneline', 'main'], { encoding: 'utf8' })).toContain('Hivelane: 처음 상태');
+    await expect(linkRemoteUrl(dir, `file://${bare}`, false)).rejects.toThrow(/이미 원격/);
+  });
+});

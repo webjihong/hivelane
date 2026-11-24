@@ -10,6 +10,7 @@ import { readPatch } from '../projects/archive.ts';
 import { run } from '../util.ts';
 import { tailscaleState } from '../remote.ts';
 import { compactDb, storageReport } from '../storage.ts';
+import { createGithubRepo, githubAccounts, linkRemoteUrl } from '../projects/link.ts';
 import type { OllamaManager } from '../search/ollama.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
@@ -317,6 +318,23 @@ export function createApp(d: AppDeps): Hono<Env> {
     if (out.code !== 0) throw new HttpError(409, `폴더 창을 띄우지 못했습니다: ${out.stderr.trim().slice(0, 200)}`);
     const path = out.stdout.trim().replace(/\/$/, '');
     return c.json({ path: path || null });
+  });
+  /* ---------- 원격 저장소 연결(원격이 없을 때) ---------- */
+  app.get('/api/github/accounts', async (c) => c.json({ accounts: await githubAccounts() }));
+  app.post('/api/projects/:id/remote', async (c) => {
+    localOnly(c);
+    const p = store.getProject(c.req.param('id'));
+    if (!p) throw new HttpError(404, '프로젝트가 없습니다');
+    const b = await body(c, z.discriminatedUnion('mode', [
+      z.object({ mode: z.literal('url'), url: z.string().min(5).max(500), push: z.boolean().default(true) }),
+      z.object({ mode: z.literal('github'), account: z.string().max(60).optional(), owner: z.string().max(60).optional(), name: z.string().min(1).max(100), visibility: z.enum(['private', 'public']).default('private'), description: z.string().max(200).optional() }),
+    ]));
+    try {
+      const r = b.mode === 'url' ? await linkRemoteUrl(p.path, b.url, b.push) : await createGithubRepo(p.path, b);
+      store.addChat({ role: 'event', body: `원격 저장소 연결 · ${p.name} → ${r.remote.label}\n${r.log.join('\n')}`, tone: 'good' });
+      void d.repos?.refresh(true);
+      return c.json(r);
+    } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); }
   });
   app.post('/api/projects/inspect', async (c) => {
     localOnly(c);
