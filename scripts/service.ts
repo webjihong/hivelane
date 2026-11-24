@@ -31,9 +31,53 @@ function tailscaleBin(): string | null {
   return w.status === 0 ? w.stdout.trim() : null;
 }
 
-function plist(): string {
+/**
+ * 로그인 항목에 「node」 대신 「Hivelane」(아이콘 포함)으로 보이게 하는 앱 껍데기.
+ * ~/.hivelane/Hivelane.app/Contents/MacOS/Hivelane 가 node 서버를 exec 한다(pid 그대로라 launchd 가 그대로 관리).
+ */
+function appBundle(): string {
+  const app = join(cfg.home, 'Hivelane.app');
   const node = process.execPath;
   const tsx = join(ROOT, 'node_modules', 'tsx', 'dist', 'esm', 'index.mjs');
+  const q = (x: string) => `'${x.replace(/'/g, `'\\''`)}'`;
+  mkdirSync(join(app, 'Contents', 'MacOS'), { recursive: true });
+  mkdirSync(join(app, 'Contents', 'Resources'), { recursive: true });
+  writeFileSync(join(app, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>${LABEL}</string>
+  <key>CFBundleName</key><string>Hivelane</string>
+  <key>CFBundleDisplayName</key><string>Hivelane</string>
+  <key>CFBundleExecutable</key><string>Hivelane</string>
+  <key>CFBundleIconFile</key><string>Hivelane</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSUIElement</key><true/>
+  <key>LSBackgroundOnly</key><true/>
+</dict>
+</plist>
+`);
+  const exe = join(app, 'Contents', 'MacOS', 'Hivelane');
+  writeFileSync(exe, `#!/bin/sh\n# Hivelane 서버(launchd 가 띄움) — 로그인 항목에 Hivelane 으로 보이게 하는 껍데기\ncd ${q(ROOT)} && exec ${q(node)} --import ${q(tsx)} ${q(join(ROOT, 'server', 'index.ts'))}\n`, { mode: 0o755 });
+  // 아이콘: web/public/icon-512.png → icns (실패해도 무시)
+  const png = join(ROOT, 'web', 'public', 'icon-512.png');
+  const icns = join(app, 'Contents', 'Resources', 'Hivelane.icns');
+  if (existsSync(png)) {
+    const set = join(cfg.home, 'Hivelane.iconset');
+    rmSync(set, { recursive: true, force: true }); mkdirSync(set);
+    for (const n of [16, 32, 128, 256, 512]) {
+      sh('sips', ['-z', String(n), String(n), png, '--out', join(set, `icon_${n}x${n}.png`)], { quiet: true, allowFail: true });
+      if (n <= 256) sh('sips', ['-z', String(n * 2), String(n * 2), png, '--out', join(set, `icon_${n}x${n}@2x.png`)], { quiet: true, allowFail: true });
+    }
+    sh('iconutil', ['-c', 'icns', set, '-o', icns], { quiet: true, allowFail: true });
+    rmSync(set, { recursive: true, force: true });
+  }
+  return exe;
+}
+
+function plist(exe: string): string {
+  const node = process.execPath;
   const path = [dirname(node), '/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local', 'bin'), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -43,11 +87,9 @@ function plist(): string {
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${esc(node)}</string>
-    <string>--import</string>
-    <string>${esc(tsx)}</string>
-    <string>${esc(join(ROOT, 'server', 'index.ts'))}</string>
+    <string>${esc(exe)}</string>
   </array>
+  <key>AssociatedBundleIdentifiers</key><string>${LABEL}</string>
   <key>WorkingDirectory</key><string>${esc(ROOT)}</string>
   <key>EnvironmentVariables</key>
   <dict>
@@ -84,8 +126,15 @@ async function install(withTs: boolean) {
   mkdirSync(dirname(PLIST), { recursive: true });
   console.log(`2) launchd 등록: ${PLIST}`);
   sh('launchctl', ['bootout', `${domain}/${LABEL}`], { quiet: true, allowFail: true });
-  writeFileSync(PLIST, plist());
-  sh('launchctl', ['bootstrap', domain, PLIST]);
+  const exe = appBundle();
+  writeFileSync(PLIST, plist(exe));
+  // 방금 내린 서비스가 완전히 빠지기 전이면 bootstrap 이 「Input/output error」로 실패한다 → 잠깐 기다리며 다시
+  for (let i = 0; ; i++) {
+    const r = spawnSync('launchctl', ['bootstrap', domain, PLIST], { encoding: 'utf8' });
+    if (r.status === 0) break;
+    if (i >= 9) throw new Error(`launchctl bootstrap 실패\n${r.stderr || r.stdout}`);
+    await new Promise((res) => setTimeout(res, 1000));
+  }
   sh('launchctl', ['enable', `${domain}/${LABEL}`], { allowFail: true });
   const ok = await waitHealthy();
   console.log(ok ? `   서버 응답 OK → http://127.0.0.1:${cfg.port}` : `   서버가 아직 응답하지 않습니다. 로그: ${cfg.logsDir}`);

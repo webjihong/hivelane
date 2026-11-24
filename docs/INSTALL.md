@@ -34,7 +34,7 @@ npm run service:install
 하는 일:
 
 1. 화면을 빌드합니다(`dist/web`).
-2. launchd 사용자 서비스 `com.webjihong.hivelane` 을 등록하고 시작합니다. 로그인하면 저절로 켜지고, 죽으면 다시 켜집니다.
+2. launchd 사용자 서비스 `com.webjihong.hivelane` 을 등록하고 시작합니다. 맥에 로그인하면 저절로 켜지고, 죽으면 다시 켜집니다. 시스템 설정 › 일반 › 로그인 항목의 「백그라운드에서 허용」에 **Hivelane** 으로 보입니다(`~/.hivelane/Hivelane.app` 껍데기가 서버를 띄움).
 3. Tailscale이 깔려 있으면 `tailscale serve --bg 4312` 로 tailnet 안에서만 원격 화면을 엽니다.
 
 브라우저에서 <http://127.0.0.1:4310> 을 엽니다.
