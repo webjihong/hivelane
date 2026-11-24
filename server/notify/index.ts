@@ -32,12 +32,12 @@ export class AppNotifier implements Notifier {
 
   /**
    * VAPID 연락처(sub). 애플 푸시(web.push.apple.com)는 localhost 같은 가짜 주소면 403 BadJwtToken 으로 거절한다.
-   * → 원격 주소(https://…ts.net) · 주인 계정 메일 · 저장소 주소 순으로 실제 주소를 쓴다.
+   * → 주인 계정 메일(mailto:) · 원격 주소(https://…ts.net) · 저장소 주소 순으로 실제 주소를 쓴다.
    */
   private vapidDetails(): { subject: string; publicKey: string; privateKey: string } {
     const pub = this.store.getKv<string | null>('public_url', null);
     const owner = this.store.getSettings().ownerLogin;
-    const subject = pub && /^https:\/\//.test(pub) ? pub : owner && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(owner) ? `mailto:${owner}` : 'https://github.com/webjihong/hivelane';
+    const subject = owner && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(owner) ? `mailto:${owner}` : pub && /^https:\/\//.test(pub) ? pub : 'https://github.com/webjihong/hivelane';
     return { subject, publicKey: this.vapid!.publicKey, privateKey: this.vapid!.privateKey };
   }
 
