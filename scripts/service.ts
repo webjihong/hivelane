@@ -73,6 +73,12 @@ function appBundle(): string {
     sh('iconutil', ['-c', 'icns', set, '-o', icns], { quiet: true, allowFail: true });
     rmSync(set, { recursive: true, force: true });
   }
+  // 로그인 항목은 실행 파일의 아이콘을 쓴다 → 실행 파일·앱에 아이콘을 직접 붙이고 LaunchServices 에 등록
+  if (existsSync(icns)) {
+    const js = `ObjC.import("AppKit"); const i = $.NSImage.alloc.initWithContentsOfFile(${JSON.stringify(icns)}); const w = $.NSWorkspace.sharedWorkspace; w.setIconForFileOptions(i, ${JSON.stringify(exe)}, 0) && w.setIconForFileOptions(i, ${JSON.stringify(app)}, 0);`;
+    sh('osascript', ['-l', 'JavaScript', '-e', js], { quiet: true, allowFail: true });
+  }
+  sh('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', app], { quiet: true, allowFail: true });
   return exe;
 }
 
