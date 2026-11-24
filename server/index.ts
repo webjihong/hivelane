@@ -11,6 +11,7 @@ import { AgentRunner } from './agents/runner.ts';
 import { PlanUsage } from './po/usage.ts';
 import { AuthLogin } from './po/auth.ts';
 import { GitCleanWatcher } from './projects/cleanwatch.ts';
+import { OllamaManager } from './search/ollama.ts';
 import { bus } from './bus.ts';
 import { Engine, realSampler } from './po/engine.ts';
 import { PoAgent } from './po/agent.ts';
@@ -54,10 +55,12 @@ void repos.refresh(true);
 const repoTimer = setInterval(() => void repos.refresh(true), 300_000);
 repoTimer.unref();
 const scripts = new ScriptRunner(store);
+const ollama = new OllamaManager({ store, logsDir: cfg.logsDir, onChange: () => {} });
+void ollama.ensure(); // 검색 방식이 Ollama 면 Hivelane 과 함께 켠다
 setTimeout(() => void gitClean.refresh(), 20_000).unref();
 const gitCleanTimer = setInterval(() => void gitClean.refresh(), 600_000);
 gitCleanTimer.unref();
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean });
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });
@@ -79,6 +82,7 @@ async function shutdown(sig: string) {
   closing = true;
   log.info(`${sig} 받음 · 종료`);
   engine.stop();
+  ollama.stop();
   caffeinate?.kill();
   server.close();
   remoteServer.close();

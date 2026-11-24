@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { EngineSettings, Model, Project, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
+import type { EngineSettings, Model, OllamaView, Project, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
@@ -365,6 +365,43 @@ function RemoteGuide({ info, owner, onRefresh, busy }: { info: RemoteInfo | null
   return <div className={`rg ${tone}`}><div className="small">{body}</div><div className="rg-a">{again}</div></div>;
 }
 
+const BREW_CMD = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"';
+
+/** Ollama 준비 상태: Homebrew → 설치 → 켜기 → 모델 받기 → 준비됨 */
+function OllamaPanel({ ro, model }: { ro: boolean; model: string }) {
+  const [v, setV] = useState<OllamaView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api<OllamaView>('/api/ollama').then(setV).catch(() => {});
+  useEffect(() => { void load(); }, [model]);
+  const working = !!v?.job && !v.job.done;
+  useEffect(() => { if (!working) return; const t = setInterval(() => void load(), 1000); return () => clearInterval(t); }, [working]);
+  const call = async (path: string, body: unknown = {}, ok?: string) => { setBusy(true); const r = await act(() => api<OllamaView>(`/api/ollama/${path}`, 'POST', body), ok); if (r) setV(r); setBusy(false); };
+  const copy = (t: string) => { void navigator.clipboard?.writeText(t).then(() => toast('복사했습니다', 'good')).catch(() => {}); };
+  if (!v) return <div className="rg info small">Ollama 상태 확인 중…</div>;
+  const job = v.job;
+  const jobLine = job && (!job.done || job.error) ? (
+    <div className="ol-job">
+      <span>{job.kind === 'install' ? 'Ollama 설치' : `모델 받기 ${job.model ?? ''}`}{job.done ? '' : ' 중…'}</span>
+      {job.pct != null && !job.done && <span className="ol-bar"><i style={{ width: `${job.pct}%` }} /></span>}
+      {job.pct != null && !job.done && <span className="mono">{job.pct}%</span>}
+      <span className={`muted small mono ${job.error ? 'crit-t' : ''}`}>{job.error ?? job.line}</span>
+    </div>
+  ) : null;
+  let tone = 'warn'; let body: ReactNode;
+  if (!v.local) body = <>주소가 이 맥이 아니라 Hivelane 이 관리하지 않습니다 · {v.running ? `연결됨(${v.version})` : '연결 안 됨 — 그 서버를 직접 켜세요'}</>;
+  else if (!v.installed && !v.brew) body = <><b>1단계 · Homebrew 설치</b><br />Ollama 는 Homebrew 로 설치합니다. Homebrew 설치는 맥 관리자 비밀번호가 필요해 터미널에서 직접 한 번 실행하세요: <code className="mono">{BREW_CMD}</code> <button className="link-btn" type="button" onClick={() => copy(BREW_CMD)}>복사</button><br /><span className="muted">끝나면 「다시 확인」. (또는 ollama.com 에서 Ollama 앱을 받아도 됩니다)</span></>;
+  else if (!v.installed) body = <><b>2단계 · Ollama 설치</b><br /><code className="mono">brew install ollama</code> 를 Hivelane 이 실행합니다(몇 분).{!ro && <> <button className="btn primary" type="button" disabled={busy || working} onClick={() => void call('install', {}, '설치를 시작했습니다')}>설치</button></>}</>;
+  else if (!v.running) body = <><b>3단계 · Ollama 켜기</b><br />설치돼 있지만 꺼져 있습니다. 켜면 Hivelane 이 함께 관리합니다(Hivelane 이 꺼지면 같이 꺼짐).{!ro && <> <button className="btn primary" type="button" disabled={busy} onClick={() => void call('start', {}, 'Ollama 를 켰습니다')}>{busy ? '켜는 중…' : '켜기'}</button></>}</>;
+  else if (!v.hasModel) body = <><b>4단계 · 모델 받기</b><br /><span className="mono">{v.model}</span> 이 아직 없습니다{v.model === 'bge-m3' ? '(약 1.2GB)' : ''}.{!ro && <> <button className="btn primary" type="button" disabled={busy || working} onClick={() => void call('pull', { model: v.model }, '모델 받기를 시작했습니다')}>받기</button></>}{v.models.length > 0 && <><br /><span className="muted">있는 모델: {v.models.join(', ')}</span></>}</>;
+  else { tone = 'good'; body = <><b>✓ 준비됨</b> · Ollama {v.version} · 모델 <span className="mono">{v.model}</span> · {v.managed ? 'Hivelane 이 켜고 끔' : '다른 곳(앱·brew services)에서 실행 중'}<br /><span className="muted">처음 켰거나 모델을 바꿨다면 「다시 색인」을 누르세요.</span>{v.managed && !ro && <> <button className="link-btn" type="button" onClick={() => void call('stop', {}, 'Ollama 를 껐습니다')}>끄기</button></>}</>; }
+  return (
+    <div className={`rg ${tone}`}>
+      <div className="small">{body}{jobLine}</div>
+      <div className="rg-a"><button className="link-btn" type="button" onClick={() => void load()}>다시 확인</button></div>
+    </div>
+  );
+}
+
 /** 검색 안내: 고른 방식에 따라 */
 function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
   return (
@@ -372,7 +409,7 @@ function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
       <b>무엇에 쓰나</b> — 총괄이 지난 기록(팀 대화·보고·요약·배운 것)을 찾을 때 씁니다. 기본 <b>전문 검색</b>은 늘 켜져 있고 글자가 겹치는 기록을 찾습니다(한국어 3글자 조각).
       임베딩(<b>벡터 검색</b>)을 켜면 말이 달라도 뜻이 비슷한 기록까지 찾습니다(예: 「결제 오류」로 「PG 승인 실패」 찾기). 기록이 적거나 단어로 충분하면 꺼 둬도 됩니다.
       {provider === 'off' && <><br /><span className="muted">켜려면 Ollama(맥 안에서 무료) 또는 Voyage(클라우드 유료)를 고르세요.</span></>}
-      {provider === 'ollama' && <><br /><b>Ollama</b> · 기록이 맥 밖으로 나가지 않습니다. 준비: <code className="mono">brew install ollama</code> → <code className="mono">ollama serve</code>(또는 앱 실행) → <code className="mono">ollama pull bge-m3</code>. 모델 기본 bge-m3(한국어 됨), 주소 기본 http://127.0.0.1:11434. 바꾼 뒤 「다시 색인」.</>}
+      {provider === 'ollama' && <><br /><b>Ollama</b> · 기록이 맥 밖으로 나가지 않습니다. 아래 준비 상태에서 설치·켜기·모델 받기를 버튼으로 합니다. Hivelane 이 켜질 때 같이 켜지고 꺼질 때 같이 꺼집니다(터미널 필요 없음).</>}
       {provider === 'voyage' && <><br /><b>Voyage</b> · 기록 글이 voyageai.com 으로 보내집니다(유료). 서버 환경 변수 <code className="mono">VOYAGE_API_KEY</code> 가 있어야 합니다(launchd 서비스면 plist 에 넣고 다시 설치). 모델 예: voyage-3.5. 주소 칸은 쓰지 않습니다. 바꾼 뒤 「다시 색인」.</>}
       <br /><span className="muted">「다시 색인」은 지금까지의 기록을 처음부터 다시 넣습니다(방식·모델을 바꿨을 때).</span>
     </div>
@@ -478,6 +515,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
               </select>
             </Row>
             <SearchGuide provider={s.embedding.provider} />
+            {s.embedding.provider === 'ollama' && <OllamaPanel ro={ro} model={s.embedding.model} />}
             {s.embedding.provider !== 'off' && <TextSetting label="모델" sub={s.embedding.provider === 'ollama' ? 'ollama pull 로 받은 이름' : 'Voyage 모델 이름'} value={s.embedding.model} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { model: v.trim() } })} />}
             {s.embedding.provider === 'ollama' && <TextSetting label="주소" sub="Ollama 서버" value={s.embedding.url} mono disabled={ro} onSave={(v) => saveSettings({ embedding: { url: v.trim() } })} />}
             {!ro && s.embedding.provider !== 'off' && <div className="row"><button className="btn" type="button" disabled={indexing} onClick={() => { setIndexing(true); void act(async () => { const r = await api<{ indexed: number }>('/api/search/reindex', 'POST', {}); toast(`${r.indexed}건 색인했습니다`, 'good'); }).finally(() => setIndexing(false)); }}>{indexing ? '색인 중…' : '다시 색인'}</button></div>}

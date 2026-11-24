@@ -16,3 +16,14 @@ describe('원격 접속 상태(tailscale serve)', () => {
     expect(parseServe({}, 4312)).toEqual({ serving: false, url: null, otherTargets: [], funnel: false });
   });
 });
+
+import { localHostPort } from '../server/search/ollama.ts';
+describe('Ollama 주소', () => {
+  it('이 맥 주소만 Hivelane 이 켠다', () => {
+    expect(localHostPort('http://127.0.0.1:11434')).toBe('127.0.0.1:11434');
+    expect(localHostPort('http://localhost:12000/')).toBe('127.0.0.1:12000');
+    expect(localHostPort('http://127.0.0.1')).toBe('127.0.0.1:11434');
+    expect(localHostPort('http://gpu-box:11434')).toBeNull();
+    expect(localHostPort('엉터리')).toBeNull();
+  });
+});

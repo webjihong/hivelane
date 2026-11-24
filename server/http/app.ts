@@ -8,6 +8,7 @@ import type { AuthLogin } from '../po/auth.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { tailscaleState } from '../remote.ts';
+import type { OllamaManager } from '../search/ollama.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -29,7 +30,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
@@ -347,7 +348,22 @@ export function createApp(d: AppDeps): Hono<Env> {
     remindUnreadMin: z.number().int().min(0).max(1440), autoCleanDays: z.number().int().min(0).max(365), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
   }).partial();
-  app.put('/api/settings', async (c) => { localOnly(c); const b = await body(c, settingsZ); return c.json(store.saveSettings(b as Parameters<Store['saveSettings']>[0])); });
+  app.put('/api/settings', async (c) => {
+    localOnly(c);
+    const b = await body(c, settingsZ);
+    const before = store.getSettings().embedding;
+    const saved = store.saveSettings(b as Parameters<Store['saveSettings']>[0]);
+    if (before.provider !== saved.embedding.provider || before.url !== saved.embedding.url) void d.ollama?.ensure(); // Ollama 를 고르면 켜고, 끄면 우리가 띄운 것만 끈다
+    return c.json(saved);
+  });
+  /* ---------- 벡터 검색용 Ollama(설치·켜기·모델 받기) ---------- */
+  const ol = () => { if (!d.ollama) throw new HttpError(404, 'Ollama 관리를 쓸 수 없습니다'); return d.ollama; };
+  const olDo = (f: () => unknown) => { try { f(); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } };
+  app.get('/api/ollama', async (c) => c.json(await ol().status()));
+  app.post('/api/ollama/install', async (c) => { localOnly(c); olDo(() => ol().install()); return c.json(await ol().status()); });
+  app.post('/api/ollama/start', async (c) => { localOnly(c); try { await ol().start(); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } return c.json(await ol().status()); });
+  app.post('/api/ollama/stop', async (c) => { localOnly(c); ol().stop(); return c.json(await ol().status()); });
+  app.post('/api/ollama/pull', async (c) => { localOnly(c); const b = await body(c, z.object({ model: z.string().min(1).max(100) })); olDo(() => ol().pull(b.model)); return c.json(await ol().status()); });
   app.get('/api/remote', async (c) => c.json({ ownerLogin: store.getSettings().ownerLogin, lastRemote: store.getKv('last_remote_login', null), remotePort: d.cfg.remotePort, tailscale: await tailscaleState(d.cfg.remotePort, !!c.req.query('fresh')).catch(() => null) }));
   app.post('/api/search/reindex', async (c) => { localOnly(c); return c.json({ indexed: await search.reindexAll() }); });
   app.get('/api/search', async (c) => c.json(await search.search(c.req.query('q') ?? '', { projectId: c.req.query('project') || null })));

@@ -652,3 +652,7 @@ a.fin-name:hover { text-decoration: underline; }
   .set-nav-h { display: none; }
   .set-nav a { white-space: nowrap; font-size: 13px; }
 }
+
+.ol-job { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.ol-bar { width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; display: inline-block; }
+.ol-bar > i { display: block; height: 6px; background: var(--accent, #1F6F6A); }

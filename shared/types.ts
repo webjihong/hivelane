@@ -194,6 +194,15 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** 벡터 검색용 Ollama 상태(설치·실행·모델·진행 중 작업) */
+export interface OllamaView {
+  brew: boolean; installed: boolean; running: boolean; version: string | null;
+  /** Hivelane 이 띄운 ollama serve 인가(아니면 앱·brew services 등 다른 데서 돌고 있음) */
+  managed: boolean; local: boolean;
+  model: string; hasModel: boolean; models: string[];
+  job: { kind: 'install' | 'pull'; model?: string; pct: number | null; line: string; error: string | null; done: boolean } | null;
+}
+
 /** 정리 기록 한 줄 */
 export interface CleanupLogView { id: number; at: string; project_id: string | null; project_name: string | null; team_id: string | null; team_name: string | null; kind: 'worktree' | 'branch'; target: string; branch: string | null; by: string; discarded: boolean; patch: boolean; patch_files: number; note: string | null }
 /** 끝난 팀 목록(전체 보기) 한 줄 */
