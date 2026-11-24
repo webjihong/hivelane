@@ -51,6 +51,8 @@ export function snapshotTeams<T extends { lifetime: string; state: string; finis
   return all.filter((t) => !fin(t) || recent.has(t));
 }
 
+const httpLog = logger('http');
+
 export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
   const app = new Hono<Env>();
@@ -64,6 +66,17 @@ export function createApp(d: AppDeps): Hono<Env> {
   const LOCAL_HOSTS = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, '127.0.0.1:4311', 'localhost:4311']);
   const hostOk = (host: string, remote: boolean) => (remote ? /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$/i.test(host) : LOCAL_HOSTS.has(host.toLowerCase()));
   app.use('/api/*', async (c, next) => {
+    const r = await gate(c, next);
+    const res = r instanceof Response ? r : c.res;
+    if (res.status === 403) {
+      // 원격 기기에서 왜 막혔는지 맥에서 볼 수 있게 남긴다
+      let why = '';
+      try { why = ((await res.clone().json()) as { error?: string }).error ?? ''; } catch { /* 본문 없음 */ }
+      httpLog.warn(`403 ${c.req.method} ${c.req.path} · ${why} · ${(c.req.header('user-agent') ?? '').slice(0, 80)}`);
+    }
+    return r instanceof Response ? r : undefined;
+  });
+  const gate = async (c: Context<Env>, next: () => Promise<void>): Promise<Response | void> => {
     const localPort = c.env?.incoming?.socket?.localPort;
     const remote = localPort === cfg.remotePort;
     const host = c.req.header('host') ?? '';
@@ -92,7 +105,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     } else c.set('access', 'local');
     c.set('login', login);
     await next();
-  });
+  };
   const localOnly = (c: Context<Env>) => { if (c.get('access') !== 'local') throw new HttpError(403, '이 작업은 맥에서만 할 수 있습니다(원격은 보기만)'); };
 
   app.onError((e, c) => {
@@ -422,6 +435,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/push/subscribe', async (c) => {
     const b = await body(c, z.object({ endpoint: z.string().url(), keys: z.object({ p256dh: z.string(), auth: z.string() }), device: z.string().max(100).default('') }));
     store.addPushSub(b.endpoint, b.keys, b.device);
+    httpLog.info(`푸시 구독 저장 · ${b.device} · ${(() => { try { return new URL(b.endpoint).host; } catch { return '?'; } })()}`);
     return c.json({ ok: true });
   });
   app.post('/api/push/test', async (c) => {

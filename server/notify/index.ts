@@ -25,11 +25,21 @@ export class AppNotifier implements Notifier {
     try {
       if (existsSync(file)) this.vapid = JSON.parse(readFileSync(file, 'utf8'));
       else { this.vapid = webpush.generateVAPIDKeys(); writeFileSync(file, JSON.stringify(this.vapid), { mode: 0o600 }); }
-      webpush.setVapidDetails('mailto:hivelane@localhost', this.vapid!.publicKey, this.vapid!.privateKey);
     } catch (e) { log.warn('VAPID 키 준비 실패, 웹 푸시 꺼짐', e); this.vapid = null; }
   }
 
   vapidPublicKey(): string | null { return this.vapid?.publicKey ?? null; }
+
+  /**
+   * VAPID 연락처(sub). 애플 푸시(web.push.apple.com)는 localhost 같은 가짜 주소면 403 BadJwtToken 으로 거절한다.
+   * → 원격 주소(https://…ts.net) · 주인 계정 메일 · 저장소 주소 순으로 실제 주소를 쓴다.
+   */
+  private vapidDetails(): { subject: string; publicKey: string; privateKey: string } {
+    const pub = this.store.getKv<string | null>('public_url', null);
+    const owner = this.store.getSettings().ownerLogin;
+    const subject = pub && /^https:\/\//.test(pub) ? pub : owner && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(owner) ? `mailto:${owner}` : 'https://github.com/webjihong/hivelane';
+    return { subject, publicKey: this.vapid!.publicKey, privateKey: this.vapid!.privateKey };
+  }
 
   /** 슬랙 「열기」 링크: 원격(Tailscale) 주소가 있으면 그것, 없으면 로컬 */
   private baseUrl(): string { return process.env.HIVELANE_PUBLIC_URL ?? this.store.getKv<string | null>('public_url', null) ?? `http://127.0.0.1:${process.env.HIVELANE_PORT ?? 4310}`; }
@@ -60,13 +70,15 @@ export class AppNotifier implements Notifier {
     const s = this.store.pushSubs().find((x) => x.endpoint === endpoint);
     if (!s) return { ok: false, error: '서버에 이 기기 구독이 없습니다' };
     try {
-      const r = await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body, url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' }), { TTL: 600, urgency: 'high' });
+      const r = await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body, url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' }), { TTL: 600, urgency: 'high', vapidDetails: this.vapidDetails() });
       log.info(`푸시 점검 보냄 · ${s.device} · ${r.statusCode}`);
       return { ok: true, status: r.statusCode };
     } catch (e) {
       const status = (e as { statusCode?: number }).statusCode;
+      const body = (e as { body?: string }).body || String(e);
+      log.warn(`푸시 점검 실패 · ${s.device} · ${status ?? '-'} · ${String(body).slice(0, 200)}`);
       if (status === 404 || status === 410) this.store.removePushSub(s.endpoint);
-      return { ok: false, status, error: (e as { body?: string }).body || String(e) };
+      return { ok: false, status, error: body };
     }
   }
 
@@ -75,12 +87,12 @@ export class AppNotifier implements Notifier {
     const payload = JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'), url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' });
     for (const s of this.store.pushSubs()) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 86_400, urgency: 'high' });
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 86_400, urgency: 'high', vapidDetails: this.vapidDetails() });
         log.info(`푸시 보냄 · ${s.device} · ${n.title}`);
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode;
         if (code === 404 || code === 410) this.store.removePushSub(s.endpoint);
-        else log.warn('웹 푸시 실패', e);
+        else log.warn(`웹 푸시 실패 · ${s.device} · ${code ?? '-'} · ${String((e as { body?: string }).body ?? e).slice(0, 200)}`);
       }
     }
   }
