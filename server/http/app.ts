@@ -70,6 +70,14 @@ export function createApp(d: AppDeps): Hono<Env> {
    */
   const LOCAL_HOSTS = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, '127.0.0.1:4311', 'localhost:4311']);
   const hostOk = (host: string, remote: boolean) => (remote ? /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$/i.test(host) : LOCAL_HOSTS.has(host.toLowerCase()));
+  // 기기 추적(임시 진단): 서버가 뜬 뒤 20분 동안 원격 요청을 모두 남긴다. 어떤 기기가 무엇을 요청하는지 가려내기용.
+  const traceUntil = Date.now() + 20 * 60_000;
+  app.use('*', async (c, next) => {
+    await next();
+    if (Date.now() > traceUntil || c.env?.incoming?.socket?.localPort !== cfg.remotePort) return;
+    if (c.req.path === '/api/events' || c.req.path.startsWith('/api/uploads/')) return;
+    httpLog.info(`원격 ${c.req.method} ${c.req.path}${new URL(c.req.url).search} → ${c.res.status} · ${(c.req.header('user-agent') ?? '-').replace(/^Mozilla\/5\.0 /, '').slice(0, 110)}`);
+  });
   app.use('/api/*', async (c, next) => {
     const r = await gate(c, next);
     const res = r instanceof Response ? r : c.res;
