@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
-import { AREAS, SCALES, THEMES, loadPrefs, savePrefs, type UiPrefs } from './themes.ts';
+import { AREAS, FONTS, SCALES, THEMES, TOKENS, allThemes, applyPrefs, currentTokens, loadPrefs, savePrefs, varsFromTokens, type AreaKey, type Theme, type UiPrefs } from './themes.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
 type SettingsPatch = Partial<Omit<SettingsT, 'engine' | 'embedding'>> & { engine?: Partial<EngineSettings>; embedding?: Partial<SettingsT['embedding']> };
@@ -526,32 +526,127 @@ function OllamaPanel({ ro, model }: { ro: boolean; model: string }) {
   );
 }
 
-/** 화면: 테마 프리셋 + 영역별 글자 크기(이 기기에만) */
+/** 테마 카드 미리보기 */
+function ThemePreview({ t }: { t: Theme }) {
+  const v = t.vars;
+  const st = (k: string) => (t.id === 'default' ? undefined : { background: v[k] });
+  return (
+    <span className="th-prev" aria-hidden="true" style={st('--bg')}>
+      <span className="th-side" style={st('--sb-bg')}><i style={st('--sb-amber')} /><i style={st('--sb-dim')} /><i style={st('--sb-dim')} /></span>
+      <span className="th-body">
+        <span className="th-card-in" style={t.id === 'default' ? undefined : { background: v['--surface'], borderColor: v['--line'] }}><i style={st('--fg')} /><i className="s" style={st('--muted')} /></span>
+        <span className="th-btn" style={st('--accent')} />
+      </span>
+    </span>
+  );
+}
+
+/** 나만의 테마 편집기: 바꾸는 즉시 화면에 미리 입힌다(저장 전까지는 임시) */
+function ThemeEditor({ prefs, init, onClose }: { prefs: UiPrefs; init: Theme; onClose: (saved: UiPrefs | null) => void }) {
+  const [name, setName] = useState(init.name);
+  const [scheme, setScheme] = useState<'light' | 'dark'>(init.scheme === 'dark' ? 'dark' : 'light');
+  const [font, setFont] = useState(init.font ?? '');
+  const [tok, setTok] = useState<Record<string, string>>(() => Object.fromEntries(TOKENS.map((t) => [t.v, init.vars[t.v] ?? '#888888'])));
+  const [scale, setScale] = useState<Partial<Record<AreaKey, number>>>(init.scale ?? prefs.scale);
+  const draft = (): Theme => ({ id: init.id, name: name.trim() || '나만의 테마', desc: `나만의 테마 · ${scheme === 'dark' ? '어두움' : '밝음'}`, scheme, vars: varsFromTokens(scheme, tok), font, scale, custom: true });
+  const preview = (): UiPrefs => ({ ...prefs, theme: init.id, scale, custom: [...(prefs.custom ?? []).filter((c) => c.id !== init.id), draft()] });
+  useEffect(() => { applyPrefs(preview()); }, [name, scheme, font, tok, scale]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 저장하지 않고 다른 화면으로 가면 미리보기를 되돌린다
+  useEffect(() => () => { applyPrefs(loadPrefs()); }, []);
+  const set = (k: string, v: string) => setTok((t) => ({ ...t, [k]: v.toUpperCase() }));
+  const save = () => { const n = preview(); savePrefs(n); toast(`「${name.trim() || '나만의 테마'}」를 저장하고 입혔습니다`, 'good'); onClose(n); };
+  const cancel = () => { applyPrefs(prefs); onClose(null); };
+  const copy = () => { void navigator.clipboard?.writeText(JSON.stringify({ hivelaneTheme: 1, ...draft(), id: undefined })).then(() => toast('테마 코드를 복사했습니다 · 다른 기기에서 「가져오기」에 붙여 넣으세요', 'good')).catch(() => {}); };
+  const groups = ['본문', '왼쪽 목록', '상태'] as const;
+  return (
+    <div className="panel th-ed">
+      <h3>{(prefs.custom ?? []).some((c) => c.id === init.id) ? '나만의 테마 고치기' : '나만의 테마 만들기'} <small className="muted">바꾸는 즉시 화면에 미리 보입니다 · 저장해야 남습니다</small></h3>
+      <div className="form-grid">
+        <label>이름<input className="txt" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} /></label>
+        <label>밝기 <small className="muted">어두움이면 일부 색(모델 표시 등)도 어두운 판으로</small>
+          <select value={scheme} onChange={(e) => setScheme(e.target.value as 'light' | 'dark')}><option value="light">밝음</option><option value="dark">어두움</option></select>
+        </label>
+        <label>글꼴<select value={font} onChange={(e) => setFont(e.target.value)}>{FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
+      </div>
+      {groups.map((g) => (
+        <div key={g} className="th-ed-g">
+          <div className="th-ed-gh">{g === '본문' ? '본문(가운데 화면)' : g === '왼쪽 목록' ? '왼쪽 목록(사이드바)' : '상태 색'}</div>
+          <div className="th-colors">
+            {TOKENS.filter((t) => t.group === g).map((t) => (
+              <label key={t.v} className="th-color">
+                <input type="color" value={tok[t.v]} onChange={(e) => set(t.v, e.target.value)} aria-label={`${g} ${t.label}`} />
+                <span className="th-cl">{t.label}</span>
+                <input className="txt mono th-hex" value={tok[t.v]} maxLength={7} onChange={(e) => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) set(t.v, e.target.value); }} />
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="th-ed-g">
+        <div className="th-ed-gh">글자 크기 <small className="muted">이 테마를 고르면 함께 적용</small></div>
+        {AREAS.map((a) => {
+          const cur = scale[a.key] ?? 1;
+          return (
+            <Row key={a.key} label={a.label} sub={a.desc} htmlFor={`ez-${a.key}`}>
+              <div className="z-ctl"><input id={`ez-${a.key}`} type="range" min={0} max={SCALES.length - 1} step={1} value={Math.max(0, SCALES.indexOf(cur))} onChange={(e) => setScale({ ...scale, [a.key]: SCALES[Number(e.target.value)] })} /><span className="mono z-v">{Math.round(cur * 100)}%</span></div>
+            </Row>
+          );
+        })}
+      </div>
+      <div className="row th-ed-acts"><button className="btn primary" type="button" onClick={save}>저장</button><button className="btn" type="button" onClick={cancel}>취소</button><button className="btn ghost" type="button" onClick={copy}>테마 코드 복사</button></div>
+    </div>
+  );
+}
+
+/** 화면: 테마(프리셋 + 나만의 테마) + 영역별 글자 크기(이 기기에만) */
 function DisplayPanel() {
   const [p, setP] = useState<UiPrefs>(() => loadPrefs());
+  const [edit, setEdit] = useState<Theme | null>(null);
+  const [imp, setImp] = useState<string | null>(null);
   const set = (n: UiPrefs) => { setP(n); savePrefs(n); };
+  const pick = (t: Theme) => set({ ...p, theme: t.id, ...(t.scale ? { scale: t.scale } : {}) });
+  const startNew = () => {
+    const base = allThemes(p).find((x) => x.id === p.theme) ?? THEMES[0]!;
+    setEdit({ id: `c-${Date.now().toString(36)}`, name: `${base.name} 변형`, desc: '', scheme: base.scheme === 'dark' || (base.scheme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light', vars: currentTokens(), font: base.font, scale: p.scale, custom: true });
+  };
+  const del = (t: Theme) => set({ ...p, custom: (p.custom ?? []).filter((c) => c.id !== t.id), theme: p.theme === t.id ? 'default' : p.theme });
+  const doImport = () => {
+    try {
+      const j = JSON.parse(imp ?? '') as Partial<Theme> & { hivelaneTheme?: number };
+      if (!j.hivelaneTheme || !j.vars || typeof j.vars !== 'object') throw new Error('Hivelane 테마 코드가 아닙니다');
+      const t: Theme = { id: `c-${Date.now().toString(36)}`, name: String(j.name ?? '가져온 테마').slice(0, 30), desc: String(j.desc ?? '나만의 테마'), scheme: j.scheme === 'dark' ? 'dark' : 'light', vars: Object.fromEntries(Object.entries(j.vars).filter(([k, v]) => /^--[\w-]+$/.test(k) && typeof v === 'string' && /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s]+\))$/i.test(v))), font: typeof j.font === 'string' ? j.font : '', scale: j.scale, custom: true };
+      set({ ...p, custom: [...(p.custom ?? []), t], theme: t.id, ...(t.scale ? { scale: t.scale } : {}) });
+      setImp(null); toast(`「${t.name}」를 가져와 입혔습니다`, 'good');
+    } catch (e) { toast(e instanceof Error ? e.message : '가져오지 못했습니다', 'crit'); }
+  };
+  if (edit) return <ThemeEditor prefs={p} init={edit} onClose={(n) => { setEdit(null); if (n) setP(n); }} />;
   return (
     <div className="stack-s">
       <div className="panel">
         <h3>테마 <small className="muted">색만 바뀌고 화면 구성은 그대로 · 이 기기에만 저장(맥·휴대폰 따로)</small></h3>
         <div className="th-grid">
-          {THEMES.map((t) => {
-            const v = t.vars;
+          {allThemes(p).map((t) => {
             const on = p.theme === t.id;
             return (
-              <button key={t.id} type="button" className={`th-card${on ? ' on' : ''}`} aria-pressed={on} onClick={() => set({ ...p, theme: t.id })}>
-                <span className="th-prev" aria-hidden="true" style={t.id === 'default' ? undefined : { background: v['--bg'] }}>
-                  <span className="th-side" style={t.id === 'default' ? undefined : { background: v['--sb-bg'] }}><i style={t.id === 'default' ? undefined : { background: v['--sb-amber'] }} /><i style={t.id === 'default' ? undefined : { background: v['--sb-dim'] }} /><i style={t.id === 'default' ? undefined : { background: v['--sb-dim'] }} /></span>
-                  <span className="th-body">
-                    <span className="th-card-in" style={t.id === 'default' ? undefined : { background: v['--surface'], borderColor: v['--line'] }}><i style={t.id === 'default' ? undefined : { background: v['--fg'] }} /><i className="s" style={t.id === 'default' ? undefined : { background: v['--muted'] }} /></span>
-                    <span className="th-btn" style={t.id === 'default' ? undefined : { background: v['--accent'] }} />
-                  </span>
-                </span>
-                <span className="th-name">{t.name}{on && <span className="th-check"> ✓</span>}</span>
-                <span className="th-desc">{t.desc}</span>
-              </button>
+              <div key={t.id} className="th-wrap">
+                <button type="button" className={`th-card${on ? ' on' : ''}`} aria-pressed={on} onClick={() => pick(t)}>
+                  <ThemePreview t={t} />
+                  <span className="th-name">{t.name}{t.custom && <span className="chip th-mine">나만의</span>}{on && <span className="th-check"> ✓</span>}</span>
+                  <span className="th-desc">{t.desc}</span>
+                </button>
+                {t.custom && <div className="th-acts"><button className="link-btn" type="button" onClick={() => setEdit(t)}>고치기</button><button className="link-btn" type="button" onClick={() => { const c = { ...t, id: `c-${Date.now().toString(36)}`, name: `${t.name} 사본` }; set({ ...p, custom: [...(p.custom ?? []), c] }); }}>복제</button><ConfirmButton className="link-btn" label="지우기" confirmLabel="지울까요?" onConfirm={() => del(t)} /></div>}
+              </div>
             );
           })}
+          <button type="button" className="th-card th-new" onClick={startNew}><span className="th-plus">＋</span><span className="th-name">나만의 테마 만들기</span><span className="th-desc">지금 테마에서 시작해 색·글꼴·글자 크기를 바꿔 저장</span></button>
+        </div>
+        <div className="row th-imp">
+          {imp === null ? <button className="link-btn" type="button" onClick={() => setImp('')}>테마 코드 가져오기</button> : (
+            <>
+              <textarea className="txt mono" rows={3} value={imp} onChange={(e) => setImp(e.target.value)} placeholder="다른 기기에서 「테마 코드 복사」한 내용을 붙여 넣기" />
+              <div className="row"><button className="btn primary" type="button" disabled={!imp.trim()} onClick={doImport}>가져오기</button><button className="btn" type="button" onClick={() => setImp(null)}>취소</button></div>
+            </>
+          )}
         </div>
       </div>
       <div className="panel">
@@ -567,7 +662,7 @@ function DisplayPanel() {
             </Row>
           );
         })}
-        <div className="row"><button className="btn" type="button" onClick={() => set({ ...p, scale: {} })}>글자 크기 처음대로</button><span className="muted small">화면 전체를 키우려면 브라우저 확대(⌘ +)도 됩니다</span></div>
+        <div className="z-reset"><button className="btn" type="button" onClick={() => set({ ...p, scale: {} })}>글자 크기 처음대로</button><span className="muted small">화면 전체를 키우려면 브라우저 확대(⌘ +)도 됩니다</span></div>
       </div>
     </div>
   );

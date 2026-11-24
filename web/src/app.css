@@ -707,3 +707,23 @@ a.fin-name:hover { text-decoration: underline; }
 .dep-x { display: block; font-size: 11.5px; line-height: 1.5; color: var(--fg); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
 .rl { margin-top: 8px; }
 .rl-tabs { margin-bottom: 10px; }
+
+/* 글자 크기 처음대로: 위 줄과 띄우기 */
+.z-reset { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+/* 나만의 테마 */
+.th-wrap { display: flex; flex-direction: column; gap: 4px; }
+.th-wrap .th-card { flex: 1; }
+.th-acts { display: flex; gap: 10px; padding: 0 4px; font-size: 12px; }
+.th-mine { margin-left: 6px; font-size: 10px; padding: 0 6px; background: var(--accent-soft); color: var(--accent); }
+.th-new { align-items: center; justify-content: center; text-align: center; border-style: dashed; min-height: 140px; }
+.th-plus { font-size: 26px; color: var(--accent); line-height: 1; }
+.th-imp { margin-top: 12px; flex-direction: column; align-items: stretch; gap: 6px; }
+.th-imp textarea { width: 100%; }
+.th-ed-g { margin-top: 16px; }
+.th-ed-gh { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.th-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; }
+.th-color { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.th-color input[type=color] { width: 34px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; flex: none; }
+.th-cl { flex: 1; min-width: 0; }
+.th-hex { width: 84px; flex: none; font-size: 12px; padding: 3px 6px; }
+.th-ed-acts { margin-top: 16px; gap: 8px; }

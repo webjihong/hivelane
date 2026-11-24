@@ -3,7 +3,7 @@
  * - 본문: --bg --surface --surface-2 --line --fg --muted --accent --accent-soft (+ 상태색)
  * - 사이드바: --sb-bg --sb-fg --sb-muted --sb-dim --sb-strong --sb-hover --sb-on --sb-line --sb-amber --sb-good --sb-warn --sb-crit
  */
-export interface Theme { id: string; name: string; desc: string; scheme: 'light' | 'dark' | 'system'; vars: Record<string, string> }
+export interface Theme { id: string; name: string; desc: string; scheme: 'light' | 'dark' | 'system'; vars: Record<string, string>; font?: string; scale?: Partial<Record<AreaKey, number>>; custom?: boolean }
 
 type Main = { bg: string; surface: string; surface2: string; line: string; fg: string; muted: string; accent: string; good?: string; warn?: string; crit?: string };
 type Side = { bg: string; fg: string; muted: string; dim: string; hover: string; on: string; line: string; amber: string; good?: string; warn?: string; crit?: string; strong?: string };
@@ -61,6 +61,66 @@ export const THEMES: Theme[] = [
     { bg: '#000000', fg: '#FFFFFF', muted: '#D0D0D0', dim: '#E6E6E6', hover: '#222222', on: '#333333', line: '#555555', amber: '#FFD000', good: '#00E07A', warn: '#FFD000', crit: '#FF5A5A' }),
 ];
 
+/** 나만의 테마에서 고칠 수 있는 색(변수 이름 · 이름 · 묶음) — 연한 색(-soft)은 저장할 때 자동으로 만든다 */
+export const TOKENS: { v: string; label: string; group: '본문' | '왼쪽 목록' | '상태' }[] = [
+  { v: '--bg', label: '바탕', group: '본문' },
+  { v: '--surface', label: '카드·입력칸', group: '본문' },
+  { v: '--surface-2', label: '카드 안쪽·흐린 칸', group: '본문' },
+  { v: '--line', label: '테두리·구분선', group: '본문' },
+  { v: '--fg', label: '글씨', group: '본문' },
+  { v: '--muted', label: '흐린 글씨', group: '본문' },
+  { v: '--accent', label: '강조(버튼·링크)', group: '본문' },
+  { v: '--sb-bg', label: '바탕', group: '왼쪽 목록' },
+  { v: '--sb-fg', label: '글씨', group: '왼쪽 목록' },
+  { v: '--sb-dim', label: '보조 글씨', group: '왼쪽 목록' },
+  { v: '--sb-muted', label: '흐린 글씨', group: '왼쪽 목록' },
+  { v: '--sb-hover', label: '마우스 올림', group: '왼쪽 목록' },
+  { v: '--sb-on', label: '선택된 항목', group: '왼쪽 목록' },
+  { v: '--sb-line', label: '구분선', group: '왼쪽 목록' },
+  { v: '--sb-amber', label: '강조(지금 볼 것·배지)', group: '왼쪽 목록' },
+  { v: '--good', label: '좋음(완료·초록)', group: '상태' },
+  { v: '--warn', label: '주의(노랑)', group: '상태' },
+  { v: '--crit', label: '위험(실패·빨강)', group: '상태' },
+];
+
+/** 글꼴 고르기 */
+export const FONTS: { id: string; label: string; css: string }[] = [
+  { id: '', label: '기본 (IBM Plex Sans KR)', css: '' },
+  { id: 'apple', label: 'Apple SD 산돌고딕 Neo', css: '"Apple SD Gothic Neo", system-ui, sans-serif' },
+  { id: 'system', label: '시스템 글꼴', css: 'system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif' },
+  { id: 'nanum', label: '나눔고딕(설치돼 있으면)', css: '"NanumGothic", "Nanum Gothic", "Apple SD Gothic Neo", sans-serif' },
+  { id: 'mono', label: '고정폭(코딩 글꼴)', css: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "Apple SD Gothic Neo", monospace' },
+];
+
+/** 색 값들 → 테마 변수(연한 색은 자동으로) */
+export function varsFromTokens(scheme: 'light' | 'dark', t: Record<string, string>): Record<string, string> {
+  const v: Record<string, string> = { ...t };
+  const a = scheme === 'dark' ? 0.16 : 0.1;
+  const soft = scheme === 'dark' ? 0.15 : 0.11;
+  if (t['--accent']) v['--accent-soft'] = rgba(t['--accent'], a);
+  for (const k of ['--good', '--warn', '--crit']) if (t[k]) v[`${k}-soft`] = rgba(t[k], soft);
+  if (t['--good']) v['--sb-good'] = t['--good'];
+  if (t['--warn']) v['--sb-warn'] = t['--warn'];
+  if (t['--crit']) v['--sb-crit'] = t['--crit'];
+  v['--sb-strong'] = scheme === 'dark' || isDark(t['--sb-bg'] ?? '#000000') ? '#FFFFFF' : '#000000';
+  return v;
+}
+const isDark = (hex: string) => { const n = parseInt(hex.replace('#', '').slice(0, 6), 16); const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; return 0.299 * r + 0.587 * g + 0.114 * b < 140; };
+
+/** 지금 화면에 실제로 입혀진 색(테마 변수 또는 기본 CSS) → #RRGGBB */
+export function currentTokens(): Record<string, string> {
+  const cs = getComputedStyle(document.documentElement);
+  const out: Record<string, string> = {};
+  for (const t of TOKENS) out[t.v] = toHex(cs.getPropertyValue(t.v).trim());
+  return out;
+}
+function toHex(c: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toUpperCase();
+  if (/^#[0-9a-f]{3}$/i.test(c)) return `#${[...c.slice(1)].map((x) => x + x).join('')}`.toUpperCase();
+  const m = c.match(/rgba?\((\d+)[ ,]+(\d+)[ ,]+(\d+)/);
+  return m ? `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`.toUpperCase() : '#888888';
+}
+
 /** 글자 크기를 바꿀 수 있는 화면 영역 */
 export const AREAS = [
   { key: 'sb', label: '왼쪽 목록', desc: '채널·팀·저장소·상태줄' },
@@ -71,12 +131,15 @@ export const AREAS = [
 export type AreaKey = (typeof AREAS)[number]['key'];
 export const SCALES = [0.85, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
 
-export interface UiPrefs { theme: string; scale: Partial<Record<AreaKey, number>> }
+export interface UiPrefs { theme: string; scale: Partial<Record<AreaKey, number>>; custom?: Theme[] }
+
+/** 기본 프리셋 + 나만의 테마 */
+export const allThemes = (p: UiPrefs): Theme[] => [...THEMES, ...(p.custom ?? [])];
 const KEY = 'hl.ui';
 
 export function loadPrefs(): UiPrefs {
-  try { const v = JSON.parse(localStorage.getItem(KEY) ?? '') as UiPrefs; if (v && typeof v.theme === 'string') return { theme: v.theme, scale: v.scale ?? {} }; } catch { /* 없음 */ }
-  return { theme: 'default', scale: {} };
+  try { const v = JSON.parse(localStorage.getItem(KEY) ?? '') as UiPrefs; if (v && typeof v.theme === 'string') return { theme: v.theme, scale: v.scale ?? {}, custom: Array.isArray(v.custom) ? v.custom : [] }; } catch { /* 없음 */ }
+  return { theme: 'default', scale: {}, custom: [] };
 }
 
 let applied: string[] = [];
@@ -84,10 +147,12 @@ let applied: string[] = [];
 export function applyPrefs(p: UiPrefs): void {
   const root = document.documentElement;
   for (const k of applied) root.style.removeProperty(k);
-  const t = THEMES.find((x) => x.id === p.theme) ?? THEMES[0]!;
+  const t = allThemes(p).find((x) => x.id === p.theme) ?? THEMES[0]!;
   if (t.scheme === 'system') delete root.dataset.theme; else root.dataset.theme = t.scheme;
   applied = Object.keys(t.vars);
   for (const [k, v] of Object.entries(t.vars)) root.style.setProperty(k, v);
+  const font = FONTS.find((f) => f.id === t.font)?.css;
+  if (font) { root.style.setProperty('--font-body', font); applied.push('--font-body'); }
   for (const a of AREAS) {
     const z = p.scale[a.key];
     if (z && z !== 1) { root.style.setProperty(`--z-${a.key}`, String(z)); applied.push(`--z-${a.key}`); }
