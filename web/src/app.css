@@ -727,3 +727,12 @@ a.fin-name:hover { text-decoration: underline; }
 .th-cl { flex: 1; min-width: 0; }
 .th-hex { width: 84px; flex: none; font-size: 12px; padding: 3px 6px; }
 .th-ed-acts { margin-top: 16px; gap: 8px; }
+
+/* 대화창이 화면 폭을 넘지 않게: 긴 주소·코드·사건 줄도 칸 안에서 줄바꿈 */
+.chat.po-chan { align-self: stretch; width: 100%; }
+.tc-body, .po-chan .chat-body { overflow-x: hidden; }
+.c, .tc-bub { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.c.ev { overflow-wrap: anywhere; }
+.rt code { overflow-wrap: anywhere; word-break: break-all; white-space: pre-wrap; }
+.rt a { color: var(--accent); overflow-wrap: anywhere; word-break: break-all; }
+.c.user .rt a, .tc-bub.me .rt a { color: inherit; text-decoration: underline; }

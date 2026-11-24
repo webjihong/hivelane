@@ -28,3 +28,12 @@ describe('긴 문단 문장 나누기', () => {
     expect(splitSentences('짧다. 그대로다.')).toEqual(['짧다. 그대로다.']);
   });
 });
+
+describe('링크', () => {
+  it('[글](주소)는 링크로, 맨 주소도 링크로, 위험한 주소는 글자만', () => {
+    const html = renderToStaticMarkup(createElement(RichText, { text: '- [KOMOJU 조사](https://en.komoju.com/news/x-2024/)\n- 출처 https://isdown.app/status/komoju. 끝\n- [나쁜](javascript:alert(1))' }));
+    expect(html).toContain('<li><a href="https://en.komoju.com/news/x-2024/" target="_blank" rel="noreferrer">KOMOJU 조사</a></li>');
+    expect(html).toContain('출처 <a href="https://isdown.app/status/komoju" target="_blank" rel="noreferrer">https://isdown.app/status/komoju</a>. 끝');
+    expect(html).not.toContain('javascript:');
+  });
+});

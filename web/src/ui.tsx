@@ -97,8 +97,22 @@ export function Section({ title, sub, right, children }: { title: ReactNode; sub
 }
 
 /** 총괄 글: 줄바꿈과 **굵게** 정도만. HTML 은 넣지 않는다. */
+/** 굵게·코드·[글](주소)·맨 주소 링크. 링크는 safeHref 를 통과한 것만. */
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]\n]+\]\([^\s)]+\)|https?:\/\/[^\s<>()[\]]+[^\s<>()[\].,;:!?'"」』])/;
+function link(k: number, href: string, label: ReactNode): ReactNode {
+  const h = safeHref(href);
+  if (!h) return label;
+  return <a key={k} href={h} {...(h.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}>{label}</a>;
+}
 function inline(line: string): ReactNode[] {
-  return line.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((seg, k) => seg.startsWith('**') && seg.endsWith('**') && seg.length > 4 ? <b key={k}>{seg.slice(2, -2)}</b> : seg.startsWith('`') && seg.endsWith('`') && seg.length > 2 ? <code key={k}>{seg.slice(1, -1)}</code> : seg);
+  return line.split(INLINE).map((seg, k) => {
+    if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4) return <b key={k}>{seg.slice(2, -2)}</b>;
+    if (seg.startsWith('`') && seg.endsWith('`') && seg.length > 2) return <code key={k}>{seg.slice(1, -1)}</code>;
+    const m = seg.match(/^\[([^\]\n]+)\]\(([^\s)]+)\)$/);
+    if (m) return link(k, m[2]!, m[1]!);
+    if (/^https?:\/\//.test(seg)) return link(k, seg, seg);
+    return seg;
+  });
 }
 
 /** 줄바꿈 없는 긴 문단(180자↑)은 문장 끝에서 나눠 한 줄씩 보여 준다. 소수점·약어는 나누지 않는다. */
