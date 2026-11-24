@@ -3,6 +3,7 @@ import type { StateSnapshot } from '../../shared/types.ts';
 import { AgentDrawer } from './AgentDrawer.tsx';
 import { nowCount } from './chan.ts';
 import { Chat } from './Chat.tsx';
+import { Finished } from './Finished.tsx';
 import { Now } from './Now.tsx';
 import { PrSection } from './Prs.tsx';
 import { Settings } from './Settings.tsx';
@@ -31,7 +32,7 @@ function Toasts() {
 /** 휴대폰 하단 탭: 대화(채널 목록) · PR · 설정 */
 function BottomNav({ snap, r }: { snap: StateSnapshot; r: Route }) {
   const { need, news } = nowCount(snap);
-  const chatOn = !['prs', 'scripts', 'settings', 'templates'].includes(r.name);
+  const chatOn = !['prs', 'scripts', 'finished', 'settings', 'templates'].includes(r.name);
   const runningScripts = snap.scripts.filter((s) => s.running_run_id).length;
   const openPrs = snap.prs.filter((p) => p.state === 'OPEN').length;
   return (
@@ -89,6 +90,7 @@ export function App() {
   if (r.name === 'settings') main = <div className="page"><SettingsTabs r={r} /><Settings snap={snap} /></div>;
   else if (r.name === 'templates') main = <div className="page"><SettingsTabs r={r} /><Templates snap={snap} /></div>;
   else if (r.name === 'scripts') main = <div className="page"><Scripts snap={snap} /></div>;
+  else if (r.name === 'finished') main = <div className="page"><Finished snap={snap} tab={r.tab} /></div>;
   else if (r.name === 'prs') main = <div className="page"><PrSection key={r.focus ?? ''} snap={snap} focus={r.focus} /></div>;
   else if (r.name === 'po') main = <Chat snap={snap} />;
   else if (r.name === 'team') main = <TeamChannel key={r.id} id={r.id} snap={snap} detail={!!r.detail} />;

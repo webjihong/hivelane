@@ -67,12 +67,13 @@ export async function act<T>(fn: () => Promise<T>, okText?: string): Promise<T |
 
 /* ---------- 라우트 ---------- */
 /** home: 데스크톱은 「지금 볼 것」, 휴대폰은 채널 목록 · now: 「지금 볼 것」 · list: 채널 목록(휴대폰) */
-export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'scripts' | 'templates' | 'settings' } | { name: 'prs'; focus?: string } | { name: 'team'; id: string; detail?: boolean };
+export type Route = { name: 'home' | 'now' | 'list' | 'po' | 'scripts' | 'templates' | 'settings' } | { name: 'prs'; focus?: string } | { name: 'finished'; tab: 'teams' | 'log' } | { name: 'team'; id: string; detail?: boolean };
 function parseRoute(): Route {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('team-')) { const id = h.slice(5); return id.endsWith('/detail') ? { name: 'team', id: id.slice(0, -7), detail: true } : { name: 'team', id }; }
   if (h.startsWith('prs/')) return { name: 'prs', focus: h.slice(4) };
   if (h === 'scripts') return { name: 'scripts' };
+  if (h === 'finished' || h === 'finished/log') return { name: 'finished', tab: h === 'finished/log' ? 'log' : 'teams' };
   if (h === 'po' || h === 'templates' || h === 'settings' || h === 'now' || h === 'list' || h === 'prs') return { name: h };
   return { name: 'home' };
 }
@@ -90,7 +91,7 @@ export const proposalOutcome = box<Record<string, 'approved' | 'rejected'>>({});
 
 /** 서버가 화면보다 옛 버전(재시작 전)이어도 새 목록 값이 비지 않게 */
 function withDefaults(s: StateSnapshot): StateSnapshot {
-  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], gitClean: s.gitClean ?? { remove: 0, ask: 0, takenAt: null, running: false }, usage: s.usage ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
+  return { ...s, prs: s.prs ?? [], prErrors: s.prErrors ?? {}, repos: s.repos ?? [], scripts: s.scripts ?? [], finishedCount: s.finishedCount ?? { done: 0, failed: 0, archived: 0 }, gitClean: s.gitClean ?? { remove: 0, ask: 0, takenAt: null, running: false }, usage: s.usage ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, poUnread: s.poUnread ?? 0, knowledgeCount: s.knowledgeCount ?? 0 };
 }
 
 export async function refreshState(): Promise<void> {

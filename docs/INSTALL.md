@@ -60,6 +60,7 @@ npm start          # http://127.0.0.1:4310
 | `~/.hivelane/worktrees/` | 업무 팀이 일하는 git worktree |
 | `~/.hivelane/po/`, `standing/` | 총괄·직속 팀 작업 폴더 |
 | `~/.hivelane/logs/server.log` | 서버 로그 |
+| `~/.hivelane/archive/` | 정리한 worktree·브랜치의 변경 패치 |
 | `~/.hivelane/vapid.json` | 웹 푸시 키(자동 생성, 공유 금지) |
 
 환경 변수:

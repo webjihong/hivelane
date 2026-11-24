@@ -76,7 +76,7 @@ export function GitCleanPanel({ local, onClose }: { local: boolean; onClose: () 
           {d?.lines && <details open className="gc-res"><summary>방금 정리 결과</summary><pre>{d.lines.join('\n')}</pre></details>}
           {d && !shown.length && <p className="muted">정리할 것이 없습니다.</p>}
           {shown.map((s) => <Project key={s.project_id} s={s} local={local} onDone={setD} />)}
-          {d && <p className="muted small">마지막 확인 {d.summary.takenAt ? new Date(d.summary.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'} · 10분마다 자동으로 살펴봅니다 · 브랜치를 지워도 원격 브랜치는 그대로입니다</p>}
+          {d && <p className="muted small">마지막 확인 {d.summary.takenAt ? new Date(d.summary.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'} · 10분마다 자동으로 살펴봅니다 · 브랜치를 지워도 원격 브랜치는 그대로입니다 · 지운 것의 변경은 패치로 남습니다 · <a href="#finished/log" onClick={onClose}>정리 기록 보기 →</a></p>}
         </div>
       </aside>
     </>,

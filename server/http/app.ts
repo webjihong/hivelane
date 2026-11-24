@@ -6,6 +6,7 @@ import type { ScriptRunner } from '../scripts.ts';
 import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
+import { readPatch } from '../projects/archive.ts';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -36,6 +37,14 @@ const priorityZ = z.enum(['urgent', 'normal', 'low']);
 class HttpError extends Error { constructor(public status: 400 | 403 | 404 | 409, msg: string) { super(msg); } }
 
 const pushLog = logger('push');
+
+/** 스냅샷엔 일하는 팀 전부 + 끝난 팀은 최근 것(7일 안 또는 최근 20개)만. 나머지는 /api/finished-teams 로 */
+export function snapshotTeams<T extends { lifetime: string; state: string; finished_at: string | null; updated_at: string }>(all: T[], now = Date.now()): T[] {
+  const fin = (t: T) => t.lifetime === 'task' && (t.state === 'done' || t.state === 'failed');
+  const at = (t: T) => Date.parse(t.finished_at ?? t.updated_at) || 0;
+  const recent = new Set(all.filter(fin).sort((a, b) => at(b) - at(a)).filter((t, i) => i < 20 || now - at(t) < 7 * 86_400_000));
+  return all.filter((t) => !fin(t) || recent.has(t));
+}
 
 export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
@@ -95,7 +104,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
       version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, gitClean: d.gitClean?.summary ?? { remove: 0, ask: 0, takenAt: null, running: false }, projects: store.listProjects(), templates: store.listTemplates(),
-      teams: store.listTeams().map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
+      teams: snapshotTeams(store.listTeams()).map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), finishedCount: store.finishedCount(), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
   });
@@ -136,7 +145,11 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/agents/:id', (c) => { const dt = store.agentDetail(c.req.param('id')); if (!dt) throw new HttpError(404, '에이전트가 없습니다'); return c.json(dt); });
   app.get('/api/teams/:id/diff', async (c) => {
     const t = team(c.req.param('id'));
-    if (!t.worktree_path || !t.base_sha) return c.json({ diff: '' });
+    if (!t.worktree_path || !t.base_sha) {
+      // worktree 를 정리한 팀: 남겨 둔 패치에서 보여 준다
+      const patch = store.teamPatch(t.id);
+      return c.json({ diff: patch ? readPatch(patch, c.req.query('path') || undefined) : '', from_patch: !!patch });
+    }
     return c.json({ diff: await diffText(t.worktree_path, t.base_sha, c.req.query('path') || undefined) });
   });
 
@@ -158,6 +171,15 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 스크립트 버튼 (등록·수정은 맥에서만, 실행은 원격도) ---------- */
   const scripts = () => { if (!d.scripts) throw new HttpError(409, '스크립트 기능이 꺼져 있습니다'); return d.scripts; };
   const scriptZ = z.object({ project_id: z.string().nullable(), name: z.string().trim().min(1).max(60), command: z.string().trim().min(1).max(4000), cwd: z.string().max(500).default(''), confirm: z.boolean().default(false) });
+  /* ---------- 끝난 팀 전체·정리 기록 ---------- */
+  const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : d; };
+  app.get('/api/finished-teams', (c) => c.json(store.finishedTeams({ q: c.req.query('q') ?? '', state: c.req.query('state') ?? '', projectId: c.req.query('project') || null, offset: num(c.req.query('offset'), 0), limit: num(c.req.query('limit'), 50) })));
+  app.get('/api/cleanup-log', (c) => c.json(store.cleanupLog({ projectId: c.req.query('project') || null, teamId: c.req.query('team') || null, offset: num(c.req.query('offset'), 0), limit: num(c.req.query('limit'), 50) })));
+  app.get('/api/cleanup-log/:id/patch', (c) => {
+    const row = store.cleanupLogRow(Number(c.req.param('id')));
+    if (!row?.patch_path) throw new HttpError(404, '남겨 둔 패치가 없습니다');
+    return c.json({ patch: readPatch(row.patch_path, c.req.query('path') || undefined), path: row.patch_path });
+  });
   /* ---------- worktree·로컬 브랜치 정리(화면) ---------- */
   const gc = () => { if (!d.gitClean) throw new HttpError(404, '정리 기능을 쓸 수 없습니다'); return d.gitClean; };
   app.get('/api/git-clean', async (c) => { if (c.req.query('refresh')) await gc().refresh(); return c.json({ summary: gc().summary, scans: gc().views }); });
@@ -321,7 +343,7 @@ export function createApp(d: AppDeps): Hono<Env> {
       stallMin: z.number().int().min(1).max(600), beatSec: z.number().int().min(10).max(3600),
     }).partial(),
     autoApprove: z.boolean(), defaultBudgetUsd: z.number().positive().max(10000).nullable(), poModel: z.enum(['opus', 'sonnet', 'haiku']), contextLimitTokens: z.number().int().min(20000).max(1_000_000),
-    remindUnreadMin: z.number().int().min(0).max(1440), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
+    remindUnreadMin: z.number().int().min(0).max(1440), autoCleanDays: z.number().int().min(0).max(365), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
   }).partial();
   app.put('/api/settings', async (c) => { localOnly(c); const b = await body(c, settingsZ); return c.json(store.saveSettings(b as Parameters<Store['saveSettings']>[0])); });

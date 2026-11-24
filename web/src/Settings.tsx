@@ -385,6 +385,7 @@ export function Settings({ snap }: { snap: StateSnapshot }) {
               </Row>
               <Row label="업무 기본 예산" sub="비우면 무제한 · 팀마다 승인할 때 바꿀 수 있음" htmlFor="set-budget"><BudgetField id="set-budget" value={s.defaultBudgetUsd} disabled={ro} onSave={(v) => saveSettings({ defaultBudgetUsd: v })} /></Row>
               <Row label="맥락 한도" sub="넘으면 새 총괄 세션 + 요약으로 시작" htmlFor="set-ctx"><NumField id="set-ctx" value={s.contextLimitTokens} unit="토큰" step={1000} disabled={ro} onSave={(v) => saveSettings({ contextLimitTokens: v })} /></Row>
+              <Row label="끝난 팀 worktree 자동 정리" sub="끝난 지 이 일수가 지나면 변경을 패치로 남기고 worktree 를 지움(브랜치는 남김) · 0이면 끔" htmlFor="set-autoclean"><NumField id="set-autoclean" value={s.autoCleanDays} unit="일" step={1} disabled={ro} onSave={(v) => saveSettings({ autoCleanDays: Math.max(0, Math.min(365, Math.round(v))) })} /></Row>
             </div>
           </div>
         </div>

@@ -1,4 +1,6 @@
 import { GitCleanWatcher } from '../server/projects/cleanwatch.ts';
+import { readPatch } from '../server/projects/archive.ts';
+import { snapshotTeams } from '../server/http/app.ts';
 import { describe, expect, it } from 'vitest';
 import type { TurnHandle, TurnResult, TurnSpec } from '../server/agents/runner.ts';
 import { NullNotifier } from '../server/notify/index.ts';
@@ -286,5 +288,66 @@ describe('화면 git 정리(사이드바 버튼)', () => {
     expect(existsSync(W('b'))).toBe(true);
     expect((await w.cleanTeam(tb.id, true)).result).toBe('done');
     expect(existsSync(W('b'))).toBe(false);
+  });
+  it('정리 때 변경을 패치로 남기고 기록 · 7일 지난 끝난 팀은 자동 정리 · 스냅샷은 최근 끝난 팀만', async () => {
+    const env = setup();
+    const repo = makeRepo();
+    const p = env.store.insertProject({ name: 'app3', path: repo, base_ref: 'main', deps_strategy: 'none', heavy_patterns: [], blocked_patterns: [], memory_paths: [], default_template_id: null });
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
+    const base = g('rev-parse', 'main').trim();
+    const W = (n: string) => join(env.cfg.worktreesDir, 'app3', n);
+    g('worktree', 'add', '-b', 'hivelane/x', W('x'), 'main');
+    writeFileSync(join(W('x'), 'README.md'), '# 팀이 고침\n'); writeFileSync(join(W('x'), 'new.txt'), '새 파일\n');
+    g('worktree', 'add', '-b', 'hivelane/old', W('old'), 'main'); writeFileSync(join(W('old'), 'old.txt'), '오래됨\n');
+    g('worktree', 'add', '-b', 'hivelane/fresh', W('fresh'), 'main');
+    const tx = env.store.insertTeam({ name: '팀X', project_id: p.id, worktree_path: W('x'), branch: 'hivelane/x', base_sha: base, state: 'done' });
+    const eightDays = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const told = env.store.insertTeam({ name: '오래된팀', project_id: p.id, worktree_path: W('old'), branch: 'hivelane/old', base_sha: base, state: 'done' });
+    env.store.updateTeam(told.id, { finished_at: eightDays });
+    const tfresh = env.store.insertTeam({ name: '새팀', project_id: p.id, worktree_path: W('fresh'), branch: 'hivelane/fresh', base_sha: base, state: 'done' });
+    env.store.updateTeam(tfresh.id, { finished_at: new Date().toISOString() });
+    const w = new GitCleanWatcher({ cfg: env.cfg, store: env.store, orch: env.orch, onChange: () => {} });
+
+    // 팀 버튼: 변경 버림 동의 → 패치로 남음
+    expect((await w.cleanTeam(tx.id, true)).result).toBe('done');
+    const pth = env.store.teamPatch(tx.id)!;
+    expect(pth).toBeTruthy();
+    const patch = readPatch(pth);
+    expect(patch).toContain('# 팀이 고침');
+    expect(patch).toContain('new.txt');
+    expect(readPatch(pth, 'new.txt')).not.toContain('README.md');
+    const log = env.store.cleanupLog({ teamId: tx.id });
+    expect(log.total).toBe(1);
+    expect(log.items[0]).toMatchObject({ kind: 'worktree', by: '팀 버튼', discarded: true, patch: true, patch_files: 2 });
+
+    // 자동 정리: 8일 지난 팀만
+    const done = await w.autoClean();
+    expect(done).toEqual(['오래된팀']);
+    expect(existsSync(W('old'))).toBe(false);
+    expect(existsSync(W('fresh'))).toBe(true);
+    expect(readPatch(env.store.teamPatch(told.id)!)).toContain('오래됨');
+    expect(env.store.cleanupLog({ teamId: told.id }).items[0]!.by).toBe('자동');
+    env.store.saveSettings({ autoCleanDays: 0 });
+    env.store.updateTeam(tfresh.id, { finished_at: eightDays });
+    expect(await w.autoClean()).toEqual([]);
+
+    // 끝난 팀 목록·수
+    const fin = env.store.finishedTeams({ state: 'archived' });
+    expect(fin.items.map((t) => t.name).sort()).toEqual(['오래된팀', '팀X']);
+    expect(fin.items.every((t) => t.patch && !t.worktree)).toBe(true);
+    expect(env.store.finishedTeams({ q: '새팀' }).total).toBe(1);
+    expect(env.store.finishedCount()).toMatchObject({ archived: 2 });
+  });
+
+  it('스냅샷: 일하는 팀 전부 + 끝난 팀은 7일 안 또는 최근 20개', () => {
+    const now = Date.now();
+    const old = (i: number) => ({ id: `o${i}`, lifetime: 'task', state: 'done', finished_at: new Date(now - (10 + i) * 86_400_000).toISOString(), updated_at: '' });
+    const all = [...Array.from({ length: 30 }, (_, i) => old(i)), { id: 'r', lifetime: 'task', state: 'running', finished_at: null, updated_at: new Date(now).toISOString() }, { id: 's', lifetime: 'standing', state: 'idle', finished_at: null, updated_at: '' }];
+    const got = snapshotTeams(all, now).map((t) => t.id);
+    expect(got).toContain('r'); expect(got).toContain('s');
+    expect(got.filter((x) => x.startsWith('o'))).toHaveLength(20);
+    expect(got).toContain('o0'); expect(got).not.toContain('o29');
+    const recent = [...all, ...Array.from({ length: 25 }, (_, i) => ({ id: `n${i}`, lifetime: 'task', state: 'failed', finished_at: new Date(now - i * 3_600_000).toISOString(), updated_at: '' }))];
+    expect(snapshotTeams(recent, now).filter((t) => t.id.startsWith('n'))).toHaveLength(25);
   });
 });

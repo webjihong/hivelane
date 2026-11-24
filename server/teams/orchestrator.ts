@@ -7,6 +7,7 @@ import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
 import { addWorktree, collectChanges, prepareDeps, removeWorktree, slug } from '../projects/git.ts';
+import { saveWorktreePatch } from '../projects/archive.ts';
 import { effectiveBlocked, splitApproval, type AgentRow, type Store, type TeamRow } from '../store.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
 import { descendants, listProcs, signalTree } from '../po/resources.ts';
@@ -715,15 +716,21 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   }
 
   /** worktree 정리(브랜치는 남긴다) 후 보관. */
-  async archive(teamId: string): Promise<void> {
-    const { store } = this.deps;
+  async archive(teamId: string, by = '사용자', o: { discarded?: boolean } = {}): Promise<void> {
+    const { store, cfg } = this.deps;
     const t = store.getTeam(teamId);
     if (!t) return;
     if (this.isRunning(teamId)) throw new Error('돌고 있는 팀은 정리할 수 없습니다. 먼저 중단하세요.');
     const p = store.getProject(t.project_id);
-    if (p && t.worktree_path) await removeWorktree(p.path, t.worktree_path);
+    let patch: { path: string; files: number } | null = null;
+    if (p && t.worktree_path) {
+      // 지우기 전에 변경을 패치로 남긴다(지운 뒤에도 팀 상세·총괄이 볼 수 있게)
+      patch = await saveWorktreePatch(cfg, t.worktree_path, t.base_sha, t.id).catch((e) => { log.warn(`패치 저장 실패 ${teamId}`, e); return null; });
+      await removeWorktree(p.path, t.worktree_path);
+      store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: !!o.discarded, patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? `변경 ${patch.files}개 파일을 패치로 보관` : '변경 없음' });
+    }
     store.updateTeam(teamId, { state: 'archived', worktree_path: null });
-    store.addDecision(teamId, 'user', 'archive', `worktree 정리 · 브랜치 ${t.branch ?? '-'} 는 남김`);
+    store.addDecision(teamId, 'user', 'archive', `worktree 정리(${by}) · 브랜치 ${t.branch ?? '-'} 는 남김${patch ? ` · 변경 ${patch.files}개 파일 패치 보관` : ''}`);
   }
 
   /** 서버 시작 시: 돌던 팀은 이어가기 대기열로, 직속 팀은 이어서 깨운다. */

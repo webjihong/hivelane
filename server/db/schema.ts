@@ -317,4 +317,26 @@ CREATE TABLE script_runs (
 CREATE INDEX script_runs_script ON script_runs(script_id, id);
 `,
   },
+  {
+    id: 7,
+    name: 'cleanup_log',
+    sql: `
+CREATE TABLE cleanup_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL,
+  project_id TEXT,
+  team_id TEXT,
+  kind TEXT NOT NULL,
+  target TEXT NOT NULL,
+  branch TEXT,
+  by TEXT NOT NULL,
+  discarded INTEGER NOT NULL DEFAULT 0,
+  patch_path TEXT,
+  patch_files INTEGER NOT NULL DEFAULT 0,
+  note TEXT
+);
+CREATE INDEX cleanup_log_team ON cleanup_log(team_id);
+CREATE INDEX cleanup_log_at ON cleanup_log(at);
+`,
+  },
 ];

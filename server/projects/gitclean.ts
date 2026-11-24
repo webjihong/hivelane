@@ -4,6 +4,7 @@ import type { AppConfig } from '../config.ts';
 import type { Project } from '../../shared/types.ts';
 import type { Store } from '../store.ts';
 import { run } from '../util.ts';
+import { saveBranchPatch, saveWorktreePatch } from './archive.ts';
 
 /** 최근 이 시간 안에 손댄 worktree 는 다른 세션이 쓰는 중일 수 있어 남긴다 */
 export const RECENT_H = 12;
@@ -103,7 +104,7 @@ export function formatScan(s: Scan): string {
 }
 
 /** 다시 살펴본 뒤 지운다. keep 은 절대 안 지우고, ask 는 discard 일 때만. */
-export async function applyCleanup(cfg: AppConfig, store: Store, project: Project, ids: string[], discard: boolean, archiveTeam: (teamId: string) => Promise<void>): Promise<string[]> {
+export async function applyCleanup(cfg: AppConfig, store: Store, project: Project, ids: string[], discard: boolean, archiveTeam: (teamId: string) => Promise<void>, by = '사용자'): Promise<string[]> {
   const s = await scanGit(cfg, store, project);
   const home = process.env.HOME ?? '';
   // wt: 경로는 ~ 를 풀고 실제 경로(/var → /private/var 등)로 맞춘다
@@ -112,8 +113,14 @@ export async function applyCleanup(cfg: AppConfig, store: Store, project: Projec
   for (const w of s.worktrees.filter((x) => want.has(x.id))) {
     if (w.verdict === 'keep') { out.push(`남김 ${w.path}: ${w.why}`); continue; }
     if (w.verdict === 'ask' && !discard) { out.push(`멈춤 ${w.path}: ${w.why} — 사용자 동의 후 discard_changes`); continue; }
-    if (w.team_id) await archiveTeam(w.team_id);
-    const r = w.missing ? await git(project.path, ['worktree', 'prune']) : existsSync(w.path) ? await git(project.path, ['worktree', 'remove', '--force', w.path], 120_000) : { code: 0, stderr: '' };
+    if (w.team_id) await archiveTeam(w.team_id); // 팀 worktree 는 보관하면서 패치·기록을 남긴다
+    let r: { code: number; stderr: string } = { code: 0, stderr: '' };
+    if (w.missing) { r = await git(project.path, ['worktree', 'prune']); store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, note: '폴더가 이미 없음(기록만 정리)' }); }
+    else if (existsSync(w.path)) {
+      const patch = await saveWorktreePatch(cfg, w.path, null, `wt-${w.path.split('/').pop() ?? 'x'}`).catch(() => null);
+      r = await git(project.path, ['worktree', 'remove', '--force', w.path], 120_000);
+      if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, discarded: w.verdict === 'ask', patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? `커밋 안 한 변경 ${patch.files}개 파일을 패치로 보관` : w.why });
+    }
     out.push(r.code === 0 ? `지움 worktree ${w.path}` : `실패 ${w.path}: ${r.stderr.trim()}`);
   }
   await git(project.path, ['worktree', 'prune']);
@@ -121,7 +128,10 @@ export async function applyCleanup(cfg: AppConfig, store: Store, project: Projec
   for (const b of s2.branches.filter((x) => want.has(x.id))) {
     if (b.verdict === 'keep') { out.push(`남김 ${b.name}: ${b.why}`); continue; }
     if (b.verdict === 'ask' && !discard) { out.push(`멈춤 ${b.name}: ${b.why} — 사용자 동의 후 discard_changes`); continue; }
+    const saved = b.unpushed > 0 ? await saveBranchPatch(cfg, project.path, b.name, s2.base).catch(() => null) : null;
+    const sha = saved?.sha || (await git(project.path, ['rev-parse', b.name])).stdout.trim();
     const r = await git(project.path, ['branch', '-D', b.name]);
+    if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: null, kind: 'branch', target: b.name, by, discarded: b.verdict === 'ask', patch_path: saved?.path || null, patch_files: saved?.files ?? 0, note: `${b.why} · 되살리기: git branch ${b.name} ${sha.slice(0, 12)}` });
     out.push(r.code === 0 ? `지움 브랜치 ${b.name}` : `실패 ${b.name}: ${r.stderr.trim()}`);
   }
   const unknown = [...want].filter((i) => !s.worktrees.some((w) => w.id === i) && !s2.branches.some((b) => b.id === i) && !s.branches.some((b) => b.id === i));

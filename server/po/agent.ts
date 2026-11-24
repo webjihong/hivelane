@@ -17,6 +17,7 @@ import { cpus, loadavg } from 'node:os';
 import { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } from './resources.ts';
 import { applyCleanup, formatScan, scanGit } from '../projects/gitclean.ts';
 import { archiveForCleanup } from '../projects/cleanwatch.ts';
+import { readPatch } from '../projects/archive.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
 
 /** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
@@ -34,7 +35,8 @@ const EVENT_LABEL: Record<string, string> = {
 
 export interface PoTools {
   listProjects(): string; listTemplates(): string; listTeams(state?: string): string; getTaskStatus(teamId?: string): string;
-  findChanges(pathContains?: string, sinceHours?: number, project?: string): string; getTimeline(fromIso?: string, toIso?: string, project?: string): string;
+  findChanges(pathContains?: string, sinceHours?: number, project?: string): string;
+  readTeamPatch(teamId: string, path?: string): string; getTimeline(fromIso?: string, toIso?: string, project?: string): string;
   searchRecords(q: string, project?: string): Promise<string>;
   proposeTeam(p: { project: string | null; title: string; instruction: string; brief: string; template_id: string; roles?: TemplateRole[]; priority: Priority; budget_usd?: number | null; note?: string }): string;
   systemStatus(): Promise<string>;
@@ -221,6 +223,11 @@ ${chat}
         if (!d) return '없는 팀이다.';
         return `${teamLine(store.getTeam(teamId)!)}\n브랜치 ${d.team.branch ?? '-'}\n할 일:\n${d.checklist.map((c) => `- [${c.done ? 'x' : ' '}] ${c.text}`).join('\n') || '(없음)'}\n질문: ${d.team.question?.text ?? '-'}\n최근 요약:\n${d.summaries.slice(0, 4).map((s) => `[${s.stage}] ${truncate(s.body, 500)}`).join('\n')}\n바뀐 파일: ${d.files.map((f) => f.path).join(', ') || '-'}`;
       },
+      readTeamPatch: (teamId, path) => {
+        const pth = store.teamPatch(teamId);
+        if (!pth) return store.getTeam(teamId)?.worktree_path ? '아직 worktree 가 있다. 팀 상세의 diff 나 find_changes 를 쓴다.' : '남겨 둔 패치가 없다(변경이 없었거나 패치 보관 전에 정리됨).';
+        return readPatch(pth, path, 30_000) || '그 파일의 변경이 패치에 없다.';
+      },
       findChanges: (pathContains, sinceHours, project) => {
         const pid = projectId(project);
         const rows = store.db.prepare(`SELECT f.path, f.change_type, f.lines_added, f.lines_removed, f.created_at, t.id team_id, t.name, t.state FROM file_changes f JOIN teams t ON t.id = f.team_id
@@ -313,7 +320,7 @@ ${chat}
         if (!this.userTurn) return '거절: git 정리는 사용자가 이번 대화에서 정리하라고 했을 때만 한다.';
         const p = store.getProject(projectId(a.project)) ?? store.getProject(a.project);
         if (!p) return `프로젝트를 찾을 수 없다: ${a.project}`;
-        const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, archiveForCleanup(store, orch));
+        const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, archiveForCleanup(store, orch, '총괄'), '총괄');
         this.deps.onGitCleaned?.();
         const done = lines.filter((l) => l.startsWith('지움')).length;
         store.addChat({ role: 'event', body: `git 정리 · ${p.name} · ${done}개 지움${a.discard_changes ? ' (변경 버림 동의)' : ''} · ${a.reason}\n${lines.join('\n')}`, tone: 'info' });
@@ -328,7 +335,7 @@ ${chat}
   }
 }
 
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'read_team_patch', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
 
 /** 총괄의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
@@ -365,6 +372,7 @@ function poMcpServer(impl: PoTools) {
     }, async (a) => text(impl.createStanding({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
     T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기를 바꾼다', { team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional() },
       async (a) => { const { team_id, ...rest } = a; return text(impl.updateStanding(team_id, rest)); }),
+    T('read_team_patch', 'worktree 를 정리한 팀이 남긴 변경 패치(diff)를 읽는다. path 를 주면 그 파일만. 정리된 팀이 「무엇을 어떻게 바꿨는지」 물을 때', { team_id: z.string(), path: z.string().optional().describe('저장소 기준 파일 경로') }, async (a) => text(impl.readTeamPatch(a.team_id, a.path))),
     T('scan_git_cleanup', '프로젝트 저장소의 worktree·로컬 브랜치를 살펴 [정리 가능]/[확인 필요]/[남김] 으로 나눈다(지우지 않음). 정리 전에 반드시 먼저 본다', { project: z.string().describe('프로젝트 이름 또는 id') }, async (a) => text(await impl.scanGitCleanup(a.project))),
     T('git_cleanup', 'scan_git_cleanup 의 id 들을 정리한다. 사용자가 이번 대화에서 정리하라고 했을 때만. [남김] 은 절대 안 지우고, [확인 필요] 는 사용자가 버려도 된다고 했을 때 discard_changes: true 로만', {
       project: z.string(), ids: z.array(z.string()).min(1).describe('wt:경로 또는 br:브랜치 — scan 결과 그대로'), discard_changes: z.boolean().optional().describe('커밋 안 한 변경·어디에도 없는 커밋을 버린다 — 사용자 동의 필요'), reason: z.string().describe('사용자 요청 요약'),

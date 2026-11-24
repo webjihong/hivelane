@@ -298,6 +298,8 @@ details.gc-g > summary { cursor: pointer; }
 .gc-why { color: var(--muted, #6b7280); font-size: 11.5px; overflow-wrap: anywhere; }
 .gc-acts { margin-top: 8px; }
 .gc-res pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; max-height: 220px; overflow: auto; }
+.sb-all { display: block; font-size: 12px; color: #A9C9C6; text-decoration: none; }
+.sb-all.on { color: var(--sb-fg); }
 .sb-more:hover { background: var(--sb-hover); color: var(--sb-fg); }
 .sb-pr { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 6px; background: #1F7A3D; color: #FFFFFF; flex: none; }
 .sb-pr.draft { background: #5E6B68; }
@@ -594,3 +596,22 @@ details.gc-g > summary { cursor: pointer; }
 .sb-bottom .sb-scripts + .sb-h { border-top: 1px solid #23504D; margin-top: 6px; padding-top: 10px; }
 .sb-bottom { flex: none; border-top: 1px solid #23504D; padding: 0 10px 6px; max-height: 38vh; overflow-y: auto; }
 .sb-bottom .sb-h { padding-top: 10px; }
+
+/* 끝난 팀 전체 · 정리 기록 */
+.fin-h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.fin-h h1 { margin: 0; font-size: 20px; }
+.fin-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.fin-filter input, .fin-filter select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: inherit; }
+.fin-filter input { flex: 1; min-width: 160px; }
+.fin-list { display: flex; flex-direction: column; gap: 6px; }
+.fin-row { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.fin-row.archived { opacity: .8; }
+.fin-main { flex: 1; min-width: 0; }
+.fin-name { font-weight: 600; text-decoration: none; color: inherit; overflow-wrap: anywhere; }
+a.fin-name:hover { text-decoration: underline; }
+.fin-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; margin-top: 3px; align-items: center; }
+.fin-sum { font-size: 12px; color: var(--muted, #6b7280); margin-top: 3px; overflow-wrap: anywhere; }
+.chip.st-done { background: #E3F4EA; color: #1E6B43; }
+.chip.st-failed { background: #FBE4E4; color: #9B2C2C; }
+.chip.st-archived { background: #ECEDEF; color: #555; }
+@media (max-width: 760px) { .fin-row { flex-direction: column; align-items: stretch; } }

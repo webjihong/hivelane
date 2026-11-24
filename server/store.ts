@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   type AgentDetail, type AgentState, type KnowledgeView, type AgentView, type ChatView, type Model, type Priority, type Project,
   type ProposalView, type RunMode, type Settings, type TeamDetail, type TeamState, type TeamTemplate, type TeamView, type TemplateRole,
+  type CleanupLogView, type FinishedTeamView,
 } from '../shared/types.ts';
 
 /* ---------- 행 타입 ---------- */
@@ -373,6 +374,46 @@ export class Store {
     const r2 = this.db.prepare(`DELETE FROM runs WHERE (team_id IN (${old})) OR (team_id IS NULL AND started_at < @cutoff)`).run({ cutoff });
     const r3 = this.db.prepare('DELETE FROM po_events WHERE handled_at IS NOT NULL AND created_at < @cutoff').run({ cutoff });
     return { events: r1.changes, runs: r2.changes, poEvents: r3.changes };
+  }
+  /* ---------- 정리 기록 ---------- */
+  addCleanupLog(r: { project_id: string | null; team_id: string | null; kind: 'worktree' | 'branch'; target: string; branch?: string | null; by: string; discarded?: boolean; patch_path?: string | null; patch_files?: number; note?: string | null }): number {
+    const x = this.db.prepare('INSERT INTO cleanup_log (at, project_id, team_id, kind, target, branch, by, discarded, patch_path, patch_files, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(nowIso(), r.project_id, r.team_id, r.kind, r.target, r.branch ?? null, r.by, r.discarded ? 1 : 0, r.patch_path ?? null, r.patch_files ?? 0, r.note ?? null);
+    return Number(x.lastInsertRowid);
+  }
+  cleanupLog(o: { offset?: number; limit?: number; projectId?: string | null; teamId?: string | null } = {}): { items: CleanupLogView[]; total: number } {
+    const where = '(@p IS NULL OR c.project_id = @p) AND (@t IS NULL OR c.team_id = @t)';
+    const args = { p: o.projectId ?? null, t: o.teamId ?? null };
+    const total = (this.db.prepare(`SELECT count(*) n FROM cleanup_log c WHERE ${where}`).get(args) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT c.*, p.name project_name, t.name team_name FROM cleanup_log c LEFT JOIN projects p ON p.id = c.project_id LEFT JOIN teams t ON t.id = c.team_id WHERE ${where} ORDER BY c.id DESC LIMIT @lim OFFSET @off`)
+      .all({ ...args, lim: Math.min(200, o.limit ?? 50), off: o.offset ?? 0 }) as (Omit<CleanupLogView, 'discarded' | 'patch'> & { discarded: number; patch_path: string | null })[];
+    return { total, items: rows.map(({ patch_path, ...r }) => ({ ...r, discarded: !!r.discarded, patch: !!patch_path })) };
+  }
+  cleanupLogRow(id: number): { patch_path: string | null; team_id: string | null } | undefined {
+    return this.db.prepare('SELECT patch_path, team_id FROM cleanup_log WHERE id = ?').get(id) as { patch_path: string | null; team_id: string | null } | undefined;
+  }
+  /** 팀 worktree 를 지울 때 남긴 마지막 패치 */
+  teamPatch(teamId: string): string | null {
+    return (this.db.prepare("SELECT patch_path FROM cleanup_log WHERE team_id = ? AND kind = 'worktree' AND patch_path IS NOT NULL ORDER BY id DESC LIMIT 1").get(teamId) as { patch_path: string } | undefined)?.patch_path ?? null;
+  }
+  /** 끝난 팀 전체(보관 포함) — 검색·거르기·쪽 나누기 */
+  finishedTeams(o: { q?: string; state?: string; projectId?: string | null; offset?: number; limit?: number }): { items: FinishedTeamView[]; total: number } {
+    const states = o.state && ['done', 'failed', 'archived'].includes(o.state) ? [o.state] : ['done', 'failed', 'archived'];
+    const where = `t.lifetime = 'task' AND t.state IN (${states.map(() => '?').join(',')}) AND (? IS NULL OR t.project_id = ?) AND (? = '' OR t.name LIKE ? OR coalesce(k.title, '') LIKE ?)`;
+    const q = (o.q ?? '').trim();
+    const args = [...states, o.projectId ?? null, o.projectId ?? null, q, `%${q}%`, `%${q}%`];
+    const from = 'FROM teams t LEFT JOIN tasks k ON k.id = t.task_id LEFT JOIN projects p ON p.id = t.project_id';
+    const total = (this.db.prepare(`SELECT count(*) n ${from} WHERE ${where}`).get(...args) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT t.id, t.name, coalesce(k.title, t.name) title, t.project_id, p.name project_name, t.state, t.finished_at, t.created_at, t.cost_usd, t.branch, t.worktree_path,
+        (SELECT 1 FROM cleanup_log c WHERE c.team_id = t.id AND c.patch_path IS NOT NULL LIMIT 1) has_patch,
+        (SELECT body FROM work_summaries w WHERE w.team_id = t.id ORDER BY w.id DESC LIMIT 1) summary
+      ${from} WHERE ${where} ORDER BY coalesce(t.finished_at, t.updated_at) DESC LIMIT ? OFFSET ?`).all(...args, Math.min(200, o.limit ?? 50), o.offset ?? 0) as (Omit<FinishedTeamView, 'worktree' | 'patch'> & { worktree_path: string | null; has_patch: number | null })[];
+    return { total, items: rows.map(({ worktree_path, has_patch, ...r }) => ({ ...r, summary: r.summary ? r.summary.replace(/\s+/g, ' ').slice(0, 200) : null, worktree: !!worktree_path, patch: !!has_patch })) };
+  }
+  finishedCount(): { done: number; failed: number; archived: number } {
+    const rows = this.db.prepare("SELECT state, count(*) n FROM teams WHERE lifetime = 'task' AND state IN ('done','failed','archived') GROUP BY state").all() as { state: string; n: number }[];
+    const n = (k: string) => rows.find((r) => r.state === k)?.n ?? 0;
+    return { done: n('done'), failed: n('failed'), archived: n('archived') };
   }
   teamFiles(teamId: string): { path: string; change_type: string; lines_added: number; lines_removed: number }[] {
     return this.db.prepare('SELECT path, change_type, lines_added, lines_removed FROM file_changes WHERE team_id = ? ORDER BY path').all(teamId) as { path: string; change_type: string; lines_added: number; lines_removed: number }[];

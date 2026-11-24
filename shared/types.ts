@@ -74,6 +74,8 @@ export interface Settings {
   /** 읽지 않은 답변이 있으면 이 간격(분)마다 다시 알림. 0 = 끔 */
   remindUnreadMin: number;
   embedding: { provider: 'off' | 'ollama' | 'voyage'; model: string; url: string };
+  /** 끝난 업무 팀의 worktree 를 이 일수가 지나면 변경을 패치로 남기고 자동 정리. 0 = 끔 */
+  autoCleanDays: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ownerLogin: null,
   slackWebhook: null,
   embedding: { provider: 'off', model: 'bge-m3', url: 'http://127.0.0.1:11434' },
+  autoCleanDays: 7,
 };
 
 export interface AgentView {
@@ -191,6 +194,11 @@ export interface ResourceView {
   takenAt: string;
 }
 
+/** 정리 기록 한 줄 */
+export interface CleanupLogView { id: number; at: string; project_id: string | null; project_name: string | null; team_id: string | null; team_name: string | null; kind: 'worktree' | 'branch'; target: string; branch: string | null; by: string; discarded: boolean; patch: boolean; patch_files: number; note: string | null }
+/** 끝난 팀 목록(전체 보기) 한 줄 */
+export interface FinishedTeamView { id: string; name: string; title: string; project_id: string | null; project_name: string | null; state: TeamState; finished_at: string | null; created_at: string; cost_usd: number; branch: string | null; worktree: boolean; patch: boolean; summary: string | null }
+
 /** worktree·로컬 브랜치 정리(사이드바 버튼) */
 export type CleanVerdict = 'remove' | 'ask' | 'keep';
 export interface CleanItem { id: string; kind: 'worktree' | 'branch'; label: string; sub: string | null; verdict: CleanVerdict; why: string; dirty?: string[] }
@@ -263,6 +271,8 @@ export interface StateSnapshot {
   resource: ResourceView;
   usage: UsageView;
   gitClean: GitCleanSummary;
+  /** 끝난 팀 전체 수(스냅샷엔 최근 것만 실림) */
+  finishedCount: { done: number; failed: number; archived: number };
   projects: Project[];
   templates: TeamTemplate[];
   teams: TeamView[];

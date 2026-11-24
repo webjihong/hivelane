@@ -35,10 +35,11 @@ function Composer({ placeholder, label, button, onSend, working, onCancel }: { p
 
 function DiffModal({ teamId, path, onClose }: { teamId: string; path: string; onClose: () => void }) {
   const [diff, setDiff] = useState<string | null>(null);
+  const [fromPatch, setFromPatch] = useState(false);
   useEffect(() => {
     let alive = true;
-    api<{ diff: string }>(`/api/teams/${encodeURIComponent(teamId)}/diff?path=${encodeURIComponent(path)}`)
-      .then((r) => { if (alive) setDiff(r.diff); })
+    api<{ diff: string; from_patch?: boolean }>(`/api/teams/${encodeURIComponent(teamId)}/diff?path=${encodeURIComponent(path)}`)
+      .then((r) => { if (alive) { setDiff(r.diff); setFromPatch(!!r.from_patch); } })
       .catch((e: unknown) => { toast(e instanceof Error ? e.message : String(e), 'crit'); if (alive) setDiff(''); });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', key);
@@ -48,9 +49,9 @@ function DiffModal({ teamId, path, onClose }: { teamId: string; path: string; on
     <>
       <div className="scrim" onClick={onClose} />
       <div className="modal" role="dialog" aria-label={`${path} 변경 내용`}>
-        <div className="drawer-h"><div><h2 className="mono modal-t">{path}</h2></div><button className="btn" type="button" onClick={onClose}>닫기</button></div>
+        <div className="drawer-h"><div><h2 className="mono modal-t">{path}</h2>{fromPatch && <div className="drawer-sub muted">worktree 정리 때 남겨 둔 패치에서 보여 줍니다</div>}</div><button className="btn" type="button" onClick={onClose}>닫기</button></div>
         <div className="modal-b">
-          {diff === null ? <div className="muted">불러오는 중…</div> : !diff ? <div className="muted">변경 내용이 없습니다(또는 worktree 가 정리됨).</div> : (
+          {diff === null ? <div className="muted">불러오는 중…</div> : !diff ? <div className="muted">변경 내용이 없습니다(또는 패치 보관 전에 worktree 가 정리됨).</div> : (
             <pre className="diff">{diff.split('\n').map((l, i) => {
               const cls = l.startsWith('+++') || l.startsWith('---') ? 'dh' : l.startsWith('+') ? 'da' : l.startsWith('-') ? 'dd' : l.startsWith('@@') ? 'dc' : l.startsWith('diff ') || l.startsWith('index ') ? 'dh' : '';
               return <span key={i} className={cls}>{l}{'\n'}</span>;

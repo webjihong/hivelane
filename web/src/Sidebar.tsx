@@ -215,6 +215,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
   const [authOpen, setAuthOpen] = useState(false);
   const [cleanOpen, setCleanOpen] = useState(false);
   const gcN = snap.gitClean.remove + snap.gitClean.ask;
+  const finTotal = snap.finishedCount.done + snap.finishedCount.failed + snap.finishedCount.archived;
   const toggleDone = () => { setShowDone(!showDone); try { localStorage.setItem('hl.done', showDone ? '0' : '1'); } catch { /* 저장 안 됨 */ } };
   const standing = snap.teams.filter(isStandingCh);
   const tasks = snap.teams.filter(isActiveTask).sort((a, b) => ({ waiting_human: 0, failed: 1, running: 2, paused: 3, queued: 4 } as Record<string, number>)[a.state]! - ({ waiting_human: 0, failed: 1, running: 2, paused: 3, queued: 4 } as Record<string, number>)[b.state]! || b.created_at.localeCompare(a.created_at));
@@ -259,13 +260,14 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
 
         <div className="sb-h">업무 팀</div>
         {tasks.length ? tasks.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />) : <div className="sb-empty">진행 중인 업무 없음</div>}
-        {(done.length > 0 || gcN > 0) && (
+        {(done.length > 0 || gcN > 0 || finTotal > 0) && (
           <div className="sb-more-row">
-            {done.length > 0 && <button type="button" className="sb-more" onClick={toggleDone}>{showDone ? '끝난 팀 접기' : `끝난 팀 ${done.length}`}</button>}
+            {(done.length > 0 || finTotal > 0) && <button type="button" className="sb-more" onClick={toggleDone}>{showDone ? '끝난 팀 접기' : `끝난 팀 ${snap.finishedCount.done || done.length}`}</button>}
             {gcN > 0 && <button type="button" className="sb-clean" onClick={() => setCleanOpen(true)} title={`정리 가능 ${snap.gitClean.remove} · 확인 필요 ${snap.gitClean.ask} — 안 쓰는 worktree·로컬 브랜치`}>worktree·브랜치 정리 <b>{gcN}</b></button>}
           </div>
         )}
-        {showDone && done.map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />)}
+        {showDone && done.slice(0, 20).map((t) => <TeamItem key={t.id} t={t} r={r} now={now} />)}
+        {showDone && <a href="#finished" className={`sb-more sb-all${r.name === 'finished' ? ' on' : ''}`}>전체 보기 ({finTotal}) · 보관·정리 기록</a>}
 
       </div>
 
