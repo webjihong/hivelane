@@ -8,6 +8,7 @@ import type { UsageView } from '../shared/types.ts';
  * - chat: PO 대화창 한 줄
  * - resource: 리소스 측정값
  * - usage: Claude 플랜 사용량
+ * - notice: 알림 한 건(맥 앱용)
  */
 export type BusEvent =
   | { type: 'state'; reason: string }
@@ -15,7 +16,9 @@ export type BusEvent =
   | { type: 'chat'; row: ChatRow }
   | { type: 'resource'; sample: ResourceSnapshot }
   | { type: 'script_out'; runId: number; chunk: string }
-  | { type: 'usage'; usage: UsageView };
+  | { type: 'usage'; usage: UsageView }
+  /** 알림 한 건(맥 앱이 맥 알림으로 띄운다 — 앱 안에서는 웹 푸시가 안 되므로) */
+  | { type: 'notice'; notice: { title: string; body: string; url?: string; level?: string; tag?: string } };
 
 export interface AgentEventRow { id: number; agent_id: string; team_id: string | null; kind: string; name: string | null; body: string; created_at: string }
 export interface ChatRow { id: number; role: string; body: string; proposal_id: string | null; links: string | null; tone: string | null; team_id: string | null; created_at: string }

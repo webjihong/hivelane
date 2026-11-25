@@ -47,6 +47,22 @@ export async function api<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'PAT
 /* ---------- 토스트 ---------- */
 export interface Toast { id: number; text: string; tone: 'crit' | 'good' | 'info' }
 export const toasts = box<Toast[]>([]);
+
+/** 맥 앱(Electron) 안에서 열렸는지. 앱 안에서는 웹 푸시가 안 되므로 맥 알림으로 받는다. */
+export const isDesktopApp = typeof navigator !== 'undefined' && /\bElectron\//.test(navigator.userAgent);
+declare global { interface Window { hlDesktop?: { focus(): void } } }
+
+/** 서버 알림 한 건을 맥 알림으로 띄운다(맥 앱 안에서만). 누르면 앱 창을 앞으로 가져와 그 대화로 간다. */
+export function showDesktopNotice(n: { title: string; body: string; url?: string; tag?: string }): void {
+  if (!isDesktopApp || typeof Notification === 'undefined' || Notification.permission === 'denied') return;
+  const note = new Notification(n.title, { body: n.body.slice(0, 300), tag: n.tag, silent: false });
+  note.onclick = () => {
+    window.hlDesktop?.focus();
+    window.focus();
+    const hash = n.url?.includes('#') ? n.url.slice(n.url.indexOf('#')) : '';
+    if (hash) location.hash = hash;
+  };
+}
 let toastSeq = 0;
 export function toast(text: string, tone: Toast['tone'] = 'info'): void {
   const id = ++toastSeq;
@@ -142,6 +158,10 @@ export function connect(): void {
   s.addEventListener('resource', (ev) => {
     const d = parse<{ sample: ResourceView }>(ev);
     if (d?.sample) snapshot.set((p) => (p ? { ...p, resource: d.sample } : p));
+  });
+  s.addEventListener('notice', (ev) => {
+    const d = parse<{ notice: { title: string; body: string; url?: string; tag?: string } }>(ev);
+    if (d?.notice) showDesktopNotice(d.notice);
   });
   s.addEventListener('usage', (ev) => {
     const d = parse<{ usage: UsageView }>(ev);

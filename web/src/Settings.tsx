@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
-import { act, api, refreshState, toast } from './store.ts';
+import { act, api, isDesktopApp, refreshState, toast } from './store.ts';
 import { AREAS, FONTS, SCALES, THEMES, TOKENS, allThemes, applyPrefs, currentTokens, loadPrefs, savePrefs, varsFromTokens, type AreaKey, type Theme, type UiPrefs } from './themes.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
@@ -846,14 +846,24 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
           <div className="panel stack-s">
             <Row label="읽지 않은 답변 다시 알림" sub="답을 안 읽으면 이 간격(분)마다 다시 알림 · 0이면 끔" htmlFor="set-remind"><NumField id="set-remind" value={s.remindUnreadMin} unit="분" step={5} disabled={ro} onSave={(v) => saveSettings({ remindUnreadMin: Math.max(0, Math.round(v)) })} /></Row>
             <TextSetting label="슬랙 웹훅" sub="비우면 끔" value={s.slackWebhook ?? ''} placeholder="https://hooks.slack.com/services/…" mono disabled={ro} onSave={(v) => saveSettings({ slackWebhook: v.trim() || null })} />
-            <div className="set-col">
-              <label>웹 푸시 (이 기기)<small>{pushState === 'on' ? '이 기기는 구독 중입니다' : '이 기기에서 알림을 받으려면 켜세요'}</small></label>
-              <div className="row">
-                <button className="btn primary" type="button" onClick={() => void act(async () => { await enablePush(snap.vapidPublicKey); setPushState('on'); }, '이 기기에서 알림을 받습니다')}>{pushState === 'on' ? '다시 구독' : '알림 켜기'}</button>
-                <button className="btn" type="button" onClick={() => void act(() => api('/api/push/test', 'POST', {}), '시험 알림을 보냈습니다')}>시험 알림</button>
+            {isDesktopApp ? (
+              <div className="set-col">
+                <label>맥 알림 (이 앱)<small>맥 앱에서는 웹 푸시 대신 맥 기본 알림으로 받습니다. 앱이 켜져 있으면(창을 닫아도 메뉴 막대에 있으면) 알림이 옵니다.</small></label>
+                <div className="row">
+                  <button className="btn primary" type="button" onClick={() => void act(async () => { if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission(); await api('/api/push/test', 'POST', {}); }, '시험 알림을 보냈습니다')}>시험 알림</button>
+                </div>
+                <div className="small muted">알림이 안 뜨면: 시스템 설정 › 알림 › Hivelane 에서 알림 허용을 켜세요. 휴대폰 알림은 휴대폰 브라우저(홈 화면 앱)에서 「알림 켜기」를 하세요.</div>
               </div>
-              <PushDoctor vapid={snap.vapidPublicKey} />
-            </div>
+            ) : (
+            <div className="set-col">
+                <label>웹 푸시 (이 기기)<small>{pushState === 'on' ? '이 기기는 구독 중입니다' : '이 기기에서 알림을 받으려면 켜세요'}</small></label>
+                <div className="row">
+                  <button className="btn primary" type="button" onClick={() => void act(async () => { await enablePush(snap.vapidPublicKey); setPushState('on'); }, '이 기기에서 알림을 받습니다')}>{pushState === 'on' ? '다시 구독' : '알림 켜기'}</button>
+                  <button className="btn" type="button" onClick={() => void act(() => api('/api/push/test', 'POST', {}), '시험 알림을 보냈습니다')}>시험 알림</button>
+                </div>
+                <PushDoctor vapid={snap.vapidPublicKey} />
+              </div>
+            )}
           </div>
         </Section>}
         {tab === 'remote' && <Section title="원격 접속" sub="Tailscale 로 휴대폰에서 보기">

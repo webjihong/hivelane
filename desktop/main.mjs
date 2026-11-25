@@ -211,6 +211,7 @@ ipcMain.handle('hl:status', () => status());
 ipcMain.handle('hl:install', async () => { const r = await installService(); await refreshTray(); return r; });
 ipcMain.handle('hl:tailscale', () => serveTailscale());
 ipcMain.handle('hl:open', () => showApp());
+ipcMain.handle('hl:focus', () => { if (!win) createWindow(); win?.show(); win?.focus(); app.focus({ steal: true }); });
 ipcMain.handle('hl:link', (_e, url) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); });
 ipcMain.handle('hl:installCLT', () => { sh('xcode-select', ['--install']); return true; });
 

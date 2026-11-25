@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as webpush from 'web-push';
+import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Store } from '../store.ts';
 
@@ -51,6 +52,7 @@ export class AppNotifier implements Notifier {
 
   async send(n: Notice): Promise<void> {
     if (n.scope && this.viewing(n.scope)) { log.info(`알림 생략(보고 있는 대화) · ${n.title}`); return; }
+    bus.emitEvent({ type: 'notice', notice: { title: n.title, body: n.body, url: n.url, level: n.level, tag: n.tag } });
     await Promise.allSettled([this.slack(n), this.push(n)]);
   }
 
