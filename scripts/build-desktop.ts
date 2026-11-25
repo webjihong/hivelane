@@ -74,10 +74,19 @@ await build({
     mac: {
       icon: join(ROOT, 'web', 'public', 'icon-512.png'),
       category: 'public.app-category.developer-tools',
-      identity: null, // 서명 없음(받는 사람은 설정 › 개인정보 보호 및 보안 › 「그래도 열기」)
+      identity: null, // 유료 서명 없음(받는 사람은 설정 › 개인정보 보호 및 보안 › 「그래도 열기」) — 대신 아래 afterPack 에서 무료 임시 서명
       extendInfo: { LSUIElement: false },
     },
     dmg: { title: 'Hivelane ${version}' },
+    /**
+     * 임시(ad-hoc) 서명: 안 하면 Electron 원래 서명이 깨진 채로 남아(「code has no resources but signature indicates…」)
+     * macOS 가 앱을 손상된 것으로 보고 Spotlight·Launchpad 에 금지 표시를 붙이고, 「손상됨」으로 안 열리기도 한다.
+     */
+    afterPack: async (ctx: { appOutDir: string }) => {
+      const appPath = join(ctx.appOutDir, 'Hivelane.app');
+      run('codesign', ['--force', '--deep', '--sign', '-', appPath]);
+      run('codesign', ['--verify', '--deep', '--strict', appPath]);
+    },
   },
 });
 console.log(`완료: ${OUT}`);
