@@ -168,25 +168,75 @@ async function openMain() {
 
 /* ---------- 메뉴 막대 ---------- */
 
+/** 서버 스냅샷에서 「일하는 팀」·「내가 확인할 것」을 센다(화면의 「지금 볼 것」과 같은 기준) */
+async function teamSummary() {
+  try {
+    const r = await fetch(`${BASE}/api/state`, { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return null;
+    const snap = await r.json();
+    const live = (snap.teams ?? []).filter((t) => t.state !== 'archived');
+    const asks = (t) => !!t.question && ['waiting_human', 'idle', 'down', 'paused'].includes(t.state);
+    const needTeams = live.filter((t) => asks(t) || ['waiting_human', 'failed', 'down'].includes(t.state));
+    const proposals = (snap.proposals ?? []).filter((p) => p.status === 'pending').length;
+    const working = live.filter((t) => ['running', 'queued', 'reviving'].includes(t.state));
+    return { need: needTeams.length + proposals, needTeams, proposals, working, poBusy: !!snap.poBusy };
+  } catch { return null; }
+}
+
+/** 창을 열고 화면 안의 특정 위치(#team-…, #po)로 간다 */
+async function openAt(hash) {
+  if (!(await healthy())) return openMain();
+  if (!win) createWindow();
+  const cur = win.webContents.getURL();
+  if (cur.startsWith(BASE)) await win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}`);
+  else await win.loadURL(`${BASE}/?app=desktop${hash}`);
+  win.show(); win.focus();
+}
+
+/** 메뉴 막대 글자: 확인할 것 「● 2」, 일하는 중이면 도는 표시 「◐」 */
+const SPIN = ['◐', '◓', '◑', '◒'];
+let spin = 0;
+let last = { up: false, sum: null };
+function paintTitle() {
+  if (!tray) return;
+  const { up, sum } = last;
+  if (!up) { tray.setTitle(' 꺼짐'); return; }
+  const parts = [];
+  if (sum?.need) parts.push(`● ${sum.need}`);
+  if (sum && (sum.working.length || sum.poBusy)) { spin = (spin + 1) % SPIN.length; parts.push(SPIN[spin]); }
+  tray.setTitle(parts.length ? ` ${parts.join('  ')}` : '');
+}
+setInterval(paintTitle, 400);
+
 async function refreshTray() {
   if (!tray) return;
   const up = await healthy();
+  const sum = up ? await teamSummary() : null;
+  last = { up, sum };
+  paintTitle();
   const owner = serviceOwner();
-  tray.setToolTip(up ? 'Hivelane · 서버 실행 중' : 'Hivelane · 서버 멈춤');
+  const workingN = sum ? sum.working.length + (sum.poBusy ? 1 : 0) : 0;
+  tray.setToolTip(!up ? 'Hivelane · 서버 멈춤' : `Hivelane · ${sum?.need ? `확인할 것 ${sum.need}개 · ` : ''}${workingN ? `일하는 중 ${workingN}` : '쉬는 중'}`);
+  const needItems = (sum?.needTeams ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}${t.question ? ' — 답 기다림' : t.state === 'failed' ? ' — 실패' : t.state === 'down' ? ' — 멈춤' : ''}`, click: () => void openAt(`#team-${t.id}`) }));
+  const workItems = (sum?.working ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}`, click: () => void openAt(`#team-${t.id}`) }));
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: up ? '● 서버 실행 중' : '○ 서버 멈춤', enabled: false },
-    { label: `데이터: ${DATA}`, enabled: false },
+    { label: up ? '● 서버 실행 중' : '○ 서버 멈춤 — 눌러서 시작 화면 열기', click: () => void openMain() },
+    ...(sum?.need ? [{ type: 'separator' }, { label: `확인할 것 ${sum.need}개`, click: () => void openAt('#home') }, ...(sum.proposals ? [{ label: `   총괄 제안 승인 ${sum.proposals}건`, click: () => void openAt('#po') }] : []), ...needItems] : []),
+    ...(workingN ? [{ type: 'separator' }, { label: `일하는 중 ${workingN}`, click: () => void openAt('#home') }, ...(sum?.poBusy ? [{ label: '   총괄 — 생각 중', click: () => void openAt('#po') }] : []), ...workItems] : []),
     { type: 'separator' },
     { label: 'Hivelane 열기', click: () => void openMain() },
     { label: '브라우저로 열기', click: () => void shell.openExternal(BASE) },
     { label: '서버 다시 시작', enabled: owner !== null, click: async () => { await restartService(); await refreshTray(); win?.reload(); } },
     { label: '기록 폴더 열기', click: () => void shell.openPath(LOGS) },
     { label: '휴대폰 연결(Tailscale)…', click: () => void connectPhone() },
+    { label: `데이터 폴더 열기 (${DATA.replace(homedir(), '~')})`, click: () => void shell.openPath(DATA) },
     { type: 'separator' },
-    { label: '서버 끄기(상시 실행 해제)', enabled: owner === 'app', click: async () => {
-      const r = await dialog.showMessageBox({ type: 'warning', buttons: ['끄기', '취소'], defaultId: 1, message: '서버를 끄면 일하던 팀이 모두 멈추고, 다시 켤 때까지 휴대폰에서도 접속할 수 없습니다.' });
-      if (r.response === 0) { uninstallService(); await refreshTray(); showSetup(); }
-    } },
+    owner === 'other'
+      ? { label: '서버 끄기 — 터미널로 설치한 서버라 터미널에서 npm run service:uninstall', enabled: false }
+      : { label: '서버 끄기(상시 실행 해제)', enabled: owner === 'app', click: async () => {
+        const r = await dialog.showMessageBox({ type: 'warning', buttons: ['끄기', '취소'], defaultId: 1, message: '서버를 끄면 일하던 팀이 모두 멈추고, 다시 켤 때까지 휴대폰에서도 접속할 수 없습니다.' });
+        if (r.response === 0) { uninstallService(); await refreshTray(); showSetup(); }
+      } },
     { label: 'Hivelane 앱 종료(서버는 계속 실행)', click: () => { quitting = true; app.quit(); } },
   ]));
 }
@@ -239,13 +289,14 @@ app.whenReady().then(async () => {
   // 앱을 다른 곳으로 옮겼으면(경로가 바뀜) 이 앱이 등록한 서비스를 새 경로로 다시 등록한다
   if (existsSync(PLIST) && serviceOwner() === 'other' && readFileSync(PLIST, 'utf8').includes('ELECTRON_RUN_AS_NODE')) await installService();
   await refreshTray();
-  setInterval(() => void refreshTray(), 15000);
+  setInterval(() => void refreshTray(), 5000);
   await openMain();
   // 점검용: HIVELANE_CAPTURE=파일.png 이면 창을 찍어 저장하고 끝낸다(화면 확인 자동화)
   if (process.env.HIVELANE_CAPTURE) {
     await sleep(Number(process.env.HIVELANE_CAPTURE_WAIT ?? 4000));
     const img = await win?.webContents.capturePage();
     if (img) writeFileSync(process.env.HIVELANE_CAPTURE, img.toPNG());
+    console.log('[capture] tray', JSON.stringify({ up: last.up, need: last.sum?.need, working: last.sum?.working.map((t) => t.title ?? t.name), poBusy: last.sum?.poBusy }));
     quitting = true; app.quit();
   }
 });
