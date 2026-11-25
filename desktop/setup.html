@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+<title>Hivelane 시작하기</title>
+<style>
+  :root { --bg: #F1F4F6; --surface: #FFFFFF; --fg: #1C2329; --muted: #5F6B75; --line: #DCE2E7; --accent: #0B7480; --good: #1F8A4C; --warn: #B7791F; --crit: #C0392B; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+  main { max-width: 620px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: grid; grid-template-columns: 22px 1fr auto; gap: 4px 12px; align-items: start; }
+  .dot { width: 14px; height: 14px; border-radius: 7px; margin-top: 4px; background: var(--line); }
+  .ok .dot { background: var(--good); } .need .dot { background: var(--warn); } .opt .dot { background: var(--line); border: 2px solid var(--muted); }
+  .t { font-weight: 600; } .d { grid-column: 2; color: var(--muted); font-size: 13px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 8px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+  button:disabled { opacity: .5; cursor: default; }
+  .go { margin-top: 22px; display: flex; gap: 10px; align-items: center; }
+  .msg { color: var(--muted); font-size: 13px; }
+  .msg.err { color: var(--crit); white-space: pre-wrap; }
+  code { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+  a { color: var(--accent); cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hivelane 시작하기</h1>
+  <p class="sub">맥에서 AI 개발팀을 돌리는 관제실입니다. 아래를 확인한 뒤 「서버 설치하고 시작」을 누르세요.</p>
+
+  <div class="step" id="s-git"><span class="dot"></span><div class="t">git (개발자 도구)</div><span id="b-git"></span><div class="d" id="d-git">확인 중…</div></div>
+  <div class="step opt" id="s-claude"><span class="dot"></span><div class="t">Claude 계정</div><span></span><div class="d">서버를 시작한 뒤 화면의 설정에서 로그인합니다. Claude Pro·Max 구독이나 API 키가 필요합니다.</div></div>
+  <div class="step" id="s-ts"><span class="dot"></span><div class="t">Tailscale (선택 · 휴대폰 접속)</div><span id="b-ts"></span><div class="d" id="d-ts">확인 중…</div></div>
+  <div class="step" id="s-server"><span class="dot"></span><div class="t">Hivelane 서버</div><span></span><div class="d" id="d-server">확인 중…</div></div>
+
+  <div class="go">
+    <button class="primary" id="install" disabled>서버 설치하고 시작</button>
+    <span class="msg" id="msg"></span>
+  </div>
+</main>
+<script src="setup.js"></script>
+</body>
+</html>
