@@ -19,6 +19,8 @@ export interface TemplateRole {
   mode: RunMode;        // pm 은 항상 session
   tools: ToolPreset;
   prompt?: string;      // 비우면 역할 기본 프롬프트
+  /** 이 역할이 쓸 AI 계정 id. 비우면 설정의 기본 계정. Agent 도구로 부르는 팀원(subagent)은 PM 과 같은 계정을 쓴다 */
+  account?: string | null;
 }
 
 export interface TeamTemplate {
@@ -76,6 +78,10 @@ export interface Settings {
   embedding: { provider: 'off' | 'ollama' | 'voyage'; model: string; url: string };
   /** 끝난 업무 팀의 worktree 를 이 일수가 지나면 변경을 패치로 남기고 자동 정리. 0 = 끔 */
   autoCleanDays: number;
+  /** 기본 AI 계정 id(역할에 계정을 안 고르면 이것) */
+  defaultAccount: string;
+  /** 총괄이 쓸 계정 id. null = 기본 계정 */
+  poAccount: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -89,6 +95,8 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultBudgetUsd: null,
   remindUnreadMin: 30,
   poModel: 'opus',
+  defaultAccount: 'default',
+  poAccount: null,
   contextLimitTokens: 150_000,
   ownerLogin: null,
   slackWebhook: null,
@@ -240,6 +248,10 @@ export interface GitCleanSummary { remove: number; ask: number; takenAt: string 
 /** Claude 플랜 사용량: 한도 창별 사용 %(0~100) */
 export interface UsageWindow { key: string; label: string; pct: number; resets_at: string | null }
 export interface UsageView { available: boolean; plan: string | null; windows: UsageWindow[]; takenAt: string | null; error: string | null; login?: LoginInfo | null }
+/** AI 계정. claude 는 계정마다 로그인 폴더(CLAUDE_CONFIG_DIR)를 따로 둔다. id 'default' = 이 맥의 기본 로그인(~/.claude) */
+export type Provider = 'claude' | 'codex';
+export interface AiAccount { id: string; provider: Provider; name: string; configDir: string | null; created_at: string }
+export interface AiAccountView extends AiAccount { usage: UsageView | null; loginFlow: AuthLoginView; isDefault: boolean; usedBy: string[] }
 /** claude auth status 요약 */
 export interface LoginInfo { loggedIn: boolean; method: string | null; expiresAt: string | null; email: string | null; error?: string }
 /** 화면에서 띄운 claude auth login 진행 */

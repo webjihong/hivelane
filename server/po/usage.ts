@@ -35,11 +35,11 @@ export function toView(r: RawUsage, now = new Date()): UsageView {
 }
 
 /** 프롬프트 없이 claude 를 띄워 /usage 값만 묻고 닫는다(토큰 안 씀, 0.5초 남짓) */
-async function sdkFetch(pathToClaude?: string): Promise<RawUsage> {
+async function sdkFetch(pathToClaude?: string, env?: Record<string, string>): Promise<RawUsage> {
   let release!: () => void;
   const hold = new Promise<void>((r) => { release = r; });
   async function* idle(): AsyncGenerator<never> { await hold; }
-  const q = query({ prompt: idle(), options: { cwd: tmpdir(), settingSources: [], ...(pathToClaude ? { pathToClaudeCodeExecutable: pathToClaude } : {}) } });
+  const q = query({ prompt: idle(), options: { cwd: tmpdir(), settingSources: [], ...(env ? { env: { ...process.env, ...env } } : {}), ...(pathToClaude ? { pathToClaudeCodeExecutable: pathToClaude } : {}) } });
   const timer = setTimeout(() => { release(); q.close(); }, 20_000);
   try {
     return await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
@@ -56,15 +56,15 @@ export class PlanUsage {
   private running: Promise<void> | null = null;
   private lastTry = 0;
 
-  constructor(private opts: { onChange: (u: UsageView) => void; fetch?: () => Promise<RawUsage>; login?: () => Promise<LoginInfo>; pathToClaude?: string }) {}
+  constructor(private opts: { onChange: (u: UsageView) => void; fetch?: () => Promise<RawUsage>; login?: () => Promise<LoginInfo>; pathToClaude?: string; /** 계정별 로그인 폴더(CLAUDE_CONFIG_DIR) */ env?: Record<string, string> }) {}
 
   refresh(): Promise<void> {
     if (this.running) return this.running;
     this.lastTry = Date.now();
     this.running = (async () => {
-      const login = await (this.opts.login ?? loginInfo)().catch(() => null);
+      const login = await (this.opts.login ?? (() => loginInfo(undefined, this.opts.env)))().catch(() => null);
       try {
-        const raw = await (this.opts.fetch ?? (() => sdkFetch(this.opts.pathToClaude)))();
+        const raw = await (this.opts.fetch ?? (() => sdkFetch(this.opts.pathToClaude, this.opts.env)))();
         this.last = { ...toView(raw), login };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

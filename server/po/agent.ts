@@ -19,6 +19,7 @@ import { applyCleanup, formatScan, scanGit } from '../projects/gitclean.ts';
 import { archiveForCleanup } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
+import type { AccountManager } from '../accounts.ts';
 
 /** 모델이 ToolSearch 없이 바로 쓰도록 항상 로드 */
 const T: typeof tool = (n, d, s, h, x) => tool(n, d, s, h, { ...x, alwaysLoad: true });
@@ -59,7 +60,7 @@ export class PoAgent {
   private userTurn = false;
   private cancelled = false;
 
-  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier; onGitCleaned?: () => void }) {
+  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; orch: Orchestrator; search: Search; notifier: Notifier; onGitCleaned?: () => void; accounts?: AccountManager }) {
     mkdirSync(deps.cfg.poDir, { recursive: true });
     bus.on('po_event', () => this.scheduleEvents());
     // 서버가 꺼져 있던 동안 쌓인 사건도 처리
@@ -129,12 +130,13 @@ export class PoAgent {
     const handle = new TurnHandle();
     this.handle = handle;
     try {
-      const resume = agent.session_id;
+      const bound = this.deps.accounts?.bind(agent.id, store.getSettings().poAccount);
+      const resume = bound?.reset ? null : agent.session_id;
       const res = await this.deps.runner.runTurn({
         agent: store.poAgent()!, team: null, prompt: resume ? prompt : this.bootstrap() + prompt, cwd: cfg.poDir, systemAppend: prompted,
         allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch', ...PO_TOOL_NAMES], additionalDirectories: [...projects.map((p) => p.path), cfg.uploadsDir], writableRoots: [cfg.poDir],
         blockedPatterns: [...DEFAULT_BLOCKED, ...PO_BLOCKED], heavyPatterns: DEFAULT_HEAVY,
-        mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, label: 'PO', priority: 'urgent', standing: true,
+        mcpServers: { hivelane: poMcpServer(impl) }, toolsImpl: impl, settingSources: [], resume, env: bound?.env, label: 'PO', priority: 'urgent', standing: true,
       }, handle);
       if (this.cancelled) {
         this.cancelled = false;

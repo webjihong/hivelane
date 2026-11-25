@@ -5,6 +5,7 @@ import type { RepoWatcher } from '../projects/repos.ts';
 import type { ScriptRunner } from '../scripts.ts';
 import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
+import type { AccountManager } from '../accounts.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { run } from '../util.ts';
@@ -33,10 +34,10 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
-const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional() });
+const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional(), account: z.string().max(40).nullable().optional() });
 const priorityZ = z.enum(['urgent', 'normal', 'low']);
 
 class HttpError extends Error { constructor(public status: 400 | 403 | 404 | 409, msg: string) { super(msg); } }
@@ -224,6 +225,27 @@ export function createApp(d: AppDeps): Hono<Env> {
     const lines = await gc().apply(b.project_id, b.ids, b.discard);
     return c.json({ lines, summary: gc().summary, scans: gc().views });
   });
+  /* ---------- AI 계정 여러 개(계정별 로그인·사용량, 역할·총괄이 고름) ---------- */
+  const accts = () => { if (!d.accounts) throw new HttpError(404, '계정 기능을 쓸 수 없습니다'); return d.accounts; };
+  /** 계정을 쓰는 곳: 템플릿 역할·직속/업무 팀 역할·총괄 */
+  const usedBy = (id: string): string[] => {
+    const s = store.getSettings();
+    const def = accts().resolve(null).id;
+    const pick = (a: string | null | undefined) => (accts().get(a) ? a : def);
+    const out: string[] = [];
+    if (pick(s.poAccount) === id) out.push('총괄');
+    for (const t of store.listTemplates()) for (const r of t.roles) if (pick(r.account) === id) out.push(`템플릿 ${t.name} · ${r.name}`);
+    return out;
+  };
+  app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy) }));
+  app.post('/api/accounts', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); const a = accts().add(b.name, 'claude'); return c.json({ account: a }); });
+  app.patch('/api/accounts/:id', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); try { return c.json({ account: accts().rename(c.req.param('id'), b.name) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.delete('/api/accounts/:id', (c) => { localOnly(c); try { accts().remove(c.req.param('id')); return c.json({ ok: true }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/accounts/:id/refresh', async (c) => { await accts().usage(c.req.param('id')).refresh(); return c.json({ accounts: accts().views(usedBy) }); });
+  app.post('/api/accounts/:id/login', (c) => { localOnly(c); try { return c.json(accts().login(c.req.param('id')).start()); } catch (e) { throw new HttpError(404, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/accounts/:id/login/code', async (c) => { localOnly(c); const b = await body(c, z.object({ code: z.string().min(4).max(2000) })); try { return c.json(accts().login(c.req.param('id')).code(b.code)); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/accounts/:id/login/cancel', (c) => { localOnly(c); return c.json(accts().login(c.req.param('id')).cancel()); });
+
   /* ---------- Claude 재로그인(claude auth login 대행: 링크 보여 주고 코드 받기) ---------- */
   const auth = () => { if (!d.auth) throw new HttpError(404, '재로그인을 쓸 수 없습니다'); return d.auth; };
   app.get('/api/auth/login', (c) => c.json(auth().view));
@@ -424,6 +446,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     autoApprove: z.boolean(), defaultBudgetUsd: z.number().positive().max(10000).nullable(), poModel: z.enum(['opus', 'sonnet', 'haiku']), contextLimitTokens: z.number().int().min(20000).max(1_000_000),
     remindUnreadMin: z.number().int().min(0).max(1440), autoCleanDays: z.number().int().min(0).max(365), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
+    defaultAccount: z.string().max(40), poAccount: z.string().max(40).nullable(),
   }).partial();
   app.put('/api/settings', async (c) => {
     localOnly(c);

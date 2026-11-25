@@ -31,6 +31,8 @@ export interface TurnSpec {
   /** 사람 승인 뒤에만 실행하는 명령 패턴과 승인된 명령 확인(한 번 쓰면 소진) */
   approval?: { patterns: string[]; take(command: string): boolean };
   resume?: string | null;
+  /** 이 턴에 claude 에 더 붙일 환경 변수(계정별 로그인 폴더 CLAUDE_CONFIG_DIR 등) */
+  env?: Record<string, string>;
   maxBudgetUsd?: number | null;
   priority?: Priority;
   standing?: boolean;
@@ -221,7 +223,7 @@ export class AgentRunner {
       maxBudgetUsd: spec.maxBudgetUsd ?? undefined,
       hooks,
       abortController: handle.abort,
-      env: { ...process.env, MCP_TOOL_TIMEOUT: String(24 * 3600 * 1000), CLAUDE_AGENT_SDK_CLIENT_APP: 'hivelane/0.1' },
+      env: { ...process.env, ...spec.env, MCP_TOOL_TIMEOUT: String(24 * 3600 * 1000), CLAUDE_AGENT_SDK_CLIENT_APP: 'hivelane/0.1' },
       stderr: (d: string) => { if (d.trim()) log.debug(`claude stderr (${spec.agent.role_key})`, truncate(d.trim(), 400)); },
       spawnClaudeCodeProcess: (o: SpawnOptions): SpawnedProcess => {
         const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'pipe'] });

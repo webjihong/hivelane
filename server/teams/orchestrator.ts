@@ -15,6 +15,7 @@ import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
 import { presetTools, TurnHandle, type TurnResult, type TurnSpec } from '../agents/runner.ts';
 import type { HeavySlots } from '../po/slots.ts';
 import { expandGrant, teamMcpServer, teamToolNames, type TeamTools } from './tools.ts';
+import type { AccountManager } from '../accounts.ts';
 import { isSolo, type Priority, type Project, type TemplateRole } from '../../shared/types.ts';
 
 const log = logger('team');
@@ -51,7 +52,7 @@ const MAX_ERROR_RETRY = 2;
 
 export class Orchestrator {
   private live = new Map<string, Live>();
-  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; slots: HeavySlots; notifier: Notifier }) {}
+  constructor(private deps: { cfg: AppConfig; store: Store; runner: TurnRunner; slots: HeavySlots; notifier: Notifier; accounts?: AccountManager }) {}
 
   private L(teamId: string): Live {
     let l = this.live.get(teamId);
@@ -310,11 +311,14 @@ export class Orchestrator {
     for (;;) {
       const team = store.getTeam(teamId);
       if (!team) return;
-      const pm = store.agentByRole(teamId, 'pm')!;
+      let pm = store.agentByRole(teamId, 'pm')!;
+      // 역할에 고른 AI 계정 — 바뀌었으면 세션을 끊고 요약으로 새로 시작
+      const bound = this.deps.accounts?.bind(pm.id, this.rolesOf(teamId).find((r) => r.key === 'pm')?.account);
+      if (bound?.reset) { pm = store.agentByRole(teamId, 'pm')!; store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 새 세션으로 이어감`); }
       const handle = new TurnHandle();
       l.handle = handle;
       const resume = pm.session_id;
-      const spec = this.pmSpec(team, pm, resume ? prompt : this.bootstrap(team) + prompt, resume);
+      const spec = { ...this.pmSpec(team, pm, resume ? prompt : this.bootstrap(team) + prompt, resume), env: bound?.env };
       const res = await this.deps.runner.runTurn(spec, handle);
       l.handle = null;
       if (res.sessionId) store.updateAgent(pm.id, { session_id: res.sessionId });
@@ -502,6 +506,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (l.pausePending) return '팀이 일시정지 중이라 맡기지 않았다.';
     const project = store.getProject(team.project_id);
     const wt = team.worktree_path ?? cfg.home;
+    const bound = this.deps.accounts?.bind(agent.id, role.account);
+    const sessionId = bound?.reset ? null : agent.session_id;
     store.addMessage({ team_id: teamId, from_label: 'PM', to_label: role.name, kind: 'handoff', body: instruction });
     const handle = new TurnHandle();
     l.subHandles.add(handle);
@@ -511,7 +517,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
         agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt + env.note, allowedTools: [...new Set([...presetTools(role.tools), ...this.grants(teamId)])],
         additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt, ...env.extraWritable], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: env.blocked,
         envMine: env.envMine, approval: env.approval,
-        resume: agent.session_id, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
+        resume: sessionId, env: bound?.env, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
       }, handle);
       if (res.sessionId) store.updateAgent(agent.id, { session_id: res.sessionId });

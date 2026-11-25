@@ -10,6 +10,7 @@ import { ScriptRunner } from './scripts.ts';
 import { AgentRunner } from './agents/runner.ts';
 import { PlanUsage } from './po/usage.ts';
 import { AuthLogin } from './po/auth.ts';
+import { AccountManager } from './accounts.ts';
 import { GitCleanWatcher } from './projects/cleanwatch.ts';
 import { OllamaManager } from './search/ollama.ts';
 import { bus } from './bus.ts';
@@ -36,12 +37,17 @@ void usage.refresh();
 const usageTimer = setInterval(() => void usage.refresh(), 300_000);
 usageTimer.unref();
 const auth = new AuthLogin({ onDone: () => { void usage.refresh(); bus.emitEvent({ type: 'state', reason: 'auth' }); } });
+const accounts = new AccountManager({ cfg, store, defaultUsage: usage, defaultLogin: auth, onChange: () => bus.emitEvent({ type: 'state', reason: 'accounts' }) });
+// 기본 계정 말고 추가한 계정들도 5분마다 사용량을 읽는다
+const accountsTimer = setInterval(() => { for (const a of accounts.list()) if (a.id !== 'default') void accounts.usage(a.id).refresh(); }, 300_000);
+accountsTimer.unref();
+setTimeout(() => { for (const a of accounts.list()) if (a.id !== 'default') void accounts.usage(a.id).refresh(); }, 15_000).unref();
 const runner = new AgentRunner({ store, slots, onRateLimit: () => usage.poke() });
-const orch = new Orchestrator({ cfg, store, runner, slots, notifier });
+const orch = new Orchestrator({ cfg, store, runner, slots, notifier, accounts });
 const search = new Search(store);
 const engine = new Engine({ store, orch, slots, sampler: realSampler(), notifier });
 const gitClean = new GitCleanWatcher({ cfg, store, orch, onChange: () => bus.emitEvent({ type: 'state', reason: 'git-clean' }) });
-const po = new PoAgent({ cfg, store, runner, orch, search, notifier, onGitCleaned: () => void gitClean.refresh() });
+const po = new PoAgent({ cfg, store, runner, orch, search, notifier, onGitCleaned: () => void gitClean.refresh(), accounts });
 
 orch.recover();
 engine.start();
@@ -65,7 +71,7 @@ fillTimer.unref();
 setTimeout(() => void gitClean.refresh(), 20_000).unref();
 const gitCleanTimer = setInterval(() => void gitClean.refresh(), 600_000);
 gitCleanTimer.unref();
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama });
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama, accounts });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });

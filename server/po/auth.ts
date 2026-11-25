@@ -31,9 +31,9 @@ export function findUrl(out: string): string | null {
   return m ? m[0] : null;
 }
 
-export async function loginInfo(bin = claudeBin()): Promise<LoginInfo> {
+export async function loginInfo(bin = claudeBin(), env?: Record<string, string>): Promise<LoginInfo> {
   return new Promise((resolve) => {
-    execFile(bin, ['auth', 'status', '--json'], { timeout: 15_000, cwd: tmpdir() }, (err, stdout) => {
+    execFile(bin, ['auth', 'status', '--json'], { timeout: 15_000, cwd: tmpdir(), env: { ...process.env, ...env } }, (err, stdout) => {
       try {
         const d = JSON.parse(stdout) as { loggedIn?: boolean; authMethod?: string; loginExpiresAt?: string; email?: string; subscriptionType?: string };
         resolve({ loggedIn: !!d.loggedIn, method: d.authMethod ?? null, expiresAt: d.loginExpiresAt ?? null, email: d.email ?? null });
@@ -50,11 +50,11 @@ export class AuthLogin {
   private child: ChildProcess | null = null;
   private timer: NodeJS.Timeout | null = null;
 
-  constructor(private opts: { onDone: () => void; bin?: string }) {}
+  constructor(private opts: { onDone: () => void; bin?: string; /** 계정별 로그인 폴더(CLAUDE_CONFIG_DIR) */ env?: Record<string, string> }) {}
 
   start(): AuthLoginView {
     if (this.child) return this.view;
-    const child = spawn(this.opts.bin ?? claudeBin(), ['auth', 'login', '--claudeai'], { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '1' } });
+    const child = spawn(this.opts.bin ?? claudeBin(), ['auth', 'login', '--claudeai'], { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...this.opts.env, NO_COLOR: '1' } });
     this.child = child;
     this.view = { phase: 'waiting', url: null, output: '', startedAt: new Date().toISOString(), error: null };
     const add = (b: Buffer) => {
