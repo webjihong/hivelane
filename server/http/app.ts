@@ -145,7 +145,12 @@ export function createApp(d: AppDeps): Hono<Env> {
       if (queue.length > MAX_QUEUE) { queue.splice(0, queue.length - MAX_QUEUE); statePending = true; } // 느린 연결: 오래된 스트림 줄은 버리고 새로 받게 한다
       wake?.();
     });
-    stream.onAbort(() => { off(); if (stateTimer) clearTimeout(stateTimer); wake?.(); });
+    // 맥 앱(Electron) 화면이면 연결된 동안 맥 브라우저 웹 푸시를 건너뛰게 센다
+    const desktop = /\bElectron\//.test(c.req.header('user-agent') ?? '');
+    let counted = false;
+    if (desktop && notifier.desktopOnline) { notifier.desktopOnline(1); counted = true; }
+    const uncount = () => { if (counted) { counted = false; notifier.desktopOnline?.(-1); } };
+    stream.onAbort(() => { off(); uncount(); if (stateTimer) clearTimeout(stateTimer); wake?.(); });
     await stream.writeSSE({ event: 'hello', data: JSON.stringify({ version: VERSION }) });
     while (!stream.aborted) {
       if (!queue.length && !(statePending && !stateTimer)) await Promise.race([new Promise<void>((r) => { wake = r; }), stream.sleep(15000)]);
@@ -161,6 +166,7 @@ export function createApp(d: AppDeps): Hono<Env> {
       if (!batch.length && !statePending) await stream.writeSSE({ event: 'ping', data: '' });
     }
     off();
+    uncount();
     if (stateTimer) clearTimeout(stateTimer);
   }));
 

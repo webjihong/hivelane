@@ -10,11 +10,16 @@ const log = logger('notify');
 /** scope: 이 알림이 속한 대화('team:<id>' | 'po'). 누군가 그 대화를 화면에 띄워 보고 있으면 알리지 않는다. */
 export interface Notice { title: string; body: string; url?: string; level?: 'info' | 'warn' | 'crit' | 'good'; tag?: string; scope?: string }
 
-export interface Notifier { send(n: Notice): Promise<void>; vapidPublicKey(): string | null; presence?(device: string, view: string | null): void; sendTo?(endpoint: string, n: Notice): Promise<{ ok: boolean; status?: number; error?: string }> }
+export interface Notifier { send(n: Notice): Promise<void>; vapidPublicKey(): string | null; presence?(device: string, view: string | null): void; desktopOnline?(delta: 1 | -1): void; sendTo?(endpoint: string, n: Notice): Promise<{ ok: boolean; status?: number; error?: string }> }
 
 /** 마크다운 → 슬랙 mrkdwn: **굵게** → *굵게*, 제목 # → 굵게, 표는 그대로. */
 export function toSlack(md: string): string {
   return md.replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/^#{1,4}\s+(.+)$/gm, '*$1*').replace(/!\[([^\]]*)\]\(\/api\/uploads\/[^)]+\)/g, '[이미지 $1]');
+}
+
+/** 맥 앱이 켜져 있으면 같은 맥의 브라우저 웹 푸시는 건너뛴다(앱이 맥 알림을 띄우므로 겹치고, 크롬 알림엔 127.0.0.1 주소가 붙는다). */
+export function skipForDesktop(device: string, desktopClients: number): boolean {
+  return desktopClients > 0 && /^Macintosh\b/i.test(device);
 }
 
 /** 슬랙 웹훅 + 웹 푸시. 둘 다 실패해도 호출자를 막지 않는다. */
@@ -30,6 +35,10 @@ export class AppNotifier implements Notifier {
   }
 
   vapidPublicKey(): string | null { return this.vapid?.publicKey ?? null; }
+
+  /** 지금 연결된 맥 앱 화면 수(SSE 연결로 센다) */
+  private desktopClients = 0;
+  desktopOnline(delta: 1 | -1): void { this.desktopClients = Math.max(0, this.desktopClients + delta); }
 
   /**
    * VAPID 연락처(sub). 애플 푸시(web.push.apple.com)는 localhost 같은 가짜 주소면 403 BadJwtToken 으로 거절한다.
@@ -88,6 +97,7 @@ export class AppNotifier implements Notifier {
     if (!this.vapid) return;
     const payload = JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'), url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' });
     for (const s of this.store.pushSubs()) {
+      if (skipForDesktop(s.device, this.desktopClients)) { log.info(`푸시 생략(맥 앱이 맥 알림으로 띄움) · ${s.device} · ${n.title}`); continue; }
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, payload, { TTL: 86_400, urgency: 'high', vapidDetails: this.vapidDetails() });
         log.info(`푸시 보냄 · ${s.device} · ${n.title}`);
