@@ -219,4 +219,11 @@ app.whenReady().then(async () => {
   await refreshTray();
   setInterval(() => void refreshTray(), 15000);
   await openMain();
+  // 점검용: HIVELANE_CAPTURE=파일.png 이면 창을 찍어 저장하고 끝낸다(화면 확인 자동화)
+  if (process.env.HIVELANE_CAPTURE) {
+    await sleep(Number(process.env.HIVELANE_CAPTURE_WAIT ?? 4000));
+    const img = await win?.webContents.capturePage();
+    if (img) writeFileSync(process.env.HIVELANE_CAPTURE, img.toPNG());
+    quitting = true; app.quit();
+  }
 });
