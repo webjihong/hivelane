@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,9 +32,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     host: env.HIVELANE_HOST ?? '127.0.0.1',
     port: Number(env.HIVELANE_PORT ?? 4310),
     remotePort: Number(env.HIVELANE_REMOTE_PORT ?? Number(env.HIVELANE_PORT ?? 4310) + 2),
-    webDist: join(import.meta.dirname, '..', 'dist', 'web'),
+    webDist: env.HIVELANE_WEB_DIST ?? defaultWebDist(),
     production: env.NODE_ENV === 'production',
   };
+}
+
+/** 화면 빌드 위치: 소스에서 돌면 저장소의 dist 아래 web, 묶은 서버(dist 아래 server/index.mjs)에서 돌면 옆의 web */
+function defaultWebDist(): string {
+  const fromSource = join(import.meta.dirname, '..', 'dist', 'web');
+  return existsSync(fromSource) ? fromSource : join(import.meta.dirname, '..', 'web');
 }
 
 export function ensureDirs(cfg: AppConfig): void {
