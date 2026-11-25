@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { isSolo, SOLO_TOOLS_LABEL, TOOL_PRESET_LABEL, type Model, type RunMode, type StateSnapshot, type TeamTemplate, type TemplateRole, type ToolPreset } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { ConfirmButton, Section } from './ui.tsx';
+import { useAccountList } from './Accounts.tsx';
 
 const PRESETS = Object.keys(TOOL_PRESET_LABEL) as ToolPreset[];
 const KEY_RE = /^[a-z0-9_-]+$/;
@@ -29,6 +30,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
   const dirty = isNew || JSON.stringify(d) !== JSON.stringify(tpl);
   const sessions = d.roles.filter((r) => r.mode === 'session' || r.key === 'pm').length;
   const solo = isSolo(d.roles);
+  const accounts = useAccountList();
 
   const setRole = (i: number, patch: Partial<TemplateRole>) => setD((t) => ({ ...t, roles: t.roles.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
   const keyErr = d.roles.map((r, i) => !KEY_RE.test(r.key) ? '소문자·숫자·-·_ 만' : d.roles.findIndex((x) => x.key === r.key) !== i ? '중복' : r.key.length > 20 ? '20자 이하' : '');
@@ -37,7 +39,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
   const save = async () => {
     setSaving(true);
     const roles = d.roles.map((r) => {
-      const base: TemplateRole = { key: r.key, name: r.name.trim(), model: r.model, mode: r.key === 'pm' ? 'session' : r.mode, tools: r.tools };
+      const base: TemplateRole = { key: r.key, name: r.name.trim(), model: r.model, mode: r.key === 'pm' ? 'session' : r.mode, tools: r.tools, ...(r.account ? { account: r.account } : {}) };
       return r.prompt?.trim() ? { ...base, prompt: r.prompt } : base;
     });
     const r = await act(() => api(`/api/templates/${encodeURIComponent(id)}`, 'PUT', { name: d.name.trim(), description: d.description, roles }), '템플릿을 저장했습니다');
@@ -62,7 +64,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
       </div>
       <div className="muted small mono">{id}{d.builtin ? ' · 기본 제공' : ''}</div>
       <div className="tbl-wrap"><table className="tbl">
-        <thead><tr><th>키</th><th>역할</th><th>모델</th><th>실행 방식</th><th>허용 도구</th><th /></tr></thead>
+        <thead><tr><th>키</th><th>역할</th><th>모델</th><th title="이 역할이 쓸 AI 계정(설정 › AI 계정)">계정</th><th>실행 방식</th><th>허용 도구</th><th /></tr></thead>
         <tbody>
           {d.roles.map((r, i) => {
             const pm = r.key === 'pm';
@@ -73,6 +75,13 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
                 <td><select disabled={readOnly} value={r.model} onChange={(e) => setRole(i, { model: e.target.value as Model })} aria-label={`${r.name} 모델`}>
                   <option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option>
                 </select></td>
+                <td>{!pm && r.mode === 'subagent' ? <span className="muted small" title="Agent 도구로 부르는 팀원은 PM 과 같은 계정을 씁니다">PM 계정</span> : (
+                  <select disabled={readOnly} value={r.account ?? ''} onChange={(e) => setRole(i, { account: e.target.value || null })} aria-label={`${r.name} 계정`}>
+                    <option value="">기본 계정</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    {r.account && !accounts.some((a) => a.id === r.account) && <option value={r.account}>(지운 계정 → 기본)</option>}
+                  </select>
+                )}</td>
                 <td>{pm ? <span className="muted small">독립 세션 (고정)</span> : (
                   <select disabled={readOnly} value={r.mode} onChange={(e) => setRole(i, { mode: e.target.value as RunMode })} aria-label={`${r.name} 실행 방식`}>
                     <option value="session">독립 세션</option><option value="subagent">서브에이전트</option>
@@ -89,7 +98,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
                 </td>
               </tr>,
               openPrompt === `${i}` ? (
-                <tr key={`${i}-prompt`}><td colSpan={6}>
+                <tr key={`${i}-prompt`}><td colSpan={7}>
                   <textarea className="txt area" rows={5} readOnly={readOnly} maxLength={4000} value={r.prompt ?? ''} placeholder="비우면 역할 기본 프롬프트를 씁니다" onChange={(e) => setRole(i, { prompt: e.target.value })} aria-label={`${r.name} 프롬프트`} />
                 </td></tr>
               ) : null,
@@ -114,6 +123,7 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
 
 /** 프로젝트 기본 템플릿만 펼쳐 두고, 나머지는 한 줄 요약으로 접는다(펼친 상태는 이 기기에 기억). */
 function TemplateItem({ tpl, readOnly, defaultFor }: { tpl: TeamTemplate; readOnly: boolean; defaultFor: string[] }) {
+  const accounts = useAccountList();
   const key = `hl.tpl.${tpl.id}`;
   const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v === null ? defaultFor.length > 0 : v === '1'; } catch { return defaultFor.length > 0; } });
   const toggle = () => { setOpen(!open); try { localStorage.setItem(key, open ? '0' : '1'); } catch { /* 저장 안 됨 */ } };
@@ -128,7 +138,7 @@ function TemplateItem({ tpl, readOnly, defaultFor }: { tpl: TeamTemplate; readOn
     <button type="button" className="tpl-row" onClick={toggle} aria-expanded="false">
       <span className="tpl-row-t"><b>{tpl.name}</b>{defaultFor.length > 0 && <span className="chip">기본 · {defaultFor.join(', ')}</span>}{tpl.builtin && <span className="muted small">기본 제공</span>}</span>
       <span className="tpl-row-d muted">{tpl.description}</span>
-      <span className="tpl-row-r">{tpl.roles.map((r) => <span key={r.key} className="chip">{r.name} · {MODEL_LABEL[r.model]}{r.key !== 'pm' && r.mode === 'session' ? ' · 세션' : ''}</span>)}</span>
+      <span className="tpl-row-r">{tpl.roles.map((r) => <span key={r.key} className="chip">{r.name} · {MODEL_LABEL[r.model]}{r.key !== 'pm' && r.mode === 'session' ? ' · 세션' : ''}{r.account && (r.key === 'pm' || r.mode === 'session') ? ` · ${accounts.find((x) => x.id === r.account)?.name ?? '기본 계정'}` : ''}</span>)}</span>
       <span className="muted small">세션 {sessions}개 · 펼치기 ▾</span>
     </button>
   );

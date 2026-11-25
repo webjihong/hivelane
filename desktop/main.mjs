@@ -146,7 +146,7 @@ function showSetup() {
 }
 async function showApp() {
   if (!win) createWindow();
-  await win.loadURL(`${BASE}/?app=desktop#home`);
+  await win.loadURL(`${BASE}/?app=desktop${process.env.HIVELANE_CAPTURE_HASH ?? '#home'}`);
 }
 function createWindow() {
   win = new BrowserWindow({

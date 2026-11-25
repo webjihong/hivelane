@@ -234,7 +234,11 @@ export function createApp(d: AppDeps): Hono<Env> {
     const pick = (a: string | null | undefined) => (accts().get(a) ? a : def);
     const out: string[] = [];
     if (pick(s.poAccount) === id) out.push('총괄');
-    for (const t of store.listTemplates()) for (const r of t.roles) if (pick(r.account) === id) out.push(`템플릿 ${t.name} · ${r.name}`);
+    // Agent 도구로 부르는 팀원(subagent)은 PM 계정을 쓰므로 PM·독립 세션 역할만 센다 · 템플릿 이름으로 묶는다
+    for (const t of store.listTemplates()) {
+      const roles = t.roles.filter((r) => (r.key === 'pm' || r.mode === 'session') && pick(r.account) === id).map((r) => r.name);
+      if (roles.length) out.push(`${t.name}(${roles.join('·')})`);
+    }
     return out;
   };
   app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy) }));

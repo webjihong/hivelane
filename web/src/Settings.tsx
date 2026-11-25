@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, isDesktopApp, refreshState, toast } from './store.ts';
+import { AccountsSection } from './Accounts.tsx';
 import { AREAS, FONTS, SCALES, THEMES, TOKENS, allThemes, applyPrefs, currentTokens, loadPrefs, savePrefs, varsFromTokens, type AreaKey, type Theme, type UiPrefs } from './themes.ts';
 import { ConfirmButton, Section, hhmm } from './ui.tsx';
 
@@ -778,7 +779,7 @@ function SearchGuide({ provider }: { provider: 'off' | 'ollama' | 'voyage' }) {
   );
 }
 
-export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search' | 'storage' | 'display';
+export type SettingsTab = 'engine' | 'projects' | 'standing' | 'notify' | 'remote' | 'search' | 'storage' | 'display' | 'accounts';
 
 export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: SettingsTab }) {
   const ro = snap.access === 'remote';
@@ -826,6 +827,8 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
           </div>
         </div>
       </Section>}
+
+      {tab === 'accounts' && <AccountsSection snap={snap} ro={ro} />}
 
       {tab === 'projects' && <Section title="프로젝트" sub="팀이 일할 git 저장소">
         <div className="panel stack-s">
