@@ -165,7 +165,7 @@ export function Chat({ snap }: { snap: StateSnapshot }) {
       </div>
       <div className="chat-f">
         <div className="hints">{HINTS.map((h) => <button key={h} className="hint" type="button" disabled={sending} onClick={() => void send(h)}>{h}</button>)}</div>
-        <ChatInput placeholder="총괄에게 지시하거나 질문하기" label="총괄에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
+        <ChatInput draftKey="po" placeholder="총괄에게 지시하거나 질문하기" label="총괄에게 보낼 메시지" onSend={sendText} working={snap.poBusy} onCancel={() => act(() => api('/api/po/cancel', 'POST', {}), 'PO 응답을 취소했습니다')} />
       </div>
     </section>
   );

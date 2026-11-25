@@ -145,6 +145,7 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
               working={t.state === 'running'}
               onCancel={() => act(async () => { await api(`/api/teams/${encodeURIComponent(t.id)}/interrupt`, 'POST', {}); await refreshState(); }, '진행 중이던 지시를 취소했습니다')}
               cancelLabel="진행 취소"
+              draftKey={`team:${t.id}`}
             />
           </div>
         ) : <div className="tc-in muted">끝난 팀입니다. 이어서 하려면 총괄에게 새 업무로 맡기세요.</div>}

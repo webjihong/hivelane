@@ -1,8 +1,19 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { act, api, toast } from './store.ts';
 
 interface Att { id: string; url: string; name: string }
 const MAX = 10 * 1024 * 1024;
+
+/** 쓰다 만 글·첨부를 채널별로 남긴다(다른 채널·설정에 갔다 와도, 새로고침해도 그대로) */
+const DRAFT = (k: string) => `hl-draft:${k}`;
+function loadDraft(k?: string): { text: string; atts: Att[] } {
+  if (!k) return { text: '', atts: [] };
+  try { const d = JSON.parse(localStorage.getItem(DRAFT(k)) ?? 'null') as { text?: string; atts?: Att[] } | null; return { text: d?.text ?? '', atts: d?.atts ?? [] }; } catch { return { text: '', atts: [] }; }
+}
+function saveDraft(k: string | undefined, text: string, atts: Att[]): void {
+  if (!k) return;
+  try { if (!text && !atts.length) localStorage.removeItem(DRAFT(k)); else localStorage.setItem(DRAFT(k), JSON.stringify({ text, atts })); } catch { /* 저장 공간 없음 */ }
+}
 
 function toBase64(f: Blob): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] ?? ''); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
@@ -12,12 +23,12 @@ function toBase64(f: Blob): Promise<string> {
  * 지시·질문 입력칸: Enter 보내기 · Shift+Enter 줄바꿈 · Esc/취소로 진행 중인 응답 취소 ·
  * 이미지 붙여넣기·끌어놓기·첨부(에이전트가 Read 도구로 본다).
  */
-export function ChatInput({ placeholder, label, button = '보내기', working = false, onSend, onCancel, cancelLabel = '취소' }: {
-  placeholder: string; label: string; button?: string; working?: boolean;
+export function ChatInput({ placeholder, label, button = '보내기', working = false, onSend, onCancel, cancelLabel = '취소', draftKey }: {
+  placeholder: string; label: string; button?: string; working?: boolean; /** 이 값별로 쓰다 만 글을 남긴다(예: 'po', 'team:<id>') */ draftKey?: string;
   onSend: (text: string) => Promise<boolean>; onCancel?: () => Promise<unknown>; cancelLabel?: string;
 }) {
-  const [text, setText] = useState('');
-  const [atts, setAtts] = useState<Att[]>([]);
+  const [text, setText] = useState(() => loadDraft(draftKey).text);
+  const [atts, setAtts] = useState<Att[]>(() => loadDraft(draftKey).atts);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [drag, setDrag] = useState(false);
@@ -25,6 +36,8 @@ export function ChatInput({ placeholder, label, button = '보내기', working = 
   const file = useRef<HTMLInputElement>(null);
 
   const grow = () => { const el = ta.current; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 220)}px`; };
+  useEffect(() => { saveDraft(draftKey, text, atts); }, [draftKey, text, atts]);
+  useEffect(() => { requestAnimationFrame(grow); }, []);
   const upload = async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'));
     if (!imgs.length) return;
