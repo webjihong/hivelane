@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { AccountSwitchView, AiAccountView, AuthLoginView, StateSnapshot } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { Section } from './ui.tsx';
@@ -22,11 +22,31 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
   useEffect(() => { const t = setInterval(() => void load(), waiting ? 1000 : 30_000); return () => clearInterval(t); }, [load, waiting]);
 
   const save = (patch: Record<string, unknown>, ok: string) => act(async () => { await api('/api/settings', 'PUT', patch); await refreshState(); await load(); }, ok);
-  const add = () => act(async () => { await api('/api/accounts', 'POST', { name: name.trim() }); setName(''); await load(); }, '계정을 추가했습니다. 「로그인」을 눌러 Claude 계정에 연결하세요');
+  // 탭: 'set'(기본·전환) · 계정 id · 'add'(계정 추가)
+  const [tab, setTab] = useState<string>('set');
+  const add = () => act(async () => { const r = await api<{ account: { id: string } }>('/api/accounts', 'POST', { name: name.trim() }); setName(''); await load(); setTab(r.account.id); }, '계정을 추가했습니다. 「로그인」을 눌러 Claude 계정에 연결하세요');
+  const accounts = list ?? [];
+  // 지운 계정 탭에 머물러 있으면 설정 탭으로
+  const cur = tab === 'set' || tab === 'add' || accounts.some((a) => a.id === tab) ? tab : 'set';
+  const peak = (a: AiAccountView) => Math.max(0, ...(a.usage?.windows ?? []).map((w) => w.pct));
+  const tabBtn = (id: string, body: ReactNode) => (
+    <button key={id} type="button" role="tab" aria-selected={cur === id} className={cur === id ? 'on' : ''} onClick={() => setTab(id)}>{body}</button>
+  );
 
   return (
     <Section title="AI 계정" sub="팀·총괄이 쓸 Claude 계정을 여러 개 두고 역할마다 고릅니다">
+      <div className="acc-tabs" role="tablist" aria-label="AI 계정">
+        {tabBtn('set', '기본·전환')}
+        {accounts.map((a) => tabBtn(a.id, <>
+          <span className="acc-dot" style={{ background: a.usage?.login?.loggedIn ? pctTone(peak(a)) : 'var(--line)' }} aria-hidden />
+          {a.name}{a.isDefault && <span className="acc-tag">기본</span>}
+          {a.usage?.windows.length ? <span className="mono acc-pct">{Math.round(peak(a))}%</span> : null}
+        </>))}
+        {!ro && tabBtn('add', '+ 계정 추가')}
+      </div>
+
       <div className="acc-list">
+      {cur === 'set' && <>
       <div className="panel stack-s">
         <div className="set-row">
           <label htmlFor="acc-default">기본 계정<small>템플릿 역할에 계정을 고르지 않으면 이 계정을 씁니다</small></label>
@@ -47,14 +67,15 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
         </div>
       </div>
 
-      <SwitchPanel snap={snap} ro={ro} list={list ?? []} sw={sw} reload={load} />
+      <SwitchPanel snap={snap} ro={ro} list={accounts} sw={sw} reload={load} />
+      </>}
 
-      {(list ?? []).map((a) => <AccountCard key={a.id} a={a} ro={ro} reload={load} onDefault={() => void save({ defaultAccount: a.id }, `${a.name} 을(를) 기본 계정으로 정했습니다`)} />)}
+      {accounts.filter((a) => a.id === cur).map((a) => <AccountCard key={a.id} a={a} ro={ro} reload={load} onDefault={() => void save({ defaultAccount: a.id }, `${a.name} 을(를) 기본 계정으로 정했습니다`)} />)}
 
-      {!ro && (
+      {cur === 'add' && !ro && (
         <div className="panel stack-s">
           <div className="set-row">
-            <label htmlFor="acc-new">Claude 계정 추가<small>회사·개인처럼 다른 Claude 계정을 하나 더 연결합니다. 추가한 뒤 「로그인」</small></label>
+            <label htmlFor="acc-new">Claude 계정 추가<small>회사·개인처럼 다른 Claude 계정을 하나 더 연결합니다. 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
             <span className="set-v row">
               <input id="acc-new" value={name} maxLength={40} placeholder="예: 회사 계정" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
               <button className="btn primary" type="button" disabled={!name.trim()} onClick={() => void add()}>추가</button>
@@ -196,7 +217,7 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
           <button className="btn primary" type="button" onClick={() => void switchNow(g.from, g.to)}>{nameOf(list, g.to)} 으로 전환</button>
         </div>
       ))}
-      {cfg.mode !== 'off' && list.length < 2 && <div className="small muted">바꿔 쓸 계정이 없습니다. 아래에서 계정을 하나 더 추가하세요.</div>}
+      {cfg.mode !== 'off' && list.length < 2 && <div className="small muted">바꿔 쓸 계정이 없습니다. 「+ 계정 추가」 탭에서 계정을 하나 더 추가하세요.</div>}
       <div className="small muted">계정을 바꾸면 그 팀원은 요약을 넘겨받아 새 대화로 이어 갑니다(대화 기록은 계정마다 따로 있음).</div>
     </div>
   );

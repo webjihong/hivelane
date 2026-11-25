@@ -748,3 +748,11 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .acc-list { display: flex; flex-direction: column; gap: 14px; }
 .acc-list > .panel { margin: 0; }
 .acc-reset { white-space: nowrap; min-width: 150px; text-align: right; }
+/* AI 계정 탭: 기본·전환 · 계정마다 · 계정 추가 */
+.acc-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.acc-tabs button { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; padding: 8px 12px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--muted); cursor: pointer; }
+.acc-tabs button:hover { color: var(--fg); }
+.acc-tabs button.on { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
+.acc-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.acc-tag { font-size: 10px; padding: 0 5px; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-weight: 500; }
+.acc-pct { font-size: 11px; color: var(--muted); font-weight: 400; }
