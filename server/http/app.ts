@@ -240,7 +240,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     }
     return out;
   };
-  app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy), switch: accts().switchView() }));
+  app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy), switch: accts().switchView(), hiddenDefault: accts().hidesDefault() }));
   app.post('/api/accounts/switch', async (c) => { const b = await body(c, z.object({ from: z.string(), to: z.string().optional() })); try { const t = accts().switchNow(b.from, b.to); return c.json({ to: t }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/accounts/revert', async (c) => { const b = await body(c, z.object({ from: z.string() })); accts().revert(b.from); return c.json({ ok: true }); });
   app.post('/api/accounts', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40), provider: z.enum(['claude', 'codex']).default('claude') })); const a = accts().add(b.name, b.provider); return c.json({ account: a }); });

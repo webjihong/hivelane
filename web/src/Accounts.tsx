@@ -16,7 +16,8 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
   const [sw, setSw] = useState<AccountSwitchView>({ overrides: [], suggestions: [] });
   const [name, setName] = useState('');
   const [prov, setProv] = useState<Provider>('claude');
-  const load = useCallback(() => api<{ accounts: AiAccountView[]; switch: AccountSwitchView }>('/api/accounts').then((r) => { setList(r.accounts); setSw(r.switch); }).catch(() => {}), []);
+  const [hiddenDefault, setHiddenDefault] = useState(false);
+  const load = useCallback(() => api<{ accounts: AiAccountView[]; switch: AccountSwitchView; hiddenDefault?: boolean }>('/api/accounts').then((r) => { setList(r.accounts); setSw(r.switch); setHiddenDefault(!!r.hiddenDefault); }).catch(() => {}), []);
   useEffect(() => { void load(); }, [load, snap.settings.defaultAccount, snap.settings.poAccount]);
   // 로그인 중이면 1초마다, 아니면 30초마다 새로 읽는다
   const waiting = list?.some((a) => a.loginFlow.phase === 'waiting') ?? false;
@@ -49,6 +50,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
 
       <div className="acc-list">
       {cur === 'set' && <>
+      <HowItWorks snap={snap} list={accounts} sw={sw} hiddenDefault={hiddenDefault} />
       <div className="panel stack-s">
         <div className="set-row">
           <label htmlFor="acc-default">기본 계정<small>템플릿 역할에 계정을 고르지 않으면 평소 이 계정을 씁니다 · 사용량 기준 전환이 켜져 있으면 이 계정이 기준을 넘는 동안만 다음 계정을 빌려 씁니다</small></label>
@@ -200,6 +202,43 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
 }
 
 const nameOf = (list: AiAccountView[], id: string) => list.find((a) => a.id === id)?.name ?? id;
+
+/** 기본·총괄 계정과 사용량 기준 전환이 어떻게 맞물리는지 · 지금 실제로 쓰는 계정 */
+function HowItWorks({ snap, list, sw, hiddenDefault }: { snap: StateSnapshot; list: AiAccountView[]; sw: AccountSwitchView; hiddenDefault: boolean }) {
+  const cfg = snap.settings.accountSwitch;
+  const claude = list.filter((a) => a.provider === 'claude');
+  const base = claude.find((a) => a.isDefault) ?? claude[0];
+  const po = list.find((a) => a.id === snap.settings.poAccount && a.provider === 'claude') ?? base;
+  const order = [...cfg.order.filter((id) => claude.some((a) => a.id === id)), ...claude.map((a) => a.id).filter((id) => !cfg.order.includes(id))];
+  const nextOf = (id: string | undefined) => order.find((x) => x !== id);
+  const now = (id: string | undefined) => { const o = sw.overrides.find((x) => x.from === id); return o ? nameOf(list, o.to) : null; };
+  const row = (who: string, a: AiAccountView | undefined) => {
+    if (!a) return null;
+    const lent = now(a.id);
+    return (
+      <li key={who}><b>{who}</b>: 평소 <b>{a.name}</b>{lent ? <> → 지금 <b className="acc-lent">{lent}</b> 을(를) 빌려 쓰는 중(사용량 기준 넘음)</> : <> · 지금도 이 계정{a.peakPct !== null ? `(${Math.round(a.peakPct)}%)` : ''}</>}</li>
+    );
+  };
+  const nx = base ? nextOf(base.id) : undefined;
+  return (
+    <div className="panel stack-s acc-how">
+      <div className="acc-how-h">계정은 이렇게 쓰입니다</div>
+      <ol className="acc-how-steps">
+        <li><b>평소 계정</b> — 역할·총괄은 아래에서 고른 계정(안 고르면 기본 계정)을 씁니다. 템플릿의 역할마다 따로 고를 수도 있습니다.</li>
+        <li><b>사용량 기준 전환</b> — {cfg.mode === 'off'
+          ? <>지금은 <b>꺼져 있어</b> 사용량이 차도 평소 계정을 그대로 씁니다.</>
+          : <>평소 계정의 사용량이 <b>{cfg.thresholdPct}%</b>를 넘으면, 설정은 그대로 둔 채 그 계정을 쓰던 곳만 「바꿀 순서」의 다음 계정을 {cfg.mode === 'auto' ? <b>자동으로</b> : <>알림을 받고 <b>「전환」을 눌렀을 때</b></>} 빌려 씁니다{base && nx ? <> (예: {base.name} {cfg.thresholdPct}% 초과 → {nameOf(list, nx)})</> : null}.</>}</li>
+        <li><b>되돌아오기</b> — 한도가 초기화돼 평소 계정이 기준 아래로 내려오면 저절로 평소 계정으로 돌아옵니다. 계정이 바뀌어도 하던 대화는 그대로 이어집니다.</li>
+      </ol>
+      <div className="acc-how-now">
+        <div className="small muted">지금 상태</div>
+        <ul>{row('기본 계정', base)}{row('총괄', po)}</ul>
+      </div>
+      {hiddenDefault && <div className="small muted">「이 맥 기본 계정」(~/.claude, 터미널 Claude Code 와 같은 로그인)은 내 Claude 계정이 있어 숨겼습니다. 터미널에서 계정을 바꿔도 팀 계정은 바뀌지 않습니다. 추가한 Claude 계정이 모두 로그아웃되면 다시 보입니다.</div>}
+      <div className="small muted">Codex 계정은 PM 이 일을 맡기는 「독립 세션」 팀원만 쓰며, 전환도 Codex 계정끼리만 합니다.</div>
+    </div>
+  );
+}
 
 /** 사용량 기준 전환: 끄기 · 알림 후 한 번 눌러 전환 · 자동 + 기준 % + 바꿀 순서 + 지금 돌려쓰는 것 */
 function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: boolean; list: AiAccountView[]; sw: AccountSwitchView; reload: () => Promise<unknown> }) {
