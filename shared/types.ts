@@ -260,7 +260,7 @@ export interface AccountSwitchView { overrides: { from: string; to: string; at: 
 /** claude auth status 요약 */
 export interface LoginInfo { loggedIn: boolean; method: string | null; expiresAt: string | null; email: string | null; error?: string }
 /** 화면에서 띄운 claude auth login 진행 */
-export interface AuthLoginView { phase: 'idle' | 'waiting' | 'done' | 'failed'; url: string | null; output: string; startedAt: string | null; error: string | null }
+export interface AuthLoginView { phase: 'idle' | 'waiting' | 'done' | 'failed'; url: string | null; output: string; startedAt: string | null; error: string | null; /** Codex 기기 로그인: 브라우저에 넣을 일회용 코드 */ userCode?: string | null }
 
 /** PO 가 배운 것. skill = 절차(필요할 때 꺼내 씀), note = 늘 기억할 사실·선호 */
 export interface KnowledgeView {

@@ -78,8 +78,9 @@ function TemplateEditor({ tpl, readOnly, isNew, existing = [], onDone }: { tpl: 
                 <td>{!pm && r.mode === 'subagent' ? <span className="muted small" title="Agent 도구로 부르는 팀원은 PM 과 같은 계정을 씁니다">PM 계정</span> : (
                   <select disabled={readOnly} value={r.account ?? ''} onChange={(e) => setRole(i, { account: e.target.value || null })} aria-label={`${r.name} 계정`}>
                     <option value="">기본 계정</option>
-                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    {r.account && !accounts.some((a) => a.id === r.account) && <option value={r.account}>(지운 계정 → 기본)</option>}
+                    {/* Codex 는 PM 이 맡기는 독립 세션 팀원만(PM 은 Claude 도구로 팀을 움직여야 해서) */}
+                    {accounts.filter((a) => !pm || a.provider === 'claude').map((a) => <option key={a.id} value={a.id}>{a.provider === 'codex' ? `${a.name} (Codex)` : a.name}</option>)}
+                    {r.account && !accounts.some((a) => a.id === r.account && (!pm || a.provider === 'claude')) && <option value={r.account}>(쓸 수 없는 계정 → 기본)</option>}
                   </select>
                 )}</td>
                 <td>{pm ? <span className="muted small">독립 세션 (고정)</span> : (

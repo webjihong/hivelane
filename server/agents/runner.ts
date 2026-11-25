@@ -8,7 +8,8 @@ import type { AgentRow, Store, TeamRow } from '../store.ts';
 import { truncate } from '../util.ts';
 import { checkBash, checkWritePath, describeTool, isHeavy, WRITE_TOOLS } from './guard.ts';
 import type { HeavySlots } from '../po/slots.ts';
-import type { Priority } from '../../shared/types.ts';
+import type { Priority, Provider, ToolPreset } from '../../shared/types.ts';
+import { runCodexTurn } from './codex.ts';
 
 const log = logger('runner');
 
@@ -41,6 +42,9 @@ export interface TurnSpec {
   label?: string;
   /** MCP 서버 뒤의 실제 구현. 가짜 러너(테스트)가 직접 부른다. */
   toolsImpl?: unknown;
+  /** 'codex' 면 Codex 로 실행(역할 도구 toolPreset 으로 샌드박스를 정함) */
+  provider?: Provider;
+  toolPreset?: ToolPreset;
 }
 
 export interface TurnResult {
@@ -64,12 +68,14 @@ export class TurnHandle {
   readonly abort = new AbortController();
   /** 턴이 끝났다(이후 받은 자리는 즉시 반납) */
   done = false;
+  /** Codex 턴(멈춤은 abort 로) */
+  codex = false;
 
   async interrupt(): Promise<void> {
     this.pauseRequested = true;
     this.interrupted = true;
     const q = this.q;
-    if (!q) return;
+    if (!q) { if (this.codex && !this.done) this.abort.abort(); return; }
     // 응답이 없으면(프로세스 정지·멈춤 등) 5초 뒤 강제 종료
     const ok = await Promise.race([q.interrupt().then(() => true, (e) => { log.warn('interrupt 실패', e); return false; }), new Promise<boolean>((r) => setTimeout(() => r(false), 5000))]);
     if (!ok && !this.done) { log.warn('interrupt 응답 없음 → 턴 강제 종료'); this.abort.abort(); }
@@ -102,6 +108,7 @@ export class AgentRunner {
 
   async runTurn(spec: TurnSpec, handle: TurnHandle = new TurnHandle()): Promise<TurnResult> {
     const { store } = this.deps;
+    if (spec.provider === 'codex') return runCodexTurn(store, { ...spec, toolPreset: spec.toolPreset ?? 'read' }, handle);
     const team = spec.team;
     const teamId = team?.id ?? null;
     const writable = spec.writableRoots ?? [spec.cwd];

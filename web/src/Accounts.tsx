@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { AccountSwitchView, AiAccountView, AuthLoginView, StateSnapshot } from '../../shared/types.ts';
+import type { AccountSwitchView, AiAccountView, AuthLoginView, Provider, StateSnapshot } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { Section } from './ui.tsx';
 
-/** 템플릿 편집 등에서 고를 계정 목록(이름만) */
-export function useAccountList(): { id: string; name: string }[] {
-  const [list, setList] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => { void api<{ accounts: AiAccountView[] }>('/api/accounts').then((r) => setList(r.accounts.map((a) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+/** 템플릿 편집 등에서 고를 계정 목록(이름·종류) */
+export function useAccountList(): { id: string; name: string; provider: Provider }[] {
+  const [list, setList] = useState<{ id: string; name: string; provider: Provider }[]>([]);
+  useEffect(() => { void api<{ accounts: AiAccountView[] }>('/api/accounts').then((r) => setList(r.accounts.map((a) => ({ id: a.id, name: a.name, provider: a.provider })))).catch(() => {}); }, []);
   return list;
 }
 
@@ -15,6 +15,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
   const [list, setList] = useState<AiAccountView[] | null>(null);
   const [sw, setSw] = useState<AccountSwitchView>({ overrides: [], suggestions: [] });
   const [name, setName] = useState('');
+  const [prov, setProv] = useState<Provider>('claude');
   const load = useCallback(() => api<{ accounts: AiAccountView[]; switch: AccountSwitchView }>('/api/accounts').then((r) => { setList(r.accounts); setSw(r.switch); }).catch(() => {}), []);
   useEffect(() => { void load(); }, [load, snap.settings.defaultAccount, snap.settings.poAccount]);
   // 로그인 중이면 1초마다, 아니면 30초마다 새로 읽는다
@@ -24,8 +25,9 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
   const save = (patch: Record<string, unknown>, ok: string) => act(async () => { await api('/api/settings', 'PUT', patch); await refreshState(); await load(); }, ok);
   // 탭: 'set'(기본·전환) · 계정 id · 'add'(계정 추가)
   const [tab, setTab] = useState<string>('set');
-  const add = () => act(async () => { const r = await api<{ account: { id: string } }>('/api/accounts', 'POST', { name: name.trim() }); setName(''); await load(); setTab(r.account.id); }, '계정을 추가했습니다. 「로그인」을 눌러 Claude 계정에 연결하세요');
+  const add = () => act(async () => { const r = await api<{ account: { id: string } }>('/api/accounts', 'POST', { name: name.trim(), provider: prov }); setName(''); await load(); setTab(r.account.id); }, `계정을 추가했습니다. 「로그인」을 눌러 ${prov === 'codex' ? 'ChatGPT(Codex)' : 'Claude'} 계정에 연결하세요`);
   const accounts = list ?? [];
+  const claudeAccounts = accounts.filter((a) => a.provider === 'claude');
   // 지운 계정 탭에 머물러 있으면 설정 탭으로
   const cur = tab === 'set' || tab === 'add' || accounts.some((a) => a.id === tab) ? tab : 'set';
   const peak = (a: AiAccountView) => Math.max(0, ...(a.usage?.windows ?? []).map((w) => w.pct));
@@ -34,7 +36,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
   );
 
   return (
-    <Section title="AI 계정" sub="팀·총괄이 쓸 Claude 계정을 여러 개 두고 역할마다 고릅니다">
+    <Section title="AI 계정" sub="팀·총괄이 쓸 Claude·Codex 계정을 여러 개 두고 역할마다 고릅니다">
       <div className="acc-tabs" role="tablist" aria-label="AI 계정">
         {tabBtn('set', '기본·전환')}
         {accounts.map((a) => tabBtn(a.id, <>
@@ -75,7 +77,14 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
       {cur === 'add' && !ro && (
         <div className="panel stack-s">
           <div className="set-row">
-            <label htmlFor="acc-new">Claude 계정 추가<small>회사·개인처럼 다른 Claude 계정을 하나 더 연결합니다. 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
+            <label>종류<small>Codex 는 PM 이 일을 맡기는 「독립 세션」 팀원에게만 고를 수 있습니다(읽기·검증·쓰기 모두, 작업 폴더 샌드박스·네트워크 끔)</small></label>
+            <span className="set-v row">
+              <label className="row small" style={{ gap: 4 }}><input type="radio" name="acc-prov" checked={prov === 'claude'} onChange={() => setProv('claude')} />Claude</label>
+              <label className="row small" style={{ gap: 4 }}><input type="radio" name="acc-prov" checked={prov === 'codex'} onChange={() => setProv('codex')} />Codex (ChatGPT·OpenAI)</label>
+            </span>
+          </div>
+          <div className="set-row">
+            <label htmlFor="acc-new">{prov === 'codex' ? 'Codex' : 'Claude'} 계정 추가<small>회사·개인처럼 다른 계정을 하나 더 연결합니다. 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
             <span className="set-v row">
               <input id="acc-new" value={name} maxLength={40} placeholder="예: 회사 계정" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
               <button className="btn primary" type="button" disabled={!name.trim()} onClick={() => void add()}>추가</button>
@@ -103,7 +112,10 @@ function pctTone(p: number): string { return p >= 90 ? 'var(--crit)' : p >= 70 ?
 
 function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boolean; reload: () => Promise<unknown>; onDefault: () => void }) {
   const [code, setCode] = useState('');
+  const [key, setKey] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
+  const codex = a.provider === 'codex';
+  const builtin = a.id === 'default' || a.id === 'codex';
   const login = a.usage?.login ?? null;
   const flow: AuthLoginView = a.loginFlow;
   const base = `/api/accounts/${encodeURIComponent(a.id)}`;
@@ -113,6 +125,7 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
   const refresh = () => act(async () => { await api(`${base}/refresh`, 'POST', {}); await reload(); }, '사용량을 새로 읽었습니다');
   const remove = () => { if (confirm(`${a.name} 계정을 지울까요? 이 계정을 쓰던 역할·총괄은 기본 계정으로 돌아갑니다.`)) void act(async () => { await api(base, 'DELETE'); await refreshState(); await reload(); }, '계정을 지웠습니다'); };
   const rename = () => act(async () => { await api(base, 'PATCH', { name: renaming }); setRenaming(null); await reload(); }, '이름을 바꿨습니다');
+  const sendKey = () => act(async () => { await api(`${base}/apikey`, 'POST', { key }); setKey(''); await reload(); }, 'API 키로 로그인했습니다');
 
   return (
     <div className="panel stack-s">
@@ -122,19 +135,20 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
             ? <span className="row"><input value={renaming} maxLength={40} onChange={(e) => setRenaming(e.target.value)} aria-label="계정 이름" /><button className="btn" type="button" onClick={() => void rename()}>저장</button><button className="btn ghost" type="button" onClick={() => setRenaming(null)}>취소</button></span>
             : <b>{a.name}</b>}
           {a.isDefault && <span className="chip" style={{ marginLeft: 6 }}>기본</span>}
-          <span className="chip" style={{ marginLeft: 6 }}>Claude</span>
+          <span className="chip" style={{ marginLeft: 6 }}>{codex ? 'Codex' : 'Claude'}</span>
           <div className="small muted">
-            {login?.loggedIn ? <>로그인됨{login.email ? ` · ${login.email}` : ''}{a.usage?.plan ? ` · ${a.usage.plan}` : ''}{login.expiresAt ? ` · ${new Date(login.expiresAt).toLocaleDateString('ko-KR')} 만료` : ''}</> : <span style={{ color: 'var(--crit)' }}>로그인 필요</span>}
+            {login?.loggedIn ? <>로그인됨{login.method && codex ? ` · ${login.method === 'chatgpt' ? 'ChatGPT' : login.method}` : ''}{login.email ? ` · ${login.email}` : ''}{a.usage?.plan ? ` · ${a.usage.plan}` : ''}{login.expiresAt ? ` · ${new Date(login.expiresAt).toLocaleDateString('ko-KR')} 만료` : ''}</> : <span style={{ color: 'var(--crit)' }}>로그인 필요</span>}
             {a.id === 'default' && ' · 이 맥의 Claude Code 로그인(~/.claude)과 같습니다'}
+            {a.id === 'codex' && ' · 이 맥의 Codex 로그인(~/.codex)과 같습니다'}
           </div>
         </div>
         {!ro && (
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {flow.phase !== 'waiting' && <button className="btn primary" type="button" onClick={() => void start()}>{login?.loggedIn ? '다시 로그인' : '로그인'}</button>}
             <button className="btn" type="button" onClick={() => void refresh()}>사용량 새로 읽기</button>
-            {!a.isDefault && <button className="btn" type="button" onClick={onDefault}>기본으로</button>}
-            {a.id !== 'default' && renaming === null && <button className="btn ghost" type="button" onClick={() => setRenaming(a.name)}>이름 바꾸기</button>}
-            {a.id !== 'default' && <button className="btn ghost" type="button" onClick={remove}>지우기</button>}
+            {!codex && !a.isDefault && <button className="btn" type="button" onClick={onDefault}>기본으로</button>}
+            {!builtin && renaming === null && <button className="btn ghost" type="button" onClick={() => setRenaming(a.name)}>이름 바꾸기</button>}
+            {!builtin && <button className="btn ghost" type="button" onClick={remove}>지우기</button>}
           </div>
         )}
       </div>
@@ -152,7 +166,18 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
         </div>
       ) : <div className="small muted">{a.usage?.error ? `사용량을 읽지 못했습니다: ${a.usage.error}` : login?.loggedIn ? '플랜 사용량이 없습니다(API 키 로그인 등)' : '로그인하면 사용량이 보입니다'}</div>}
 
-      {flow.phase === 'waiting' && (
+      {codex && flow.phase === 'waiting' && (
+        <ol className="au-steps">
+          <li>{flow.url ? <a className="btn primary" href={flow.url} target="_blank" rel="noreferrer">로그인 페이지 열기</a> : <span className="muted">로그인 주소 받는 중…</span>} <span className="muted small">이 계정으로 쓸 ChatGPT 계정으로 로그인하세요</span></li>
+          <li>페이지에 이 일회용 코드를 넣습니다: {flow.userCode ? <b className="mono" style={{ fontSize: 16, letterSpacing: 1 }}>{flow.userCode}</b> : <span className="muted">코드 받는 중…</span>}
+            {flow.userCode && <button type="button" className="link-btn" style={{ marginLeft: 8 }} onClick={() => void navigator.clipboard?.writeText(flow.userCode!)}>복사</button>}</li>
+          <li className="muted small">승인하면 저절로 로그인됩니다 · 15분 안에 끝내지 않으면 멈춥니다 · <button type="button" className="link-btn" onClick={() => void cancel()}>취소</button></li>
+        </ol>
+      )}
+      {codex && !ro && flow.phase !== 'waiting' && (
+        <div className="au-code"><input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="또는 OpenAI API 키(sk-…)로 로그인" aria-label="OpenAI API 키" autoComplete="off" /><button className="btn" type="button" disabled={key.trim().length < 10} onClick={() => void sendKey()}>API 키로 로그인</button></div>
+      )}
+      {!codex && flow.phase === 'waiting' && (
         <ol className="au-steps">
           <li>{flow.url ? <a className="btn primary" href={flow.url} target="_blank" rel="noreferrer">로그인 페이지 열기</a> : <span className="muted">로그인 주소 받는 중…</span>} <span className="muted small">이 계정으로 쓸 Claude 계정으로 로그인하세요</span></li>
           <li>열린 페이지에서 로그인하고 「승인」을 누릅니다. <b>인증 코드</b>가 보이면 복사해 붙여 넣으세요.
@@ -181,7 +206,7 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
   return (
     <div className="panel stack-s">
       <div className="set-row">
-        <label htmlFor="acc-sw">사용량 기준 전환<small>쓰던 계정의 사용량(5시간·주간 중 큰 값)이 기준을 넘으면 다음 계정으로 바꿔 씁니다. 한도가 초기화돼 기준 아래로 내려오면 원래 계정으로 돌아옵니다</small></label>
+        <label htmlFor="acc-sw">사용량 기준 전환<small>쓰던 계정의 사용량(5시간·주간 중 큰 값)이 기준을 넘으면 같은 종류(Claude끼리·Codex끼리)의 다음 계정으로 바꿔 씁니다. 한도가 초기화돼 기준 아래로 내려오면 원래 계정으로 돌아옵니다</small></label>
         <span className="set-v row">
           <select id="acc-sw" disabled={ro} value={cfg.mode} onChange={(e) => void save({ mode: e.target.value as typeof cfg.mode }, '전환 방식을 바꿨습니다')}>
             <option value="off">끄기</option>

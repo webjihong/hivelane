@@ -230,13 +230,12 @@ export function createApp(d: AppDeps): Hono<Env> {
   /** 계정을 쓰는 곳: 템플릿 역할·직속/업무 팀 역할·총괄 */
   const usedBy = (id: string): string[] => {
     const s = store.getSettings();
-    const def = accts().resolve(null).id;
-    const pick = (a: string | null | undefined) => (accts().get(a) ? a : def);
+    const pick = (a: string | null | undefined, allowCodex = false) => accts().resolve(a, allowCodex).id;
     const out: string[] = [];
     if (pick(s.poAccount) === id) out.push('총괄');
     // Agent 도구로 부르는 팀원(subagent)은 PM 계정을 쓰므로 PM·독립 세션 역할만 센다 · 템플릿 이름으로 묶는다
     for (const t of store.listTemplates()) {
-      const roles = t.roles.filter((r) => (r.key === 'pm' || r.mode === 'session') && pick(r.account) === id).map((r) => r.name);
+      const roles = t.roles.filter((r) => (r.key === 'pm' || r.mode === 'session') && pick(r.account, r.key !== 'pm') === id).map((r) => r.name);
       if (roles.length) out.push(`${t.name}(${roles.join('·')})`);
     }
     return out;
@@ -244,7 +243,15 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy), switch: accts().switchView() }));
   app.post('/api/accounts/switch', async (c) => { const b = await body(c, z.object({ from: z.string(), to: z.string().optional() })); try { const t = accts().switchNow(b.from, b.to); return c.json({ to: t }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/accounts/revert', async (c) => { const b = await body(c, z.object({ from: z.string() })); accts().revert(b.from); return c.json({ ok: true }); });
-  app.post('/api/accounts', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); const a = accts().add(b.name, 'claude'); return c.json({ account: a }); });
+  app.post('/api/accounts', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40), provider: z.enum(['claude', 'codex']).default('claude') })); const a = accts().add(b.name, b.provider); return c.json({ account: a }); });
+  /** Codex 계정: API 키로 로그인(키는 그 계정 폴더의 auth.json 에만 저장) */
+  app.post('/api/accounts/:id/apikey', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({ key: z.string().min(10).max(500) }));
+    const l = accts().login(c.req.param('id'));
+    if (!('apiKey' in l)) throw new HttpError(409, 'API 키 로그인은 Codex 계정만 됩니다');
+    return c.json(await l.apiKey(b.key));
+  });
   app.patch('/api/accounts/:id', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); try { return c.json({ account: accts().rename(c.req.param('id'), b.name) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.delete('/api/accounts/:id', (c) => { localOnly(c); try { accts().remove(c.req.param('id')); return c.json({ ok: true }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/accounts/:id/refresh', async (c) => { await accts().usage(c.req.param('id')).refresh(); return c.json({ accounts: accts().views(usedBy) }); });

@@ -507,20 +507,35 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (l.pausePending) return '팀이 일시정지 중이라 맡기지 않았다.';
     const project = store.getProject(team.project_id);
     const wt = team.worktree_path ?? cfg.home;
-    const bound = this.deps.accounts?.bind(agent.id, role.account);
-    const sessionId = bound?.reset ? null : agent.session_id;
+    // 독립 세션 팀원은 Codex 계정도 쓸 수 있다
+    const bound = this.deps.accounts?.bind(agent.id, role.account, true);
+    if (bound?.changed) store.addDecision(teamId, 'engine', 'account', `${role.name} 계정 → ${bound.account.name}${bound.reset ? ' · 대화 기록을 못 찾아 새 세션' : ' · 같은 대화로 이어감'}`);
+    const provider = bound?.account.provider ?? 'claude';
+    let sessionId = bound?.reset ? null : store.getAgent(agent.id)?.session_id ?? null;
     store.addMessage({ team_id: teamId, from_label: 'PM', to_label: role.name, kind: 'handoff', body: instruction });
     const handle = new TurnHandle();
     l.subHandles.add(handle);
     try {
       const env = this.envFor(team, project);
-      const res = await this.deps.runner.runTurn({
+      const turn = (resume: string | null, h: TurnHandle) => this.deps.runner.runTurn({
         agent, team, prompt: instruction, cwd: wt, systemAppend: agent.system_prompt + env.note, allowedTools: [...new Set([...presetTools(role.tools), ...this.grants(teamId)])],
         additionalDirectories: [...(project?.memory_paths ?? []), this.deps.cfg.uploadsDir], writableRoots: [wt, ...env.extraWritable], heavyPatterns: project?.heavy_patterns ?? [], blockedPatterns: env.blocked,
         envMine: env.envMine, approval: env.approval,
-        resume: sessionId, env: bound?.env, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
+        resume, env: bound?.env, priority: team.priority, standing: team.lifetime === 'standing', label: role.name,
         maxBudgetUsd: team.budget_usd ? Math.max(0.5, team.budget_usd - (store.getTeam(teamId)?.cost_usd ?? 0)) : null,
-      }, handle);
+        provider, toolPreset: role.tools,
+      }, h);
+      let res = await turn(sessionId, handle);
+      // Codex 는 이어 쓸 대화를 못 찾으면 실패한다 → 한 번만 새 대화로 다시
+      if (provider === 'codex' && sessionId && !res.ok && !res.interrupted && !handle.pauseRequested) {
+        store.addDecision(teamId, 'engine', 'account', `${role.name}(Codex) 이전 대화를 이어 쓰지 못해 새 대화로 다시 실행: ${truncate(res.error ?? '', 120)}`);
+        store.updateAgent(agent.id, { session_id: null });
+        sessionId = null;
+        const h2 = new TurnHandle();
+        l.subHandles.delete(handle); l.subHandles.add(h2);
+        res = await turn(null, h2);
+        l.subHandles.delete(h2); l.subHandles.add(handle);
+      }
       if (res.sessionId) store.updateAgent(agent.id, { session_id: res.sessionId });
       if (res.contextTokens > store.getSettings().contextLimitTokens) store.updateAgent(agent.id, { session_id: null });
       const text = res.ok ? res.text || '(내용 없음)' : `실패: ${res.error ?? res.subtype}${res.text ? `\n${res.text}` : ''}`;

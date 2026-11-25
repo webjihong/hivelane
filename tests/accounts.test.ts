@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AccountManager } from '../server/accounts.ts';
+import { codexSandbox, codexUsageView, findDeviceCode } from '../server/agents/codex.ts';
 import type { TurnSpec } from '../server/agents/runner.ts';
 import { NullNotifier } from '../server/notify/index.ts';
 import { HeavySlots } from '../server/po/slots.ts';
@@ -22,7 +23,7 @@ function setup() {
 describe('AI 계정 여러 개', () => {
   it('기본 계정은 늘 있고 지울 수 없다 · 추가하면 계정마다 로그인 폴더 · 지우면 폴더도 지우고 기본으로 돌아간다', () => {
     const { store, accounts } = setup();
-    expect(accounts.list().map((a) => a.id)).toEqual(['default']);
+    expect(accounts.list().map((a) => a.id)).toEqual(['default', 'codex']);
     expect(accounts.env(accounts.resolve(null))).toEqual({});
     expect(() => accounts.remove('default')).toThrow();
 
@@ -126,5 +127,61 @@ describe('사용량 기준 계정 전환', () => {
     set('default', 5);
     expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
     expect(accounts.switchView().overrides).toEqual([]);
+  });
+});
+
+describe('Codex 계정·실행', () => {
+  it('Codex 계정은 CODEX_HOME 폴더 · PM·총괄에서 고르면 기본(Claude) 계정 · 독립 세션 팀원만 Codex', () => {
+    const { store, accounts } = setup();
+    const cx = accounts.add('회사 Codex', 'codex');
+    expect(cx.configDir!.endsWith('/codex')).toBe(true);
+    expect(accounts.env(cx)).toEqual({ CODEX_HOME: cx.configDir });
+    expect(accounts.resolve(cx.id).id).toBe('default');
+    expect(accounts.resolve(cx.id, true).id).toBe(cx.id);
+    store.saveSettings({ defaultAccount: 'codex' });
+    expect(accounts.resolve(null).id).toBe('default'); // 기본 계정은 Claude 만
+    expect(() => accounts.remove('codex')).toThrow();
+    expect(() => accounts.switchNow('default', cx.id)).toThrow();
+  });
+
+  it('사용량·로그인 출력 해석 · 역할 도구 → 샌드박스', () => {
+    const v = codexUsageView({ rateLimits: { primary: { usedPercent: 42, windowDurationMins: 300, resetsAt: 1795589246 }, secondary: { usedPercent: 7, windowDurationMins: 10080, resetsAt: null }, planType: 'plus' } }, { account: { type: 'chatgpt', email: 'a@b.c', planType: 'plus' } }, null);
+    expect(v.windows.map((w) => `${w.label}:${w.pct}`)).toEqual(['5시간:42', '주간:7']);
+    expect(v.login).toMatchObject({ loggedIn: true, email: 'a@b.c' });
+    expect(codexUsageView(undefined, { account: null }, null).login?.loggedIn).toBe(false);
+    expect(findDeviceCode('2. Enter this one-time code \u001b[90m(expires)\u001b[0m\n   \u001b[94m1BNE-8VFV2\u001b[0m')).toBe('1BNE-8VFV2');
+    expect(codexSandbox('read')).toBe('read-only');
+    expect(codexSandbox('verify')).toBe('workspace-write');
+    expect(codexSandbox('write')).toBe('workspace-write');
+  });
+
+  it('PM 이 맡긴 독립 세션 팀원은 Codex 로 돈다(샌드박스용 역할 도구 전달) · 이어 쓰기 실패하면 새 대화로 한 번 다시', async () => {
+    const { cfg, store, accounts } = setup();
+    const specs: TurnSpec[] = [];
+    let devCalls = 0;
+    const runner: TurnRunner = { async runTurn(spec) {
+      specs.push(spec);
+      const base = { ok: true, subtype: 'success', text: '대기', costUsd: 0, sessionId: 's', interrupted: false, error: null, contextTokens: 10 };
+      if (spec.agent.role_key === 'pm') {
+        const t = spec.toolsImpl as { delegate(k: string, i: string): Promise<string>; report(s: string, x: string): string };
+        await t.delegate('dev', '고쳐');
+        await t.delegate('dev', '또 고쳐');
+        return base;
+      }
+      devCalls++;
+      if (devCalls === 2) return { ...base, ok: false, subtype: 'exception', error: 'thread not found', sessionId: spec.resume ?? null };
+      return { ...base, text: '고침', sessionId: 'cx-thread' };
+    } };
+    const orch = new Orchestrator({ cfg, store, runner, slots: new HeavySlots(2), notifier: new NullNotifier(), accounts });
+    const st = orch.createStanding({ name: '혼합', project_id: null, template_id: null, brief: 'b', roles: [
+      { key: 'pm', name: 'PM', model: 'opus', mode: 'session', tools: 'pm', account: 'codex' },
+      { key: 'dev', name: '개발', model: 'opus', mode: 'session', tools: 'write', account: 'codex' },
+    ] });
+    orch.message(st.id, '확인해', 'user');
+    await until(() => specs.length >= 4);
+    await orch.idle();
+    expect(specs[0]!.provider ?? 'claude').toBe('claude'); // PM 은 Codex 를 골라도 Claude
+    const dev = specs.filter((s) => s.agent.role_key === 'dev');
+    expect(dev.map((s) => `${s.provider}:${s.toolPreset}:${s.resume ?? '-'}`)).toEqual(['codex:write:-', 'codex:write:cx-thread', 'codex:write:-']);
   });
 });
