@@ -193,27 +193,34 @@ async function openAt(hash) {
   win.show(); win.focus();
 }
 
-/** 메뉴 막대 글자: 확인할 것 「● 2」, 일하는 중이면 도는 표시 「◐」 */
-const SPIN = ['◐', '◓', '◑', '◒'];
-let spin = 0;
+/**
+ * 메뉴 막대 아이콘(벌집): 일하는 중이면 꿀이 차는 칸이 돌고, 확인할 것이 있으면 오른쪽 위에 점, 꺼지면 흐린 점선.
+ * 모든 그림이 같은 크기라 바꿔 끼워도 옆 아이콘이 움직이지 않는다(글자를 붙이면 폭이 바뀌어 흔들린다).
+ */
+const ICON = {};
+function icon(name) {
+  if (!ICON[name]) { const img = nativeImage.createFromPath(join(HERE, 'tray', `${name}Template.png`)); img.setTemplateImage(true); ICON[name] = img; }
+  return ICON[name];
+}
+let frame = 0;
+let shown = '';
 let last = { up: false, sum: null };
-function paintTitle() {
+function paintIcon() {
   if (!tray) return;
   const { up, sum } = last;
-  if (!up) { tray.setTitle(' 꺼짐'); return; }
-  const parts = [];
-  if (sum?.need) parts.push(`● ${sum.need}`);
-  if (sum && (sum.working.length || sum.poBusy)) { spin = (spin + 1) % SPIN.length; parts.push(SPIN[spin]); }
-  tray.setTitle(parts.length ? ` ${parts.join('  ')}` : '');
+  const need = !!sum?.need;
+  const working = !!sum && (sum.working.length > 0 || sum.poBusy);
+  const name = !up ? 'off' : working ? `${need ? 'workattn' : 'work'}${frame = (frame + 1) % 3}` : need ? 'attn' : 'idle';
+  if (name !== shown) { tray.setImage(icon(name)); shown = name; }
 }
-setInterval(paintTitle, 400);
+setInterval(paintIcon, 500);
 
 async function refreshTray() {
   if (!tray) return;
   const up = await healthy();
   const sum = up ? await teamSummary() : null;
   last = { up, sum };
-  paintTitle();
+  paintIcon();
   const owner = serviceOwner();
   const workingN = sum ? sum.working.length + (sum.poBusy ? 1 : 0) : 0;
   tray.setToolTip(!up ? 'Hivelane · 서버 멈춤' : `Hivelane · ${sum?.need ? `확인할 것 ${sum.need}개 · ` : ''}${workingN ? `일하는 중 ${workingN}` : '쉬는 중'}`);
@@ -283,9 +290,7 @@ app.on('window-all-closed', () => { /* 메뉴 막대에 남는다 */ });
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]));
-  const icon = nativeImage.createFromPath(join(HERE, 'trayTemplate.png')); // @2x 는 자동으로 고른다
-  icon.setTemplateImage(true);
-  tray = new Tray(icon);
+  tray = new Tray(icon('idle')); // @2x 는 자동으로 고른다
   // 앱을 다른 곳으로 옮겼으면(경로가 바뀜) 이 앱이 등록한 서비스를 새 경로로 다시 등록한다
   if (existsSync(PLIST) && serviceOwner() === 'other' && readFileSync(PLIST, 'utf8').includes('ELECTRON_RUN_AS_NODE')) await installService();
   await refreshTray();

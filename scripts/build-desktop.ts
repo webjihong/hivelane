@@ -41,7 +41,8 @@ run('npm', ['run', 'build:server']);
 console.log('2) 앱 폴더 준비(desktop/.stage)');
 rmSync(STAGE, { recursive: true, force: true });
 mkdirSync(STAGE, { recursive: true });
-for (const f of ['main.mjs', 'preload.cjs', 'setup.html', 'setup.js', 'trayTemplate.png', 'trayTemplate@2x.png']) cpSync(join(ROOT, 'desktop', f), join(STAGE, f));
+for (const f of ['main.mjs', 'preload.cjs', 'setup.html', 'setup.js']) cpSync(join(ROOT, 'desktop', f), join(STAGE, f));
+cpSync(join(ROOT, 'desktop', 'tray'), join(STAGE, 'tray'), { recursive: true });
 cpSync(join(ROOT, 'dist', 'web'), join(STAGE, 'dist', 'web'), { recursive: true });
 cpSync(join(ROOT, 'dist', 'server'), join(STAGE, 'dist', 'server'), { recursive: true });
 writeFileSync(join(STAGE, 'package.json'), JSON.stringify({

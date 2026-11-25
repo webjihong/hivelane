@@ -26,6 +26,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
 
   return (
     <Section title="AI 계정" sub="팀·총괄이 쓸 Claude 계정을 여러 개 두고 역할마다 고릅니다">
+      <div className="acc-list">
       <div className="panel stack-s">
         <div className="set-row">
           <label htmlFor="acc-default">기본 계정<small>템플릿 역할에 계정을 고르지 않으면 이 계정을 씁니다</small></label>
@@ -65,8 +66,16 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
           </div>
         </div>
       )}
+      </div>
     </Section>
   );
+}
+
+/** 초기화 시각: 「11/26 (수) 06:00」 처럼 짧게 한 줄로 */
+function resetText(iso: string): string {
+  const d = new Date(iso);
+  const wd = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()} (${wd}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function pctTone(p: number): string { return p >= 90 ? 'var(--crit)' : p >= 70 ? 'var(--warn)' : 'var(--good)'; }
@@ -116,7 +125,7 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
               <span style={{ width: 72 }}>{w.label}</span>
               <span style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--line)', overflow: 'hidden' }}><span style={{ display: 'block', width: `${w.pct}%`, height: '100%', background: pctTone(w.pct) }} /></span>
               <span className="mono" style={{ width: 40, textAlign: 'right' }}>{Math.round(w.pct)}%</span>
-              <span className="muted" style={{ width: 110 }}>{w.resets_at ? `${new Date(w.resets_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 초기화` : ''}</span>
+              <span className="muted acc-reset">{w.resets_at ? `${resetText(w.resets_at)} 초기화` : ''}</span>
             </div>
           ))}
         </div>
