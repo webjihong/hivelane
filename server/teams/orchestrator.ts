@@ -314,7 +314,8 @@ export class Orchestrator {
       let pm = store.agentByRole(teamId, 'pm')!;
       // 역할에 고른 AI 계정 — 바뀌었으면 세션을 끊고 요약으로 새로 시작
       const bound = this.deps.accounts?.bind(pm.id, this.rolesOf(teamId).find((r) => r.key === 'pm')?.account);
-      if (bound?.reset) { pm = store.agentByRole(teamId, 'pm')!; store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 새 세션으로 이어감`); }
+      if (bound?.reset) { pm = store.agentByRole(teamId, 'pm')!; store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 대화 기록을 찾지 못해 요약으로 새 세션`); }
+      else if (bound?.changed) store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 같은 대화로 이어감`);
       const handle = new TurnHandle();
       l.handle = handle;
       const resume = pm.session_id;

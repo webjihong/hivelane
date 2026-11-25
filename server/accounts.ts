@@ -4,7 +4,8 @@
  * - 역할(템플릿)·총괄마다 계정을 고르고, 안 고르면 설정의 기본 계정을 쓴다.
  * - 계정별 로그인(claude auth login 대행)과 플랜 사용량을 따로 본다.
  */
-import { mkdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AccountSwitchView, AiAccount, AiAccountView, AuthLoginView, Provider, UsageView } from '../shared/types.ts';
 import type { AppConfig } from './config.ts';
@@ -122,21 +123,61 @@ export class AccountManager {
     }));
   }
 
+  /** 이 계정의 claude 설정 폴더(대화 기록은 그 안 projects 폴더에 작업 폴더별로 세션 파일(.jsonl)로 있음) */
+  configDirOf(acc: AiAccount): string {
+    return acc.configDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+  }
+
   /**
-   * 에이전트가 이번 턴에 쓸 계정을 정하고, 지난번과 계정이 바뀌었으면 이어 쓰던 대화(세션)를 끊는다.
-   * 대화 기록은 계정의 로그인 폴더 안에 있어서 다른 계정으로는 이어 쓸 수 없다(대신 요약을 넘겨받아 새로 시작).
-   * 돌려주는 값: 쓸 환경 변수와 세션을 끊었는지.
+   * 대화 기록(세션 파일)을 다른 계정 폴더로 복사한다. 대화 기록은 이 맥의 파일일 뿐이라
+   * 새 계정 폴더에 같은 파일이 있으면 그 계정으로 이어 쓸 수 있다(터미널에서 /login 으로 계정만 바꿀 때와 같음).
+   * 찾지 못하면 false.
    */
-  bind(agentId: string, accountId: string | null | undefined): { env: Record<string, string>; account: AiAccount; reset: boolean } {
+  carrySession(sessionId: string, from: AiAccount, to: AiAccount): boolean {
+    if (!/^[\w-]+$/.test(sessionId)) return false;
+    const src = join(this.configDirOf(from), 'projects');
+    const dst = join(this.configDirOf(to), 'projects');
+    if (src === dst) return true;
+    let dirs: string[] = [];
+    try { dirs = readdirSync(src); } catch { return false; }
+    for (const d of dirs) {
+      const f = join(src, d, `${sessionId}.jsonl`);
+      if (!existsSync(f)) continue;
+      try {
+        mkdirSync(join(dst, d), { recursive: true });
+        cpSync(f, join(dst, d, `${sessionId}.jsonl`));
+        // 서브에이전트 기록 등 세션 폴더가 있으면 같이
+        const sub = join(src, d, sessionId);
+        if (existsSync(sub)) cpSync(sub, join(dst, d, sessionId), { recursive: true });
+        return true;
+      } catch { return false; }
+    }
+    return false;
+  }
+
+  /**
+   * 에이전트가 이번 턴에 쓸 계정을 정한다. 지난번과 계정이 바뀌었으면 대화 기록 파일을 새 계정 폴더로 복사해 같은 세션을 이어 쓴다.
+   * 기록 파일을 못 찾았을 때만 세션을 끊는다(그때는 요약을 넘겨받아 새로 시작).
+   * 돌려주는 값: 쓸 환경 변수, 세션을 끊었는지(reset), 계정이 바뀌었는지(changed).
+   */
+  bind(agentId: string, accountId: string | null | undefined): { env: Record<string, string>; account: AiAccount; reset: boolean; changed: boolean } {
     const acc = this.effective(this.resolve(accountId));
     const key = `acct:${agentId}`;
     const prev = this.deps.store.getKv<string | null>(key, null);
     // 처음 보는 에이전트: 예전 세션은 모두 기본 로그인(~/.claude)으로 만든 것
     const was = prev ?? 'default';
-    const reset = was !== acc.id;
+    const changed = was !== acc.id;
+    let reset = false;
+    if (changed) {
+      const sid = this.deps.store.getAgent(agentId)?.session_id ?? null;
+      const from = this.get(was) ?? { ...DEFAULT_ACCOUNT, id: was };
+      if (sid && !this.carrySession(sid, from, acc)) {
+        reset = true;
+        this.deps.store.updateAgent(agentId, { session_id: null });
+      }
+    }
     if (prev !== acc.id) this.deps.store.setKv(key, acc.id);
-    if (reset) this.deps.store.updateAgent(agentId, { session_id: null });
-    return { env: this.env(acc), account: acc, reset };
+    return { env: this.env(acc), account: acc, reset, changed };
   }
 
   /* ---------- 사용량 기준 전환 ---------- */

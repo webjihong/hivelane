@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AccountManager } from '../server/accounts.ts';
 import type { TurnSpec } from '../server/agents/runner.ts';
@@ -38,7 +39,7 @@ describe('AI 계정 여러 개', () => {
     expect(accounts.resolve(work.id).id).toBe('default');
   });
 
-  it('에이전트 계정이 바뀌면 세션을 끊는다(예전 세션은 기본 계정 것으로 본다)', () => {
+  it('계정이 바뀌었는데 대화 기록 파일을 못 찾으면 세션을 끊는다(예전 세션은 기본 계정 것으로 본다)', () => {
     const { store, accounts } = setup();
     const a = store.insertAgent({ team_id: null, role_key: 'po', role_name: 'PO', model: 'opus', run_mode: 'session', system_prompt: '', allowed_tools: [] });
     store.updateAgent(a.id, { session_id: 's-old' });
@@ -50,6 +51,25 @@ describe('AI 계정 여러 개', () => {
     expect(r.env.CLAUDE_CONFIG_DIR).toBe(work.configDir);
     expect(store.getAgent(a.id)?.session_id ?? null).toBeNull();
     expect(accounts.bind(a.id, work.id).reset).toBe(false);
+  });
+
+  it('계정이 바뀌어도 대화 기록 파일을 새 계정 폴더로 복사해 같은 세션을 이어 쓴다', () => {
+    const { store, accounts } = setup();
+    const home = accounts.add('개인');
+    const work = accounts.add('회사');
+    const a = store.insertAgent({ team_id: null, role_key: 'po', role_name: 'PO', model: 'opus', run_mode: 'session', system_prompt: '', allowed_tools: [] });
+    expect(accounts.bind(a.id, home.id).changed).toBe(true); // 세션 없음 → 끊을 것도 없음
+    store.updateAgent(a.id, { session_id: 'sess-1' });
+    const proj = join(home.configDir!, 'projects', '-work-dir');
+    mkdirSync(join(proj, 'sess-1', 'subagents'), { recursive: true });
+    writeFileSync(join(proj, 'sess-1.jsonl'), '{"type":"user"}\n');
+    writeFileSync(join(proj, 'sess-1', 'subagents', 'x.jsonl'), '{}\n');
+    const r = accounts.bind(a.id, work.id);
+    expect(r).toMatchObject({ reset: false, changed: true });
+    expect(store.getAgent(a.id)?.session_id).toBe('sess-1');
+    expect(readFileSync(join(work.configDir!, 'projects', '-work-dir', 'sess-1.jsonl'), 'utf8')).toContain('user');
+    expect(existsSync(join(work.configDir!, 'projects', '-work-dir', 'sess-1', 'subagents', 'x.jsonl'))).toBe(true);
+    expect(accounts.bind(a.id, work.id).changed).toBe(false);
   });
 
   it('팀 PM 은 역할에 고른 계정의 로그인 폴더로 돈다', async () => {

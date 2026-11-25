@@ -57,7 +57,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
           </span>
         </div>
         <div className="set-row">
-          <label htmlFor="acc-po">총괄 계정<small>총괄이 쓸 계정 · 바꾸면 총괄은 요약을 넘겨받아 새 대화로 이어 갑니다</small></label>
+          <label htmlFor="acc-po">총괄 계정<small>총괄이 쓸 계정 · 바꿔도 하던 대화를 그대로 이어 갑니다</small></label>
           <span className="set-v">
             <select id="acc-po" disabled={ro || !list} value={snap.settings.poAccount ?? ''} onChange={(e) => void save({ poAccount: e.target.value || null }, '총괄 계정을 바꿨습니다')}>
               <option value="">기본 계정 따라감</option>
@@ -218,7 +218,7 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
         </div>
       ))}
       {cfg.mode !== 'off' && list.length < 2 && <div className="small muted">바꿔 쓸 계정이 없습니다. 「+ 계정 추가」 탭에서 계정을 하나 더 추가하세요.</div>}
-      <div className="small muted">계정을 바꾸면 그 팀원은 요약을 넘겨받아 새 대화로 이어 갑니다(대화 기록은 계정마다 따로 있음).</div>
+      <div className="small muted">계정을 바꿔도 그 팀원은 하던 대화를 그대로 이어 갑니다(대화 기록 파일을 새 계정 쪽으로 옮겨 씀). 기록 파일을 찾지 못할 때만 요약을 넘겨받아 새 대화로 시작합니다.</div>
     </div>
   );
 }
