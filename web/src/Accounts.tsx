@@ -51,7 +51,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
       {cur === 'set' && <>
       <div className="panel stack-s">
         <div className="set-row">
-          <label htmlFor="acc-default">기본 계정<small>템플릿 역할에 계정을 고르지 않으면 이 계정을 씁니다</small></label>
+          <label htmlFor="acc-default">기본 계정<small>템플릿 역할에 계정을 고르지 않으면 평소 이 계정을 씁니다 · 사용량 기준 전환이 켜져 있으면 이 계정이 기준을 넘는 동안만 다음 계정을 빌려 씁니다</small></label>
           <span className="set-v">
             <select id="acc-default" disabled={ro || !list} value={snap.settings.defaultAccount} onChange={(e) => void save({ defaultAccount: e.target.value }, '기본 계정을 바꿨습니다')}>
               {(list ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -59,7 +59,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
           </span>
         </div>
         <div className="set-row">
-          <label htmlFor="acc-po">총괄 계정<small>총괄이 쓸 계정 · 바꿔도 하던 대화를 그대로 이어 갑니다</small></label>
+          <label htmlFor="acc-po">총괄 계정<small>총괄이 평소 쓸 계정 · 사용량 기준 전환도 같은 규칙 · 바꿔도 하던 대화를 그대로 이어 갑니다</small></label>
           <span className="set-v">
             <select id="acc-po" disabled={ro || !list} value={snap.settings.poAccount ?? ''} onChange={(e) => void save({ poAccount: e.target.value || null }, '총괄 계정을 바꿨습니다')}>
               <option value="">기본 계정 따라감</option>
@@ -76,17 +76,23 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
 
       {cur === 'add' && !ro && (
         <div className="panel stack-s">
-          <div className="set-row">
-            <label>종류<small>Codex 는 PM 이 일을 맡기는 「독립 세션」 팀원에게만 고를 수 있습니다(읽기·검증·쓰기 모두, 작업 폴더 샌드박스·네트워크 끔)</small></label>
-            <span className="set-v row">
-              <label className="row small" style={{ gap: 4 }}><input type="radio" name="acc-prov" checked={prov === 'claude'} onChange={() => setProv('claude')} />Claude</label>
-              <label className="row small" style={{ gap: 4 }}><input type="radio" name="acc-prov" checked={prov === 'codex'} onChange={() => setProv('codex')} />Codex (ChatGPT·OpenAI)</label>
-            </span>
+          <div className="acc-kind-h">어떤 계정을 추가할까요?</div>
+          <div className="acc-kinds" role="radiogroup" aria-label="계정 종류">
+            {([
+              ['claude', 'Claude', 'Anthropic · claude.ai 로그인', '총괄·PM·모든 팀원이 쓸 수 있습니다'],
+              ['codex', 'Codex', 'OpenAI · ChatGPT 로그인 또는 API 키', 'PM 이 일을 맡기는 「독립 세션」 팀원만 · 작업 폴더 샌드박스·네트워크 끔'],
+            ] as const).map(([v, title, sub, note]) => (
+              <button key={v} type="button" role="radio" aria-checked={prov === v} className={`acc-kind${prov === v ? ' on' : ''}`} onClick={() => setProv(v)}>
+                <span className="acc-kind-t">{title}</span>
+                <span className="acc-kind-s">{sub}</span>
+                <span className="acc-kind-n">{note}</span>
+              </button>
+            ))}
           </div>
           <div className="set-row">
-            <label htmlFor="acc-new">{prov === 'codex' ? 'Codex' : 'Claude'} 계정 추가<small>회사·개인처럼 다른 계정을 하나 더 연결합니다. 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
+            <label htmlFor="acc-new">이름<small>회사·개인처럼 구분할 이름 · 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
             <span className="set-v row">
-              <input id="acc-new" value={name} maxLength={40} placeholder="예: 회사 계정" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
+              <input id="acc-new" value={name} maxLength={40} placeholder={prov === 'codex' ? '예: 회사 Codex' : '예: 회사 계정'} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
               <button className="btn primary" type="button" disabled={!name.trim()} onClick={() => void add()}>추가</button>
             </span>
           </div>
@@ -206,7 +212,7 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
   return (
     <div className="panel stack-s">
       <div className="set-row">
-        <label htmlFor="acc-sw">사용량 기준 전환<small>쓰던 계정의 사용량(5시간·주간 중 큰 값)이 기준을 넘으면 같은 종류(Claude끼리·Codex끼리)의 다음 계정으로 바꿔 씁니다. 한도가 초기화돼 기준 아래로 내려오면 원래 계정으로 돌아옵니다</small></label>
+        <label htmlFor="acc-sw">사용량 기준 전환<small>위에서 고른 계정(기본·총괄·역할별 계정)은 그대로 두고, 그 계정의 사용량(5시간·주간 중 큰 값)이 기준을 넘는 동안만 같은 종류(Claude끼리·Codex끼리)의 다음 계정으로 바꿔 씁니다. 한도가 초기화돼 기준 아래로 내려오면 원래 계정으로 돌아옵니다. 바꿔 쓰는 중이면 아래에 「돌려쓰는 중」으로 보입니다</small></label>
         <span className="set-v row">
           <select id="acc-sw" disabled={ro} value={cfg.mode} onChange={(e) => void save({ mode: e.target.value as typeof cfg.mode }, '전환 방식을 바꿨습니다')}>
             <option value="off">끄기</option>

@@ -97,36 +97,56 @@ describe('사용량 기준 계정 전환', () => {
       return { get last() { const p = peaks.get(key); return { available: true, plan: 'max', windows: p === undefined ? [] : [{ key: 'five_hour', label: '5시간', pct: p, resets_at: null }], takenAt: null, error: null, login: { loggedIn: true, method: 'claude.ai', expiresAt: null, email: null } }; }, refresh: async () => {} } as unknown as PlanUsage;
     };
     const accounts = new AccountManager({ cfg, store, onChange: () => {}, makeUsage: mk, notify: (t) => notes.push(t) });
+    const a = accounts.add('주 계정');
     const b = accounts.add('예비');
-    for (const a of accounts.list()) accounts.usage(a.id); // 사용량 객체 준비
-    const set = (id: string, p: number) => peaks.set(id === 'default' ? 'default' : accounts.get(id)!.configDir!, p);
-    return { store, accounts, b, set, notes };
+    store.saveSettings({ defaultAccount: a.id });
+    for (const x of accounts.list()) accounts.usage(x.id); // 사용량 객체 준비
+    const set = (id: string, p: number) => peaks.set(accounts.get(id)!.configDir!, p);
+    return { store, accounts, a, b, set, notes };
   }
 
   it('끄기: 기준을 넘어도 그대로 · 알림: 한 번만 알리고 그대로, 「전환」을 누르면 바꿔 씀', () => {
-    const { store, accounts, b, set, notes } = withUsage();
-    set('default', 95); set(b.id, 10);
-    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    const { store, accounts, a, b, set, notes } = withUsage();
+    set(a.id, 95); set(b.id, 10);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(a.id);
     store.saveSettings({ accountSwitch: { mode: 'ask', thresholdPct: 90, order: [] } });
-    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(a.id);
     accounts.effective(accounts.resolve(null));
     expect(notes.filter((n) => n.includes('권합니다'))).toHaveLength(1);
-    expect(accounts.switchView().suggestions).toEqual([{ from: 'default', to: b.id, pct: 95 }]);
-    accounts.switchNow('default');
+    expect(accounts.switchView().suggestions).toEqual([{ from: a.id, to: b.id, pct: 95 }]);
+    accounts.switchNow(a.id);
     expect(accounts.effective(accounts.resolve(null)).id).toBe(b.id);
   });
 
   it('자동: 기준을 넘으면 다음 계정으로, 원래 계정이 기준 아래로 내려오면 저절로 돌아옴 · 바꿀 계정이 없으면 그대로', () => {
-    const { store, accounts, b, set } = withUsage();
+    const { store, accounts, a, b, set } = withUsage();
     store.saveSettings({ accountSwitch: { mode: 'auto', thresholdPct: 80, order: [] } });
-    set('default', 85); set(b.id, 90);
-    expect(accounts.effective(accounts.resolve(null)).id).toBe('default'); // 예비도 기준 넘음
+    set(a.id, 85); set(b.id, 90);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(a.id); // 예비도 기준 넘음
     set(b.id, 20);
     expect(accounts.effective(accounts.resolve(null)).id).toBe(b.id);
-    expect(accounts.switchView().overrides[0]).toMatchObject({ from: 'default', to: b.id, auto: true });
-    set('default', 5);
-    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    expect(accounts.switchView().overrides[0]).toMatchObject({ from: a.id, to: b.id, auto: true });
+    set(a.id, 5);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(a.id);
     expect(accounts.switchView().overrides).toEqual([]);
+  });
+});
+
+describe('이 맥 기본 계정 숨기기', () => {
+  it('내 Claude 계정이 있으면 숨기고 그 계정을 기본으로 · 내 계정이 모두 로그인 안 됨으로 확인되면 다시 보임', () => {
+    const { cfg, store } = testEnv();
+    const logged = new Map<string, boolean>();
+    const mk = (env: Record<string, string>) => ({ get last() { return { available: false, plan: null, windows: [], takenAt: null, error: null, login: { loggedIn: logged.get(env.CLAUDE_CONFIG_DIR ?? 'default') ?? true, method: null, expiresAt: null, email: null } }; }, refresh: async () => {} }) as unknown as PlanUsage;
+    const accounts = new AccountManager({ cfg, store, onChange: () => {}, makeUsage: mk });
+    expect(accounts.list().map((a) => a.id)).toContain('default');
+    const mine = accounts.add('내 계정');
+    accounts.usage(mine.id);
+    expect(accounts.list().map((a) => a.id)).not.toContain('default');
+    expect(accounts.resolve(null).id).toBe(mine.id);
+    expect(accounts.resolve('default').id).toBe(mine.id); // 예전에 이 맥 기본을 고른 역할도 내 계정으로
+    expect(accounts.views(() => []).find((v) => v.isDefault)?.id).toBe(mine.id);
+    logged.set(mine.configDir!, false);
+    expect(accounts.list().map((a) => a.id)).toContain('default');
   });
 });
 

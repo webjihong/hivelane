@@ -34,9 +34,22 @@ export class AccountManager {
     if (deps.defaultLogin) this.logins.set('default', deps.defaultLogin);
   }
 
+  private saved(): AiAccount[] {
+    return this.deps.store.getKv<AiAccount[]>(KEY, []).filter((a) => !BUILTIN.has(a.id));
+  }
+
+  /**
+   * 내 Claude 계정(직접 추가한 것)이 있으면 「이 맥 기본 계정」(~/.claude, 터미널 Claude Code 와 같은 로그인)은 숨긴다.
+   * 터미널에서 /login 으로 계정을 바꾸면 팀 계정까지 바뀌는 일을 막는다. 추가한 계정이 모두 로그인 안 된 것으로 확인되면 다시 보인다.
+   */
+  hidesDefault(): boolean {
+    const mine = this.saved().filter((a) => a.provider === 'claude');
+    return mine.some((a) => this.usages.get(a.id)?.last?.login?.loggedIn !== false);
+  }
+
+  /** 쓸 수 있는 계정 목록(숨긴 이 맥 기본 계정 제외) */
   list(): AiAccount[] {
-    const saved = this.deps.store.getKv<AiAccount[]>(KEY, []).filter((a) => !BUILTIN.has(a.id));
-    return [DEFAULT_ACCOUNT, DEFAULT_CODEX, ...saved];
+    return [...(this.hidesDefault() ? [] : [DEFAULT_ACCOUNT]), DEFAULT_CODEX, ...this.saved()];
   }
 
   get(id: string | null | undefined): AiAccount | null {
@@ -50,7 +63,8 @@ export class AccountManager {
   resolve(id: string | null | undefined, allowCodex = false): AiAccount {
     const ok = (a: AiAccount | null) => (a && (allowCodex || a.provider === 'claude') ? a : null);
     const def = this.get(this.deps.store.getSettings().defaultAccount);
-    return ok(this.get(id)) ?? (def?.provider === 'claude' ? def : null) ?? DEFAULT_ACCOUNT;
+    const firstMine = this.list().find((a) => a.provider === 'claude') ?? DEFAULT_ACCOUNT;
+    return ok(this.get(id)) ?? (def?.provider === 'claude' ? def : null) ?? firstMine;
   }
 
   /** 이 계정으로 claude 를 띄울 때 붙일 환경 변수 */
@@ -64,14 +78,14 @@ export class AccountManager {
     const configDir = join(this.deps.cfg.home, 'accounts', id, provider);
     mkdirSync(configDir, { recursive: true });
     const acc: AiAccount = { id, provider, name: name.trim() || '새 계정', configDir, created_at: nowIso() };
-    this.save([...this.list().filter((a) => !BUILTIN.has(a.id)), acc]);
+    this.save([...this.saved(), acc]);
     this.deps.onChange();
     return acc;
   }
 
   rename(id: string, name: string): AiAccount {
     if (BUILTIN.has(id)) throw new Error('이 맥 기본 계정은 이름을 바꿀 수 없습니다');
-    const list = this.list().filter((a) => !BUILTIN.has(a.id));
+    const list = this.saved();
     const acc = list.find((a) => a.id === id);
     if (!acc) throw new Error('없는 계정입니다');
     acc.name = name.trim() || acc.name;
@@ -88,7 +102,7 @@ export class AccountManager {
     this.logins.get(id)?.cancel('계정을 지웠습니다');
     this.logins.delete(id);
     this.usages.delete(id);
-    this.save(this.list().filter((a) => !BUILTIN.has(a.id) && a.id !== id));
+    this.save(this.saved().filter((a) => a.id !== id));
     const s = this.deps.store.getSettings();
     if (s.defaultAccount === id) this.deps.store.saveSettings({ defaultAccount: 'default' });
     if (s.poAccount === id) this.deps.store.saveSettings({ poAccount: null });
@@ -99,7 +113,7 @@ export class AccountManager {
   usage(id: string): UsageSource {
     let u = this.usages.get(id);
     if (!u) {
-      const acc = this.get(id) ?? this.resolve(id);
+      const acc = this.get(id) ?? (id === 'default' ? DEFAULT_ACCOUNT : this.resolve(id));
       u = this.deps.makeUsage ? this.deps.makeUsage(this.env(acc), acc.provider)
         : acc.provider === 'codex' ? new CodexUsage({ env: this.env(acc), onChange: () => this.deps.onChange() })
         : new PlanUsage({ env: this.env(acc), onChange: () => this.deps.onChange() });
