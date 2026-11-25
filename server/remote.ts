@@ -40,7 +40,8 @@ export function parseServe(j: ServeJson, remotePort: number): { serving: boolean
 }
 
 /** 앱 번들 CLI 는 TERM 이 없으면(launchd) CLI 가 아니라 GUI 로 뜨려다 실패한다 */
-const cliEnv = (): NodeJS.ProcessEnv => ({ ...process.env, TERM: process.env.TERM || 'xterm-256color' });
+/** 앱용 Tailscale 실행 파일은 터미널이 아니면 GUI 로 뜨려 한다 → CLI 로 돌게 표시한다 */
+const cliEnv = (): NodeJS.ProcessEnv => ({ ...process.env, TERM: process.env.TERM || 'xterm-256color', TAILSCALE_BE_CLI: '1' });
 
 let cache: { at: number; v: TailscaleState } | null = null;
 

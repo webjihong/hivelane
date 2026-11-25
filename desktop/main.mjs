@@ -5,7 +5,7 @@
  * - 이미 다른 방식(개발용 npm run service:install)으로 서버가 떠 있으면 그 서버에 붙기만 한다.
  * - 서버가 없으면 처음 실행 안내 화면(setup.html)에서 점검 → 설치 → 시작.
  */
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog } from 'electron';
+import { app, BrowserWindow, Menu, Tray, clipboard, ipcMain, nativeImage, shell, dialog } from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
@@ -32,7 +32,10 @@ const HERE = import.meta.dirname;
 let quitting = false;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const sh = (cmd, args) => { const r = spawnSync(cmd, args, { encoding: 'utf8' }); return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() }; };
+const sh = (cmd, args, env) => { const r = spawnSync(cmd, args, { encoding: 'utf8', env: env ? { ...process.env, ...env } : process.env }); return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() }; };
+/** Finder 에서 연 앱에는 터미널이 없어서, 앱용 Tailscale 실행 파일이 CLI 대신 GUI 로 뜨려 한다 → CLI 로 돌게 표시 */
+const ts = (bin, args) => sh(bin, args, { TAILSCALE_BE_CLI: '1', TERM: process.env.TERM || 'xterm-256color' });
+const tsUrl = (out) => out.match(/https:\/\/[^\s)]+/)?.[0] ?? null;
 
 async function healthy() {
   try { const r = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(1500) }); return r.ok; } catch { return false; }
@@ -123,15 +126,15 @@ function tailscaleBin() {
 async function status() {
   const clt = sh('xcode-select', ['-p']).ok;
   const git = clt ? sh('git', ['--version']) : { ok: false, out: '' };
-  const ts = tailscaleBin();
-  const serve = ts ? sh(ts, ['serve', 'status']) : { ok: false, out: '' };
+  const tbin = tailscaleBin();
+  const serve = tbin ? ts(tbin, ['serve', 'status']) : { ok: false, out: '' };
   return {
     version: app.getVersion(),
     data: DATA,
     server: await healthy(),
     service: serviceOwner(),
     git: git.ok ? git.out.split('\n')[0] : null,
-    tailscale: ts ? (serve.out.match(/https:\/\/\S+/)?.[0] ?? 'installed') : null,
+    tailscale: tbin ? (tsUrl(serve.out) ?? 'installed') : null,
   };
 }
 
@@ -190,10 +193,12 @@ async function refreshTray() {
 
 /** tailscale serve 로 내 tailnet 안에서만 열리는 주소를 만들고 알려 준다 */
 function serveTailscale() {
-  const ts = tailscaleBin();
-  if (!ts) return { ok: false, error: 'Tailscale 이 설치되어 있지 않습니다.' };
-  const r = sh(ts, ['serve', '--bg', String(REMOTE_PORT)]);
-  return { ok: r.ok, error: r.ok ? undefined : r.out, url: sh(ts, ['serve', 'status']).out.match(/https:\/\/\S+/)?.[0] };
+  const bin = tailscaleBin();
+  if (!bin) return { ok: false, error: 'Tailscale 이 설치되어 있지 않습니다.' };
+  const r = ts(bin, ['serve', '--bg', String(REMOTE_PORT)]);
+  const url = tsUrl(ts(bin, ['serve', 'status']).out);
+  if (!r.ok || !url) return { ok: false, error: r.out || 'Tailscale 이 로그인되어 있는지, 관리 화면에서 HTTPS 인증서(HTTPS Certificates)가 켜져 있는지 확인하세요.' };
+  return { ok: true, url };
 }
 async function connectPhone() {
   const r = serveTailscale();
@@ -202,8 +207,10 @@ async function connectPhone() {
     if (b.response === 0) void shell.openExternal('https://tailscale.com/download');
     return;
   }
-  await dialog.showMessageBox({ type: 'info', buttons: ['확인'], message: '휴대폰에서 이 주소를 여세요', detail: `${r.url ?? '(tailscale serve status 로 확인)'}\n\n처음 열면 거절됩니다. 그다음 맥의 관제실 화면 › 설정 › 원격 접속에서 그 계정을 「주인으로 등록」하세요.` });
+  const b = await dialog.showMessageBox({ type: 'info', buttons: ['주소 복사', '닫기'], defaultId: 0, cancelId: 1, message: '휴대폰에서 이 주소를 여세요', detail: `${r.url}\n\n처음 열면 거절됩니다. 그다음 맥의 관제실 화면 › 설정 › 원격 접속에서 그 계정을 「주인으로 등록」하세요.` });
+  if (b.response === 0) clipboard.writeText(r.url);
 }
+
 
 /* ---------- IPC (setup.html) ---------- */
 
@@ -212,6 +219,7 @@ ipcMain.handle('hl:install', async () => { const r = await installService(); awa
 ipcMain.handle('hl:tailscale', () => serveTailscale());
 ipcMain.handle('hl:open', () => showApp());
 ipcMain.handle('hl:focus', () => { if (!win) createWindow(); win?.show(); win?.focus(); app.focus({ steal: true }); });
+ipcMain.handle('hl:copy', (_e, text) => { clipboard.writeText(String(text)); return true; });
 ipcMain.handle('hl:link', (_e, url) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); });
 ipcMain.handle('hl:installCLT', () => { sh('xcode-select', ['--install']); return true; });
 

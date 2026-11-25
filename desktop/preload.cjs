@@ -8,6 +8,7 @@ if (location.protocol === 'file:') {
     tailscale: () => ipcRenderer.invoke('hl:tailscale'),
     open: () => ipcRenderer.invoke('hl:open'),
     link: (url) => ipcRenderer.invoke('hl:link', url),
+    copy: (text) => ipcRenderer.invoke('hl:copy', text),
     installCLT: () => ipcRenderer.invoke('hl:installCLT'),
   });
 }

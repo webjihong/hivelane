@@ -24,7 +24,7 @@ async function refresh() {
     }));
   } else {
     $('d-ts').textContent = `휴대폰에서: ${s.tailscale}`;
-    $('b-ts').replaceChildren();
+    $('b-ts').replaceChildren(button('주소 복사', async () => { await window.hl.copy(s.tailscale); $('msg').className = 'msg'; $('msg').textContent = '주소를 복사했습니다. 휴대폰으로 보내 여세요.'; }));
   }
   // 서버
   mark('s-server', s.server ? 'ok' : 'need');
