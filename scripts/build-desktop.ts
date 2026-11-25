@@ -73,7 +73,7 @@ await build({
     directories: { app: STAGE, output: OUT },
     files: ['**/*'],
     mac: {
-      icon: join(ROOT, 'web', 'public', 'icon-512.png'),
+      icon: join(ROOT, 'web', 'public', 'icon-mac-512.png'), // 여백 있는 맥용(scripts/make-app-icons.mjs)
       category: 'public.app-category.developer-tools',
       identity: null, // 유료 서명 없음(받는 사람은 설정 › 개인정보 보호 및 보안 › 「그래도 열기」) — 대신 아래 afterPack 에서 무료 임시 서명
       extendInfo: { LSUIElement: false },

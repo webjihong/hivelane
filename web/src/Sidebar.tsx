@@ -234,7 +234,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
     <nav className="sb" aria-label="채널">
       <div className="sb-top">
         <a href="#now" className="sb-logo" aria-label="Hivelane 지금 볼 것">
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z" fill="none" stroke="#7FC8C8" strokeWidth="2" /><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z" fill="#F2B33D" /></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><g strokeLinejoin="round" strokeWidth="1.6"><polygon points="7.6,4.2 10.9,6.1 10.9,9.9 7.6,11.8 4.3,9.9 4.3,6.1" fill="none" stroke="#7FC8C8" /><polygon points="16.4,4.2 19.7,6.1 19.7,9.9 16.4,11.8 13.1,9.9 13.1,6.1" fill="none" stroke="#7FC8C8" /><polygon points="12,11.8 15.3,13.7 15.3,17.5 12,19.4 8.7,17.5 8.7,13.7" fill="#F2B33D" stroke="#F2B33D" /></g></svg>
           Hivelane
         </a>
         {snap.access === 'remote' && <span className="sb-remote">원격</span>}
