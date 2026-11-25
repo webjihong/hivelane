@@ -91,12 +91,13 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
               </button>
             ))}
           </div>
-          <div className="set-row">
-            <label htmlFor="acc-new">이름<small>회사·개인처럼 구분할 이름 · 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요</small></label>
-            <span className="set-v row">
-              <input id="acc-new" value={name} maxLength={40} placeholder={prov === 'codex' ? '예: 회사 Codex' : '예: 회사 계정'} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
-              <button className="btn primary" type="button" disabled={!name.trim()} onClick={() => void add()}>추가</button>
-            </span>
+          <div className="acc-name">
+            <label htmlFor="acc-new" className="acc-kind-h">이름</label>
+            <div className="acc-name-row">
+              <input id="acc-new" className="acc-name-in" value={name} maxLength={40} placeholder={prov === 'codex' ? '예: 회사 Codex' : '예: 회사 계정'} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void add(); }} />
+              <button className="btn primary acc-name-btn" type="button" disabled={!name.trim()} onClick={() => void add()}>{prov === 'codex' ? 'Codex' : 'Claude'} 계정 추가</button>
+            </div>
+            <small className="muted">회사·개인처럼 구분할 이름입니다. 추가하면 그 계정 탭으로 옮겨 가니 「로그인」을 누르세요.</small>
           </div>
           <div className="small muted">
             계정마다 로그인 정보를 따로 둡니다(<code className="mono">~/.hivelane/accounts/…</code>). 역할에 쓸 계정은 <a href="#templates">팀 템플릿</a>에서 고릅니다.

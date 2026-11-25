@@ -772,3 +772,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .acc-how-now { border-top: 1px solid var(--line); padding-top: 8px; }
 .acc-how-now ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
 .acc-lent { color: var(--warn); }
+/* AI 계정 추가: 이름 */
+.acc-name { display: flex; flex-direction: column; gap: 6px; }
+.acc-name-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+.acc-name-in { flex: 1; min-width: 200px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
+.acc-name-in:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.acc-name-btn { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
