@@ -53,7 +53,15 @@ document.addEventListener('visibilitychange', () => void checkBuild());
 setInterval(() => void checkBuild(), 60_000);
 void checkBuild();
 
-// 화면 진단: 열고 3초 뒤 한 번, 가로로 넘치는 요소가 있으면 무엇인지 서버 기록에 남긴다(기기별 화면 문제 추적용)
+// 화면 진단: 열고 3초 뒤·화면을 옮긴 뒤, 가로로 넘칠 때만 무엇이 넘치는지 서버 기록에 남긴다(기기별 화면 문제 추적용)
+/** 가로로 밀어 보는 칸(설정 탭·표 등) 안이면 넘침이 아니다 */
+function inHScroll(el: HTMLElement): boolean {
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const ox = getComputedStyle(n).overflowX;
+    if (ox === 'auto' || ox === 'scroll') return n.scrollWidth > n.clientWidth;
+  }
+  return false;
+}
 function reportLayout(): void {
   const vw = innerWidth;
   const main = document.querySelector<HTMLElement>('.app-main');
@@ -61,12 +69,14 @@ function reportLayout(): void {
   for (const el of document.querySelectorAll<HTMLElement>('.app-main *')) {
     const r = el.getBoundingClientRect();
     const p = el.parentElement?.getBoundingClientRect();
-    if (r.width > 0 && r.right > vw + 1 && (!p || p.right <= vw + 1)) over.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 60)} 폭 ${Math.round(r.width)} 글자 ${getComputedStyle(el).fontSize} · ${(el.textContent ?? '').slice(0, 80)}`);
+    if (r.width > 0 && r.right > vw + 1 && (!p || p.right <= vw + 1) && !inHScroll(el)) over.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 60)} 폭 ${Math.round(r.width)} 글자 ${getComputedStyle(el).fontSize} · ${(el.textContent ?? '').slice(0, 80)}`);
     if (over.length >= 15) break;
   }
+  const doc = document.documentElement.scrollWidth;
+  if (!over.length && doc <= vw + 1) return; // 넘침이 없으면 보내지 않는다
   void fetch('/api/client/layout', { method: 'POST', headers: { 'content-type': 'application/json', 'x-hivelane': '1' }, body: JSON.stringify({
     ua: navigator.userAgent, standalone: matchMedia('(display-mode: standalone)').matches, build: myBuild, vw, dpr: devicePixelRatio,
-    fontPx: parseFloat(getComputedStyle(document.documentElement).fontSize), doc: document.documentElement.scrollWidth,
+    fontPx: parseFloat(getComputedStyle(document.documentElement).fontSize), doc,
     main: main?.scrollWidth ?? null, chat: document.querySelector<HTMLElement>('.po-chan')?.offsetWidth ?? null, over,
   }) }).catch(() => {});
 }

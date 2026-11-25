@@ -70,14 +70,6 @@ export function createApp(d: AppDeps): Hono<Env> {
    */
   const LOCAL_HOSTS = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, '127.0.0.1:4311', 'localhost:4311']);
   const hostOk = (host: string, remote: boolean) => (remote ? /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$/i.test(host) : LOCAL_HOSTS.has(host.toLowerCase()));
-  // 기기 추적(임시 진단): 서버가 뜬 뒤 20분 동안 원격 요청을 모두 남긴다. 어떤 기기가 무엇을 요청하는지 가려내기용.
-  const traceUntil = Date.now() + 20 * 60_000;
-  app.use('*', async (c, next) => {
-    await next();
-    if (Date.now() > traceUntil || c.env?.incoming?.socket?.localPort !== cfg.remotePort) return;
-    if (c.req.path === '/api/events' || c.req.path.startsWith('/api/uploads/')) return;
-    httpLog.info(`원격 ${c.req.method} ${c.req.path}${new URL(c.req.url).search} → ${c.res.status} · ${(c.req.header('user-agent') ?? '-').replace(/^Mozilla\/5\.0 /, '').slice(0, 110)}`);
-  });
   app.use('/api/*', async (c, next) => {
     const r = await gate(c, next);
     const res = r instanceof Response ? r : c.res;
@@ -473,7 +465,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json({ known: store.pushSubs().some((s) => s.endpoint === b.endpoint) });
   });
 
-  // 화면 진단: 기기에서 화면이 가로로 넘치면 무엇이 넘치는지 서버 기록(logs/server.log)에 남긴다
+  // 화면 진단: 기기에서 화면이 가로로 넘치면 무엇이 넘치는지 서버 기록(logs/server.log)에 남긴다(넘칠 때만 온다)
   app.post('/api/client/layout', async (c) => {
     const b = await body(c, z.object({ ua: z.string().max(400), standalone: z.boolean(), build: z.string().max(200).nullable(), vw: z.number(), dpr: z.number(), fontPx: z.number(), doc: z.number(), main: z.number().nullable(), chat: z.number().nullable(), over: z.array(z.string().max(300)).max(15) }));
     log.info(`화면 진단 · ${b.standalone ? '설치 앱' : '브라우저'} · ${b.ua}\n  빌드 ${b.build} · 화면 ${b.vw}px · dpr ${b.dpr} · 기본 글자 ${b.fontPx}px · 문서 ${b.doc} · 본문 ${b.main} · 대화창 ${b.chat}${b.over.length ? `\n  넘침:\n  ${b.over.join('\n  ')}` : ''}`);
@@ -488,11 +480,6 @@ export function createApp(d: AppDeps): Hono<Env> {
     app.use('/*', async (c, next) => {
       await next();
       if (c.req.path.startsWith('/api/')) return;
-      // 화면 파일을 받아 가는 기기 기록(바로가기·설치 앱이 예전 화면을 쓰는지 가려내기용)
-      if (c.req.path === '/' || c.req.path === '/index.html' || c.req.path.endsWith('.css')) {
-        const h = (k: string) => c.req.header(k) ?? '-';
-        log.info(`화면 요청 ${c.req.path}${new URL(c.req.url).search} → ${c.res.status} · 캐시 확인 ${h('if-modified-since') !== '-' || h('if-none-match') !== '-' ? '예' : '아니오'} · 앱 ${h('x-requested-with')} · ${h('sec-fetch-dest')}/${h('sec-fetch-mode')} · ${h('user-agent').slice(0, 140)}`);
-      }
       c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') && c.res.status === 200 ? 'public, max-age=31536000, immutable' : 'no-cache');
     });
     app.use('/*', serveStatic({ root: cfg.webDist, rewriteRequestPath: (p) => p }));
