@@ -3,7 +3,7 @@
  *   npx tsx scripts/service.ts install [--tailscale]   빌드 → launchd 등록·시작 (→ tailscale serve)
  *   npx tsx scripts/service.ts uninstall [--tailscale] launchd 해제 (→ tailscale serve 끄기)
  *   npx tsx scripts/service.ts status                  상태
- *   npx tsx scripts/service.ts restart                 다시 시작
+ *   npx tsx scripts/service.ts restart                 화면 빌드 후 다시 시작
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -176,5 +176,5 @@ const [cmd = 'status', ...rest] = process.argv.slice(2);
 const withTs = rest.includes('--tailscale');
 if (cmd === 'install') await install(withTs);
 else if (cmd === 'uninstall') uninstall(withTs);
-else if (cmd === 'restart') { sh('launchctl', ['kickstart', '-k', `${domain}/${LABEL}`]); console.log((await waitHealthy()) ? '다시 시작 OK' : '응답 없음'); }
+else if (cmd === 'restart') { console.log('화면 빌드'); sh('npm', ['run', 'build'], { quiet: true }); sh('launchctl', ['kickstart', '-k', `${domain}/${LABEL}`]); console.log((await waitHealthy()) ? '다시 시작 OK' : '응답 없음'); }
 else status();
