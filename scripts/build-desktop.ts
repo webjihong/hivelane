@@ -4,16 +4,25 @@
  *  2) desktop/.stage 에 앱 폴더를 따로 만들고 실행용 패키지만 설치한다.
  *     저장소의 node_modules 는 건드리지 않는다(개발 서버가 쓰는 네이티브 모듈을 Electron 용으로 바꾸지 않기 위해).
  *  3) electron-builder 가 .stage 의 네이티브 모듈을 Electron 용으로 다시 빌드하고 서명 없는 DMG(arm64)를 만든다.
- * 결과: dist/desktop/Hivelane-<버전>-arm64.dmg
+ * 결과: (원본 저장소)/dist/desktop/Hivelane-<버전>-arm64.dmg — 팀 작업 폴더(worktree)에서 만들어도 원본 쪽에
  */
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
 const STAGE = join(ROOT, 'desktop', '.stage');
-const OUT = join(ROOT, 'dist', 'desktop');
+/**
+ * 결과 DMG 는 항상 원본 저장소의 dist/desktop 에 둔다.
+ * 팀 작업 폴더(git worktree)에서 만들어도 원본 쪽에 모여야 찾기 쉽고, 작업 폴더를 정리할 때 같이 지워지지 않는다.
+ */
+function mainRepoRoot(): string {
+  const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' });
+  const common = r.status === 0 ? r.stdout.trim() : '';
+  return common.endsWith('/.git') ? dirname(common) : ROOT;
+}
+const OUT = join(mainRepoRoot(), 'dist', 'desktop');
 const require = createRequire(import.meta.url);
 
 function run(cmd: string, args: string[], cwd = ROOT): void {

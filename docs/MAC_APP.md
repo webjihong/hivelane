@@ -173,7 +173,7 @@ npm run dist:mac
 2. `desktop/.stage` 폴더에 앱에 들어갈 것만 따로 모아 설치합니다. 원래 `node_modules` 는 건드리지 않습니다.
 3. 데이터베이스 부품(better-sqlite3)을 앱 안의 Node에 맞게 다시 만들고, DMG를 만듭니다.
 
-끝에 `완료:` 가 보이면 성공입니다. 결과 파일:
+끝에 `완료:` 가 보이면 성공입니다. 결과 파일(소스 코드를 받은 `hivelane` 폴더 안, git worktree 에서 만들어도 원본 폴더 쪽에 생깁니다):
 
 ```
 dist/desktop/Hivelane-<버전>-arm64.dmg
