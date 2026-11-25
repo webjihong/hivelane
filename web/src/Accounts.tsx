@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AiAccountView, AuthLoginView, StateSnapshot } from '../../shared/types.ts';
+import type { AccountSwitchView, AiAccountView, AuthLoginView, StateSnapshot } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { Section } from './ui.tsx';
 
@@ -13,8 +13,9 @@ export function useAccountList(): { id: string; name: string }[] {
 /** 설정 › AI 계정: Claude 계정 여러 개 · 계정별 로그인·사용량 · 기본 계정·총괄 계정 */
 export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean }) {
   const [list, setList] = useState<AiAccountView[] | null>(null);
+  const [sw, setSw] = useState<AccountSwitchView>({ overrides: [], suggestions: [] });
   const [name, setName] = useState('');
-  const load = useCallback(() => api<{ accounts: AiAccountView[] }>('/api/accounts').then((r) => setList(r.accounts)).catch(() => {}), []);
+  const load = useCallback(() => api<{ accounts: AiAccountView[]; switch: AccountSwitchView }>('/api/accounts').then((r) => { setList(r.accounts); setSw(r.switch); }).catch(() => {}), []);
   useEffect(() => { void load(); }, [load, snap.settings.defaultAccount, snap.settings.poAccount]);
   // 로그인 중이면 1초마다, 아니면 30초마다 새로 읽는다
   const waiting = list?.some((a) => a.loginFlow.phase === 'waiting') ?? false;
@@ -44,6 +45,8 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
           </span>
         </div>
       </div>
+
+      <SwitchPanel snap={snap} ro={ro} list={list ?? []} sw={sw} reload={load} />
 
       {(list ?? []).map((a) => <AccountCard key={a.id} a={a} ro={ro} reload={load} onDefault={() => void save({ defaultAccount: a.id }, `${a.name} 을(를) 기본 계정으로 정했습니다`)} />)}
 
@@ -131,6 +134,61 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
       {flow.phase === 'done' && <p className="au-ok small">로그인했습니다.</p>}
       {flow.phase === 'failed' && <p className="crit-t small">로그인이 끝나지 않았습니다: {flow.error}</p>}
       {a.usedBy.length > 0 && <div className="small muted">쓰는 곳: {a.usedBy.join(', ')}</div>}
+    </div>
+  );
+}
+
+const nameOf = (list: AiAccountView[], id: string) => list.find((a) => a.id === id)?.name ?? id;
+
+/** 사용량 기준 전환: 끄기 · 알림 후 한 번 눌러 전환 · 자동 + 기준 % + 바꿀 순서 + 지금 돌려쓰는 것 */
+function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: boolean; list: AiAccountView[]; sw: AccountSwitchView; reload: () => Promise<unknown> }) {
+  const cfg = snap.settings.accountSwitch;
+  const save = (patch: Partial<typeof cfg>, ok: string) => act(async () => { await api('/api/settings', 'PUT', { accountSwitch: patch }); await refreshState(); await reload(); }, ok);
+  const order = [...cfg.order.filter((id) => list.some((a) => a.id === id)), ...list.map((a) => a.id).filter((id) => !cfg.order.includes(id))];
+  const move = (i: number, d: -1 | 1) => { const o = [...order]; const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j]!, o[i]!]; void save({ order: o }, '순서를 바꿨습니다'); };
+  const switchNow = (from: string, to?: string) => act(async () => { await api('/api/accounts/switch', 'POST', { from, to }); await reload(); }, '바꿔 씁니다');
+  const revert = (from: string) => act(async () => { await api('/api/accounts/revert', 'POST', { from }); await reload(); }, '원래 계정으로 돌렸습니다');
+  return (
+    <div className="panel stack-s">
+      <div className="set-row">
+        <label htmlFor="acc-sw">사용량 기준 전환<small>쓰던 계정의 사용량(5시간·주간 중 큰 값)이 기준을 넘으면 다음 계정으로 바꿔 씁니다. 한도가 초기화돼 기준 아래로 내려오면 원래 계정으로 돌아옵니다</small></label>
+        <span className="set-v row">
+          <select id="acc-sw" disabled={ro} value={cfg.mode} onChange={(e) => void save({ mode: e.target.value as typeof cfg.mode }, '전환 방식을 바꿨습니다')}>
+            <option value="off">끄기</option>
+            <option value="ask">알림 후 한 번 눌러 전환</option>
+            <option value="auto">자동 전환</option>
+          </select>
+          <input type="number" min={10} max={100} step={5} disabled={ro || cfg.mode === 'off'} defaultValue={cfg.thresholdPct} key={cfg.thresholdPct} aria-label="기준 %" style={{ width: 64 }}
+            onBlur={(e) => { const v = Math.max(10, Math.min(100, Math.round(Number(e.target.value)))); if (v !== cfg.thresholdPct) void save({ thresholdPct: v }, `기준을 ${v}% 로 바꿨습니다`); }} />
+          <span className="small muted">% 이상</span>
+        </span>
+      </div>
+      {cfg.mode !== 'off' && list.length > 1 && (
+        <div className="set-row">
+          <label>바꿀 순서<small>위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다</small></label>
+          <span className="set-v">
+            <ol style={{ margin: 0, paddingLeft: 18 }}>
+              {order.map((id, i) => <li key={id} className="small">{nameOf(list, id)} {!ro && <><button className="link-btn" type="button" disabled={i === 0} onClick={() => move(i, -1)}>▲</button> <button className="link-btn" type="button" disabled={i === order.length - 1} onClick={() => move(i, 1)}>▼</button></>}</li>)}
+            </ol>
+          </span>
+        </div>
+      )}
+      {sw.overrides.map((o) => (
+        <div key={o.from} className="row small" style={{ gap: 8, alignItems: 'center' }}>
+          <span className="chip">돌려쓰는 중</span>
+          <span><b>{nameOf(list, o.from)}</b> 대신 <b>{nameOf(list, o.to)}</b> 을(를) 씁니다 · {o.auto ? '자동' : '직접'} · {new Date(o.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          <button className="btn ghost" type="button" onClick={() => void revert(o.from)}>원래대로</button>
+        </div>
+      ))}
+      {sw.suggestions.map((g) => (
+        <div key={g.from} className="row small" style={{ gap: 8, alignItems: 'center' }}>
+          <span className="chip" style={{ color: 'var(--warn)' }}>전환 권함</span>
+          <span><b>{nameOf(list, g.from)}</b> 사용량 {Math.round(g.pct)}%</span>
+          <button className="btn primary" type="button" onClick={() => void switchNow(g.from, g.to)}>{nameOf(list, g.to)} 으로 전환</button>
+        </div>
+      ))}
+      {cfg.mode !== 'off' && list.length < 2 && <div className="small muted">바꿔 쓸 계정이 없습니다. 아래에서 계정을 하나 더 추가하세요.</div>}
+      <div className="small muted">계정을 바꾸면 그 팀원은 요약을 넘겨받아 새 대화로 이어 갑니다(대화 기록은 계정마다 따로 있음).</div>
     </div>
   );
 }

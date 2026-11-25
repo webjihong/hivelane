@@ -241,7 +241,9 @@ export function createApp(d: AppDeps): Hono<Env> {
     }
     return out;
   };
-  app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy) }));
+  app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy), switch: accts().switchView() }));
+  app.post('/api/accounts/switch', async (c) => { const b = await body(c, z.object({ from: z.string(), to: z.string().optional() })); try { const t = accts().switchNow(b.from, b.to); return c.json({ to: t }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
+  app.post('/api/accounts/revert', async (c) => { const b = await body(c, z.object({ from: z.string() })); accts().revert(b.from); return c.json({ ok: true }); });
   app.post('/api/accounts', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); const a = accts().add(b.name, 'claude'); return c.json({ account: a }); });
   app.patch('/api/accounts/:id', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); try { return c.json({ account: accts().rename(c.req.param('id'), b.name) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.delete('/api/accounts/:id', (c) => { localOnly(c); try { accts().remove(c.req.param('id')); return c.json({ ok: true }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
@@ -451,6 +453,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     remindUnreadMin: z.number().int().min(0).max(1440), autoCleanDays: z.number().int().min(0).max(365), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
     defaultAccount: z.string().max(40), poAccount: z.string().max(40).nullable(),
+    accountSwitch: z.object({ mode: z.enum(['off', 'ask', 'auto']), thresholdPct: z.number().int().min(10).max(100), order: z.array(z.string().max(40)).max(20) }).partial(),
   }).partial();
   app.put('/api/settings', async (c) => {
     localOnly(c);

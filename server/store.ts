@@ -84,11 +84,11 @@ export class Store {
   getSettings(): Settings {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'app'").get() as { value: string } | undefined;
     const saved = parseJson<Partial<Settings>>(row?.value, {});
-    return { ...DEFAULT_SETTINGS, ...saved, engine: { ...DEFAULT_SETTINGS.engine, ...(saved.engine ?? {}) }, embedding: { ...DEFAULT_SETTINGS.embedding, ...(saved.embedding ?? {}) } };
+    return { ...DEFAULT_SETTINGS, ...saved, engine: { ...DEFAULT_SETTINGS.engine, ...(saved.engine ?? {}) }, embedding: { ...DEFAULT_SETTINGS.embedding, ...(saved.embedding ?? {}) }, accountSwitch: { ...DEFAULT_SETTINGS.accountSwitch, ...(saved.accountSwitch ?? {}) } };
   }
   saveSettings(patch: Partial<Settings>): Settings {
     const cur = this.getSettings();
-    const next: Settings = { ...cur, ...patch, engine: { ...cur.engine, ...(patch.engine ?? {}) }, embedding: { ...cur.embedding, ...(patch.embedding ?? {}) } };
+    const next: Settings = { ...cur, ...patch, engine: { ...cur.engine, ...(patch.engine ?? {}) }, embedding: { ...cur.embedding, ...(patch.embedding ?? {}) }, accountSwitch: { ...cur.accountSwitch, ...(patch.accountSwitch ?? {}) } };
     this.db.prepare("INSERT INTO settings (key, value) VALUES ('app', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
     bus.changed('settings');
     return next;

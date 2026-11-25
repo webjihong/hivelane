@@ -82,6 +82,8 @@ export interface Settings {
   defaultAccount: string;
   /** 총괄이 쓸 계정 id. null = 기본 계정 */
   poAccount: string | null;
+  /** 계정 사용량이 기준을 넘으면 다음 계정으로: off 끔 · ask 알리고 한 번 눌러 전환 · auto 자동 */
+  accountSwitch: { mode: 'off' | 'ask' | 'auto'; thresholdPct: number; order: string[] };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -97,6 +99,7 @@ export const DEFAULT_SETTINGS: Settings = {
   poModel: 'opus',
   defaultAccount: 'default',
   poAccount: null,
+  accountSwitch: { mode: 'off', thresholdPct: 90, order: [] },
   contextLimitTokens: 150_000,
   ownerLogin: null,
   slackWebhook: null,
@@ -251,7 +254,9 @@ export interface UsageView { available: boolean; plan: string | null; windows: U
 /** AI 계정. claude 는 계정마다 로그인 폴더(CLAUDE_CONFIG_DIR)를 따로 둔다. id 'default' = 이 맥의 기본 로그인(~/.claude) */
 export type Provider = 'claude' | 'codex';
 export interface AiAccount { id: string; provider: Provider; name: string; configDir: string | null; created_at: string }
-export interface AiAccountView extends AiAccount { usage: UsageView | null; loginFlow: AuthLoginView; isDefault: boolean; usedBy: string[] }
+export interface AiAccountView extends AiAccount { usage: UsageView | null; loginFlow: AuthLoginView; isDefault: boolean; usedBy: string[]; /** 가장 많이 쓴 한도 창의 % (없으면 null) */ peakPct: number | null }
+/** 사용량 기준 전환 상태: 지금 다른 계정으로 돌려 쓰는 중인 것 · 전환을 권하는 것 */
+export interface AccountSwitchView { overrides: { from: string; to: string; at: string; auto: boolean }[]; suggestions: { from: string; to: string; pct: number }[] }
 /** claude auth status 요약 */
 export interface LoginInfo { loggedIn: boolean; method: string | null; expiresAt: string | null; email: string | null; error?: string }
 /** 화면에서 띄운 claude auth login 진행 */

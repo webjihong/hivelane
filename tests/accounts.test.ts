@@ -65,3 +65,46 @@ describe('AI 계정 여러 개', () => {
     expect(specs[0]!.env).toEqual({ CLAUDE_CONFIG_DIR: work.configDir });
   });
 });
+
+describe('사용량 기준 계정 전환', () => {
+  function withUsage() {
+    const { cfg, store } = testEnv();
+    const peaks = new Map<string, number>();
+    const notes: string[] = [];
+    const mk = (env: Record<string, string>) => {
+      const key = env.CLAUDE_CONFIG_DIR ?? 'default';
+      return { get last() { const p = peaks.get(key); return { available: true, plan: 'max', windows: p === undefined ? [] : [{ key: 'five_hour', label: '5시간', pct: p, resets_at: null }], takenAt: null, error: null, login: { loggedIn: true, method: 'claude.ai', expiresAt: null, email: null } }; }, refresh: async () => {} } as unknown as PlanUsage;
+    };
+    const accounts = new AccountManager({ cfg, store, onChange: () => {}, makeUsage: mk, notify: (t) => notes.push(t) });
+    const b = accounts.add('예비');
+    for (const a of accounts.list()) accounts.usage(a.id); // 사용량 객체 준비
+    const set = (id: string, p: number) => peaks.set(id === 'default' ? 'default' : accounts.get(id)!.configDir!, p);
+    return { store, accounts, b, set, notes };
+  }
+
+  it('끄기: 기준을 넘어도 그대로 · 알림: 한 번만 알리고 그대로, 「전환」을 누르면 바꿔 씀', () => {
+    const { store, accounts, b, set, notes } = withUsage();
+    set('default', 95); set(b.id, 10);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    store.saveSettings({ accountSwitch: { mode: 'ask', thresholdPct: 90, order: [] } });
+    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    accounts.effective(accounts.resolve(null));
+    expect(notes.filter((n) => n.includes('권합니다'))).toHaveLength(1);
+    expect(accounts.switchView().suggestions).toEqual([{ from: 'default', to: b.id, pct: 95 }]);
+    accounts.switchNow('default');
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(b.id);
+  });
+
+  it('자동: 기준을 넘으면 다음 계정으로, 원래 계정이 기준 아래로 내려오면 저절로 돌아옴 · 바꿀 계정이 없으면 그대로', () => {
+    const { store, accounts, b, set } = withUsage();
+    store.saveSettings({ accountSwitch: { mode: 'auto', thresholdPct: 80, order: [] } });
+    set('default', 85); set(b.id, 90);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe('default'); // 예비도 기준 넘음
+    set(b.id, 20);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe(b.id);
+    expect(accounts.switchView().overrides[0]).toMatchObject({ from: 'default', to: b.id, auto: true });
+    set('default', 5);
+    expect(accounts.effective(accounts.resolve(null)).id).toBe('default');
+    expect(accounts.switchView().overrides).toEqual([]);
+  });
+});

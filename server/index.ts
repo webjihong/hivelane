@@ -37,7 +37,7 @@ void usage.refresh();
 const usageTimer = setInterval(() => void usage.refresh(), 300_000);
 usageTimer.unref();
 const auth = new AuthLogin({ onDone: () => { void usage.refresh(); bus.emitEvent({ type: 'state', reason: 'auth' }); } });
-const accounts = new AccountManager({ cfg, store, defaultUsage: usage, defaultLogin: auth, onChange: () => bus.emitEvent({ type: 'state', reason: 'accounts' }) });
+const accounts = new AccountManager({ cfg, store, defaultUsage: usage, defaultLogin: auth, onChange: () => bus.emitEvent({ type: 'state', reason: 'accounts' }), notify: (title, body) => void notifier.send({ title, body, level: 'warn', url: '/#settings/accounts', tag: 'acct-switch' }) });
 // 기본 계정 말고 추가한 계정들도 5분마다 사용량을 읽는다
 const accountsTimer = setInterval(() => { for (const a of accounts.list()) if (a.id !== 'default') void accounts.usage(a.id).refresh(); }, 300_000);
 accountsTimer.unref();
