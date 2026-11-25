@@ -178,6 +178,7 @@ async function refreshTray() {
     { label: '브라우저로 열기', click: () => void shell.openExternal(BASE) },
     { label: '서버 다시 시작', enabled: owner !== null, click: async () => { await restartService(); await refreshTray(); win?.reload(); } },
     { label: '기록 폴더 열기', click: () => void shell.openPath(LOGS) },
+    { label: '휴대폰 연결(Tailscale)…', click: () => void connectPhone() },
     { type: 'separator' },
     { label: '서버 끄기(상시 실행 해제)', enabled: owner === 'app', click: async () => {
       const r = await dialog.showMessageBox({ type: 'warning', buttons: ['끄기', '취소'], defaultId: 1, message: '서버를 끄면 일하던 팀이 모두 멈추고, 다시 켤 때까지 휴대폰에서도 접속할 수 없습니다.' });
@@ -187,16 +188,28 @@ async function refreshTray() {
   ]));
 }
 
-/* ---------- IPC (setup.html) ---------- */
-
-ipcMain.handle('hl:status', () => status());
-ipcMain.handle('hl:install', async () => { const r = await installService(); await refreshTray(); return r; });
-ipcMain.handle('hl:tailscale', async () => {
+/** tailscale serve 로 내 tailnet 안에서만 열리는 주소를 만들고 알려 준다 */
+function serveTailscale() {
   const ts = tailscaleBin();
   if (!ts) return { ok: false, error: 'Tailscale 이 설치되어 있지 않습니다.' };
   const r = sh(ts, ['serve', '--bg', String(REMOTE_PORT)]);
   return { ok: r.ok, error: r.ok ? undefined : r.out, url: sh(ts, ['serve', 'status']).out.match(/https:\/\/\S+/)?.[0] };
-});
+}
+async function connectPhone() {
+  const r = serveTailscale();
+  if (!r.ok) {
+    const b = await dialog.showMessageBox({ type: 'warning', buttons: ['Tailscale 받기', '닫기'], defaultId: 1, message: '휴대폰 연결을 만들지 못했습니다.', detail: `${r.error ?? ''}\n\n맥과 휴대폰에 Tailscale 을 설치하고 같은 계정으로 로그인한 뒤 다시 누르세요.` });
+    if (b.response === 0) void shell.openExternal('https://tailscale.com/download');
+    return;
+  }
+  await dialog.showMessageBox({ type: 'info', buttons: ['확인'], message: '휴대폰에서 이 주소를 여세요', detail: `${r.url ?? '(tailscale serve status 로 확인)'}\n\n처음 열면 거절됩니다. 그다음 맥의 관제실 화면 › 설정 › 원격 접속에서 그 계정을 「주인으로 등록」하세요.` });
+}
+
+/* ---------- IPC (setup.html) ---------- */
+
+ipcMain.handle('hl:status', () => status());
+ipcMain.handle('hl:install', async () => { const r = await installService(); await refreshTray(); return r; });
+ipcMain.handle('hl:tailscale', () => serveTailscale());
 ipcMain.handle('hl:open', () => showApp());
 ipcMain.handle('hl:link', (_e, url) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); });
 ipcMain.handle('hl:installCLT', () => { sh('xcode-select', ['--install']); return true; });
