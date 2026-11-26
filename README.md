@@ -318,4 +318,6 @@ shared/               서버·화면 공용 타입·도우미
 
 ## 라이선스
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) — 개인 사용·공부·연구·비영리 단체 등 **비상업적 사용은 무료로 자유롭게** 쓰고 고칠 수 있습니다. 회사 업무·유료 서비스·판매 등 **상업적 사용**은 별도 허락이 필요하니 [GitHub 이슈](https://github.com/webjihong/hivelane/issues)로 문의해 주세요.
+
+v1.0.2 까지는 MIT 로 배포됐고, 그 버전들은 MIT 조건이 그대로 적용됩니다.

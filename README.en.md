@@ -320,4 +320,6 @@ shared/               types and helpers shared by server and UI
 
 ## License
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) — free to use and modify for **noncommercial purposes** (personal use, study, research, nonprofits). **Commercial use** (work at a company, paid services, resale) needs a separate license — please ask via [GitHub issues](https://github.com/webjihong/hivelane/issues).
+
+Versions up to v1.0.2 were released under MIT and stay under MIT.
