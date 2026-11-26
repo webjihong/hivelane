@@ -39,6 +39,9 @@ const log = logger('http');
 export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager; backups?: BackupManager }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
+/** 지시·답·총괄 대화 한 번에 보낼 수 있는 글자 수(긴 로그·명세 붙여넣기도 되게) · 상시 지시서 */
+export const MSG_MAX = 100_000;
+const BRIEF_MAX = 20_000;
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional(), account: z.string().max(40).nullable().optional() });
 const priorityZ = z.enum(['urgent', 'normal', 'low']);
 
@@ -344,7 +347,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     if (!f) throw new HttpError(404, st('없는 파일입니다'));
     return c.body(new Uint8Array(f.buf), 200, { 'content-type': f.type, 'cache-control': 'private, max-age=31536000, immutable' });
   });
-  app.post('/api/chat', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); po.say(b.text); return c.json({ ok: true }); });
+  app.post('/api/chat', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(MSG_MAX) })); po.say(b.text); return c.json({ ok: true }); });
 
   /* ---------- PO 가 배운 것 ---------- */
   app.get('/api/knowledge', (c) => c.json(store.listKnowledge()));
@@ -368,8 +371,8 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/teams/:id/resume', async (c) => { team(c.req.param('id')); await orch.resume(c.req.param('id'), 'user', st('사용자가 재개')); return c.json({ ok: true }); });
   app.post('/api/teams/:id/pin', async (c) => { const b = await body(c, z.object({ on: z.boolean() })); team(c.req.param('id')); orch.pin(c.req.param('id'), b.on); return c.json({ ok: true }); });
   app.post('/api/teams/:id/priority', async (c) => { const b = await body(c, z.object({ priority: priorityZ })); team(c.req.param('id')); orch.setPriority(c.req.param('id'), b.priority as Priority); return c.json({ ok: true }); });
-  app.post('/api/teams/:id/answer', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); orch.answer(c.req.param('id'), b.text); return c.json({ ok: true }); });
-  app.post('/api/teams/:id/message', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); return c.json({ result: orch.message(c.req.param('id'), b.text) }); });
+  app.post('/api/teams/:id/answer', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(MSG_MAX) })); team(c.req.param('id')); orch.answer(c.req.param('id'), b.text); return c.json({ ok: true }); });
+  app.post('/api/teams/:id/message', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(MSG_MAX) })); team(c.req.param('id')); return c.json({ result: orch.message(c.req.param('id'), b.text) }); });
   app.patch('/api/teams/:id/env', async (c) => {
     localOnly(c);
     const t = team(c.req.param('id'));
@@ -394,14 +397,14 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 직속 팀 ---------- */
   const standingZ = z.object({
     name: z.string().min(1).max(60), project_id: z.string().nullable().default(null), template_id: z.string().nullable().default('tpl-ops'), roles: z.array(roleZ).optional(),
-    brief: z.string().max(8000).default(''), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).nullable().optional(),
+    brief: z.string().max(BRIEF_MAX).default(''), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).nullable().optional(),
     readable_team_ids: z.array(z.string()).optional(),
   });
   app.post('/api/standing', async (c) => { localOnly(c); const b = await body(c, standingZ); const t = orch.createStanding({ ...b, roles: b.roles as TemplateRole[] | undefined }); return c.json({ team: store.teamView(t) }); });
   // 수정: 보낸 값만 바꾼다(기본값을 채우지 않도록 따로 정의 · roles 는 받지 않음)
   const standingPatchZ = z.object({
     name: z.string().min(1).max(60).optional(), project_id: z.string().nullable().optional(), template_id: z.string().min(1).optional(),
-    brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).nullable().optional(),
+    brief: z.string().max(BRIEF_MAX).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).nullable().optional(),
     readable_team_ids: z.array(z.string()).optional(),
   });
   app.patch('/api/standing/:id', async (c) => { localOnly(c); const b = await body(c, standingPatchZ); await orch.updateStanding(c.req.param('id'), b, '사용자'); return c.json({ ok: true }); });

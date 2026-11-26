@@ -299,7 +299,7 @@ function StandingFields({ f, set, snap, isNew, selfId }: { f: StandingForm; set:
         {!isNew && !f.template_id && <option value="">{t('(지금 구성 유지)')}</option>}
         {snap.templates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
       </select></label>
-      <label className="wide">{t('상시 지시서')}<textarea className="txt area" rows={4} maxLength={8000} value={f.brief} placeholder={t('예: 에러율 2% 넘으면 최근 배포 팀 기록부터 확인하고 보고')} onChange={(e) => set({ ...f, brief: e.target.value })} /></label>
+      <label className="wide">{t('상시 지시서')}<textarea className="txt area" rows={4} maxLength={20000} value={f.brief} placeholder={t('예: 에러율 2% 넘으면 최근 배포 팀 기록부터 확인하고 보고')} onChange={(e) => set({ ...f, brief: e.target.value })} /></label>
       <label className="wide">{t('점검 명령')} <small className="muted">{t('선택 · 종료 코드가 0이 아니면 팀을 깨움')}</small><input className="txt mono" value={f.check_command} maxLength={2000} placeholder={t('예: curl -fsS https://example.com/health')} onChange={(e) => set({ ...f, check_command: e.target.value })} /></label>
       <label>{t('점검 주기(초)')}<input className="num" type="number" min={30} max={86400} value={f.check_interval_sec} onChange={(e) => set({ ...f, check_interval_sec: e.target.value })} /></label>
       <div className="wide">

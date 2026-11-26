@@ -54,6 +54,8 @@ export function ChatInput({ placeholder, label, button = t('보내기'), working
     const v = text.trim();
     if ((!v && !atts.length) || sending || uploading) return;
     const body = [v, ...atts.map((a) => `![${a.name}](${a.url})`)].filter(Boolean).join('\n\n');
+    // 서버 한도(MSG_MAX)를 넘으면 보내기 전에 알려 준다(입력한 글은 그대로 남김)
+    if (body.length > 100_000) { toast(t('글이 너무 깁니다({n}자). 한 번에 10만 자까지 보낼 수 있습니다. 나눠 보내거나 파일로 첨부하세요.', { n: body.length.toLocaleString() }), 'crit'); return; }
     setSending(true);
     const ok = await onSend(body);
     setSending(false);

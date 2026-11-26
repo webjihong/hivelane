@@ -383,12 +383,12 @@ function poMcpServer(impl: PoTools) {
     T('forget', '배운 것을 지운다(사용자가 잊으라고 할 때, 틀린 것으로 확인됐을 때)', { name: z.string() }, async (a) => text(impl.forget(a.name))),
     T('create_standing_team', '직속 팀을 바로 만든다(승인 카드 없음). 사용자가 이번 대화에서 만들라고 했을 때만. 직속 팀은 평소 대기, 지시·점검 이상 때 깨어나며 사용자가 끝내라고 할 때까지 유지된다', {
       name: z.string().min(1).max(60), project: z.string().nullable().describe('프로젝트 id 또는 이름. 없으면 null(모든 프로젝트 읽기)'),
-      template_id: z.string().describe('list_templates 에서. 운영·점검이면 tpl-ops'), brief: z.string().min(1).max(8000).describe('상시 지시서: 맡은 역할·평소 할 일·이상 시 대응·보고 기준'),
+      template_id: z.string().describe('list_templates 에서. 운영·점검이면 tpl-ops'), brief: z.string().min(1).max(20000).describe('상시 지시서: 맡은 역할·평소 할 일·이상 시 대응·보고 기준'),
       roles: z.array(roleSchema).optional().describe('템플릿 역할을 바꿀 때만'),
       check_command: z.string().max(2000).nullable().optional().describe('선택: 주기 점검 쉘 명령(종료 코드≠0 이면 팀을 깨움). 읽기 명령만'), check_interval_sec: z.number().int().min(30).max(86400).optional(),
     }, async (a) => text(impl.createStanding({ ...a, project: a.project ?? null, roles: a.roles as TemplateRole[] | undefined }))),
     T('update_standing_team', '직속 팀의 이름·상시 지시서·점검 명령/주기·프로젝트·템플릿을 바꾼다. 프로젝트·템플릿을 바꾸면 이전 작업 폴더 변경은 패치로 보관되고 팀원 대화가 새로 시작된다(일하는 중이면 거절)', {
-      team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(8000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional(),
+      team_id: z.string(), name: z.string().max(60).optional(), brief: z.string().max(20000).optional(), check_command: z.string().max(2000).nullable().optional(), check_interval_sec: z.number().int().min(30).max(86400).optional(),
       project: z.string().nullable().optional().describe('바꿀 때만: 프로젝트 id 또는 이름. null 이면 프로젝트 없음'), template_id: z.string().optional().describe('바꿀 때만: list_templates 의 템플릿 id'),
     }, async (a) => { const { team_id, ...rest } = a; return text(await impl.updateStanding(team_id, rest)); }),
     T('read_team_patch', 'worktree 를 정리한 팀이 남긴 변경 패치(diff)를 읽는다. path 를 주면 그 파일만. 정리된 팀이 「무엇을 어떻게 바꿨는지」 물을 때', { team_id: z.string(), path: z.string().optional().describe('저장소 기준 파일 경로') }, async (a) => text(impl.readTeamPatch(a.team_id, a.path))),

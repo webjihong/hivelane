@@ -11,4 +11,5 @@ export default {
   'Enter 보내기 · Shift+Enter 줄바꿈': 'Enter to send · Shift+Enter for new line',
   'Esc 진행 취소': 'Esc to cancel',
   '이미지 붙여넣기·끌어놓기': 'Paste or drag images',
+  '글이 너무 깁니다({n}자). 한 번에 10만 자까지 보낼 수 있습니다. 나눠 보내거나 파일로 첨부하세요.': 'Too long ({n} characters). You can send up to 100,000 characters at once. Split it or attach it as a file.',
 } as Record<string, string>;
