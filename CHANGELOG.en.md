@@ -5,7 +5,7 @@
 Versions follow [Semantic Versioning](https://semver.org/): **major.feature.fix** (e.g. 1.2.3).
 The Mac app (DMG) for each version is published on [Releases](https://github.com/webjihong/hivelane/releases).
 
-## 1.1.0 — 2026-11-26
+## 1.0.1 — 2026-11-26
 
 ### Korean and English
 - UI language: Settings › Display › Language (한국어 / English). Saved per device; the first run follows the Mac/browser language. The Mac app's menu bar and first-run setup follow the Mac language.
@@ -15,6 +15,7 @@ The Mac app (DMG) for each version is published on [Releases](https://github.com
 ### Also
 - Team ids in text (tm-…, s-…) are shown as "team name · id" chips that open the team. Notifications write them as "name (id)".
 - The app version is read from package.json and shown in the UI and integrations.
+- "Clean up team": one button for finished, failed, paused, queued or waiting task teams (ends the conversation, saves worktree changes as a patch and deletes the folder while keeping the branch, moves the team to finished teams). Same in team details, the team channel and the finished-teams list; it replaces "Clean up worktree". The Lead does the same when you ask it to close a team (archive_team).
 
 ## 1.0.0 — 2026-11-26
 
