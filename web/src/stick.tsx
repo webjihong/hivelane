@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { t } from './i18n.ts';
 
 /**
  * 대화창 아래 붙이기: 맨 아래를 보고 있으면 내용이 늘 때(새 답·긴 글·이미지 로드·입력칸 높이 변화) 계속 아래로.
@@ -34,5 +35,5 @@ export function useStickToBottom(ref: RefObject<HTMLDivElement | null>, ready = 
 }
 
 export function NewBelow({ show, onClick }: { show: boolean; onClick: () => void }) {
-  return show ? <button type="button" className="new-below" onClick={onClick}>새 메시지 ↓</button> : null;
+  return show ? <button type="button" className="new-below" onClick={onClick}>{t('새 메시지 ↓')}</button> : null;
 }

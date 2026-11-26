@@ -1,5 +1,6 @@
 /** 프로토타입의 그림 조각(로봇 작업자·기어·출하 상자). 모두 SVG 문자열을 만든다 — 사용자 글은 반드시 esc() 를 거친다. */
 import type { Model } from '../../shared/types.ts';
+import { t } from './i18n.ts';
 
 export const esc = (s: unknown): string =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -43,5 +44,5 @@ export function avatar(model: Model, tool: ToolKind, label: string, cls = ''): s
     '탐색': `<rect x="44" y="47" width="13" height="7" rx="2" fill="${c}"/><path d="M57 47l5-3v13l-5-3z" fill="${c}" opacity=".6"/>`,
     '리뷰어': `<circle cx="47" cy="50" r="4" fill="none" stroke="${c}" stroke-width="2"/><circle cx="56" cy="50" r="4" fill="none" stroke="${c}" stroke-width="2"/><path d="M51 50h1" stroke="${c}" stroke-width="2"/>`,
   };
-  return `<svg viewBox="0 0 64 64" class="${esc(cls)}" role="img" aria-label="${esc(`${name} ${label} 로봇`)}">${head}${body}<g class="tool">${tools[tool]}</g></svg>`;
+  return `<svg viewBox="0 0 64 64" class="${esc(cls)}" role="img" aria-label="${esc(t('{model} {label} 로봇', { model: name, label }))}">${head}${body}<g class="tool">${tools[tool]}</g></svg>`;
 }

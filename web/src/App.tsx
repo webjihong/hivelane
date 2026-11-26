@@ -12,6 +12,7 @@ import { Sidebar } from './Sidebar.tsx';
 import { TeamChannel } from './TeamChannel.tsx';
 import { Templates } from './Templates.tsx';
 import { api, conn, openAgent, route, snapshot, toasts, useBox, type Route } from './store.ts';
+import { t } from './i18n.ts';
 
 const MOBILE = '(max-width: 760px)';
 function useMobile(): boolean {
@@ -24,7 +25,7 @@ function Toasts() {
   const list = useBox(toasts);
   return (
     <div className="toasts" role="status" aria-live="polite">
-      {list.map((t) => <div key={t.id} className={`toast ${t.tone}`} onClick={() => toasts.set((l) => l.filter((x) => x.id !== t.id))}>{t.text}</div>)}
+      {list.map((ts) => <div key={ts.id} className={`toast ${ts.tone}`} onClick={() => toasts.set((l) => l.filter((x) => x.id !== ts.id))}>{ts.text}</div>)}
     </div>
   );
 }
@@ -36,25 +37,25 @@ function BottomNav({ snap, r }: { snap: StateSnapshot; r: Route }) {
   const runningScripts = snap.scripts.filter((s) => s.running_run_id).length;
   const openPrs = snap.prs.filter((p) => p.state === 'OPEN').length;
   return (
-    <nav className="bnav b4" aria-label="화면">
-      <a href="#list" className={chatOn ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>대화{need + news > 0 && <span className="badge">{need + news}</span>}</a>
+    <nav className="bnav b4" aria-label={t('화면')}>
+      <a href="#list" className={chatOn ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>{t('대화')}{need + news > 0 && <span className="badge">{need + news}</span>}</a>
       <a href="#prs" className={r.name === 'prs' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4" /></svg>PR{openPrs > 0 && <span className="badge dim">{openPrs}</span>}</a>
-      <a href="#scripts" className={r.name === 'scripts' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12 15h5" /></svg>스크립트{runningScripts > 0 && <span className="badge dot" />}</a>
-      <a href="#settings" className={r.name === 'settings' || r.name === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>설정</a>
+      <a href="#scripts" className={r.name === 'scripts' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12 15h5" /></svg>{t('스크립트')}{runningScripts > 0 && <span className="badge dot" />}</a>
+      <a href="#settings" className={r.name === 'settings' || r.name === 'templates' ? 'on' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>{t('설정')}</a>
     </nav>
   );
 }
 
 const SET_TABS: [string, string, string][] = [
-  ['display', '화면', '#settings/display'], ['engine', '총괄·엔진', '#settings'], ['accounts', 'AI 계정', '#settings/accounts'], ['projects', '프로젝트', '#settings/projects'], ['standing', '직속 팀', '#settings/standing'],
-  ['templates', '팀 템플릿', '#templates'], ['notify', '알림', '#settings/notify'], ['remote', '원격 접속', '#settings/remote'], ['search', '검색', '#settings/search'], ['storage', '저장 공간', '#settings/storage'], ['backup', '백업', '#settings/backup'],
+  ['display', t('화면'), '#settings/display'], ['engine', t('총괄·엔진'), '#settings'], ['accounts', t('AI 계정'), '#settings/accounts'], ['projects', t('프로젝트@목록'), '#settings/projects'], ['standing', t('직속 팀@목록'), '#settings/standing'],
+  ['templates', t('팀 템플릿'), '#templates'], ['notify', t('알림'), '#settings/notify'], ['remote', t('원격 접속'), '#settings/remote'], ['search', t('검색'), '#settings/search'], ['storage', t('저장 공간'), '#settings/storage'], ['backup', t('백업'), '#settings/backup'],
 ];
 /** 설정: 왼쪽 탭(휴대폰은 위쪽 가로) + 구역 하나 */
 function SettingsLayout({ cur, children }: { cur: string; children: ReactElement }) {
   return (
     <div className="set-wrap">
-      <nav className="set-nav" aria-label="설정 구역">
-        <div className="set-nav-h">설정</div>
+      <nav className="set-nav" aria-label={t('설정 구역')}>
+        <div className="set-nav-h">{t('설정')}</div>
         {SET_TABS.map(([k, l, href]) => <a key={k} href={href} className={cur === k ? 'on' : ''} aria-current={cur === k ? 'page' : undefined}>{l}</a>)}
       </nav>
       <div className="set-body">{children}</div>
@@ -77,20 +78,20 @@ export function App() {
     try { device = localStorage.getItem('hl.device') ?? ''; if (!device) { device = `d-${Math.random().toString(36).slice(2, 10)}`; localStorage.setItem('hl.device', device); } } catch { device = 'd-nostore'; }
     const tell = () => { void api('/api/presence', 'POST', { device, view: document.visibilityState === 'visible' && document.hasFocus() ? view : null }).catch(() => {}); };
     tell();
-    const t = setInterval(tell, 25_000);
+    const iv = setInterval(tell, 25_000);
     document.addEventListener('visibilitychange', tell);
     addEventListener('focus', tell); addEventListener('blur', tell);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tell); removeEventListener('focus', tell); removeEventListener('blur', tell); };
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', tell); removeEventListener('focus', tell); removeEventListener('blur', tell); };
   }, [view]);
   // 읽지 않은 수: 탭 제목·앱 아이콘 배지
-  const unreadTotal = snap ? snap.poUnread + snap.teams.reduce((a, t) => a + (t.state === 'archived' ? 0 : t.unread), 0) : 0;
+  const unreadTotal = snap ? snap.poUnread + snap.teams.reduce((a, tm) => a + (tm.state === 'archived' ? 0 : tm.unread), 0) : 0;
   useEffect(() => {
     document.title = unreadTotal ? `(${unreadTotal}) Hivelane` : 'Hivelane';
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
     try { void (unreadTotal ? nav.setAppBadge?.(unreadTotal) : nav.clearAppBadge?.())?.catch(() => {}); } catch { /* 지원 안 함 */ }
   }, [unreadTotal]);
 
-  if (!snap) return <div className="boot muted">{c === 'down' ? '서버에 연결하지 못했습니다 · 다시 시도 중' : '불러오는 중…'}</div>;
+  if (!snap) return <div className="boot muted">{c === 'down' ? t('서버에 연결하지 못했습니다 · 다시 시도 중') : t('불러오는 중…')}</div>;
 
   // 휴대폰: 첫 화면은 채널 목록. 데스크톱: 첫 화면은 「지금 볼 것」
   const showList = mobile && (r.name === 'home' || r.name === 'list');
@@ -108,7 +109,7 @@ export function App() {
     <>
       <div className={`app${mobile ? ' m' : ''}${showList ? ' m-list' : ''}`}>
         {(!mobile || showList) && <Sidebar snap={snap} />}
-        {!showList && <main className="app-main">{mobile && r.name !== 'po' && r.name !== 'team' && <a href="#list" className="m-back">← 목록</a>}{main}</main>}
+        {!showList && <main className="app-main">{mobile && r.name !== 'po' && r.name !== 'team' && <a href="#list" className="m-back">{t('← 목록')}</a>}{main}</main>}
       </div>
       {mobile && <BottomNav snap={snap} r={r} />}
       {agent && <AgentDrawer key={agent} id={agent} snap={snap} />}

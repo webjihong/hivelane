@@ -1,6 +1,7 @@
 /** 화면 상태: 스냅샷·대화·연결·라우트·토스트. useSyncExternalStore 로 구독한다. SSE 로 서버 변경을 받는다. */
 import { useSyncExternalStore } from 'react';
 import type { ChatView, ResourceView, StateSnapshot, UsageView } from '../../shared/types.ts';
+import { t } from './i18n.ts';
 
 /* ---------- 작은 스토어 ---------- */
 export interface Box<T> { get(): T; set(v: T | ((p: T) => T)): void; subscribe(fn: () => void): () => void }
@@ -23,7 +24,7 @@ function errorText(j: unknown, status: number): string {
     const extra = Array.isArray(detail) ? ` (${detail.map(String).join(', ')})` : '';
     return `${String(e)}${extra}`;
   }
-  return `요청 실패 (HTTP ${status})`;
+  return t('요청 실패 (HTTP {status})', { status });
 }
 
 export async function api<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', body?: unknown): Promise<T> {
@@ -37,7 +38,7 @@ export async function api<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'PAT
       body: write ? JSON.stringify(body ?? {}) : undefined,
     });
   } catch {
-    throw new Error('서버에 연결할 수 없습니다');
+    throw new Error(t('서버에 연결할 수 없습니다'));
   }
   const j: unknown = await r.json().catch(() => null);
   if (!r.ok) throw new Error(errorText(j, r.status));

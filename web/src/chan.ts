@@ -1,4 +1,5 @@
 import type { StateSnapshot, TeamView } from '../../shared/types.ts';
+import { t } from './i18n.ts';
 
 /** 채널 상태 점: 일하는 중 · 내 결정 · 멈춤 · 대기열 · 대기 */
 export type Dot = 'run' | 'ask' | 'pause' | 'queue' | 'idle';
@@ -13,17 +14,17 @@ export function dotOf(t: TeamView): Dot {
   if (t.state === 'queued') return 'queue';
   return 'idle';
 }
-export const DOT_LABEL: Record<Dot, string> = { run: '일하는 중', ask: '내 결정·확인 필요', pause: '일시정지', queue: '대기열', idle: '대기' };
-const STAGE = ['기획', '구현', '검사', '보고'];
+export const DOT_LABEL: Record<Dot, string> = { run: t('일하는 중'), ask: t('내 결정·확인 필요'), pause: t('일시정지'), queue: t('대기열'), idle: t('대기') };
+const STAGE = [t('기획'), t('구현'), t('검사'), t('보고')];
 
 /** 채널 이름 오른쪽에 붙는 짧은 상태 글 */
-export function sideNote(t: TeamView, _now: number): { text: string; cls: string } | null {
-  if (asks(t) || t.state === 'waiting_human') return { text: t.question?.options.includes('승인') ? '승인' : '결정', cls: 'b-ask' };
-  if (t.state === 'failed') return { text: '실패', cls: 'b-ask' };
-  if (t.state === 'down' || t.state === 'reviving') return { text: t.state === 'down' ? '장애' : '복구 중', cls: 'b-ask' };
-  if (t.state === 'running') return { text: t.lifetime === 'standing' ? '일하는 중' : `${STAGE[Math.min(t.stage, 3)]} ${Math.min(t.stage, 3) + 1}/4`, cls: 't-run' };
-  if (t.state === 'paused') return { text: t.pause_kind?.startsWith('engine') ? '멈춤 · 자동 재개 대기' : '멈춤', cls: 't-pause' };
-  if (t.state === 'queued') return { text: '대기열', cls: 't-muted' };
+export function sideNote(tm: TeamView, _now: number): { text: string; cls: string } | null {
+  if (asks(tm) || tm.state === 'waiting_human') return { text: tm.question?.options.includes('승인') ? t('승인') : t('결정'), cls: 'b-ask' };
+  if (tm.state === 'failed') return { text: t('실패'), cls: 'b-ask' };
+  if (tm.state === 'down' || tm.state === 'reviving') return { text: tm.state === 'down' ? t('장애') : t('복구 중'), cls: 'b-ask' };
+  if (tm.state === 'running') return { text: tm.lifetime === 'standing' ? t('일하는 중') : `${STAGE[Math.min(tm.stage, 3)]} ${Math.min(tm.stage, 3) + 1}/4`, cls: 't-run' };
+  if (tm.state === 'paused') return { text: tm.pause_kind?.startsWith('engine') ? t('멈춤 · 자동 재개 대기') : t('멈춤'), cls: 't-pause' };
+  if (tm.state === 'queued') return { text: t('대기열'), cls: 't-muted' };
   return null;
 }
 

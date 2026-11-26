@@ -40,13 +40,16 @@ export function enDict(): Dict { return Object.assign({}, ...Object.values(modul
 
 const fill = (s: string, vars?: Record<string, string | number>) => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s);
 
+/** 같은 한국어가 화면마다 다른 뜻이면 키에 문맥을 붙인다: t('저장소@백업') → 한국어는 「저장소」, 영어는 그 키의 번역 */
+const bare = (ko: string) => { const i = ko.indexOf('@'); return i > 0 ? ko.slice(0, i) : ko; };
+
 export function t(ko: string, vars?: Record<string, string | number>): string {
-  return fill(lang === 'en' ? EN[ko] ?? ko : ko, vars);
+  return fill(lang === 'en' ? EN[ko] ?? bare(ko) : bare(ko), vars);
 }
 
 /** 문장 안에 JSX 를 끼운다: tn('{a} 를 누르세요', { a: <b>저장</b> }) */
 export function tn(ko: string, vars: Record<string, ReactNode>): ReactNode[] {
-  const s = lang === 'en' ? EN[ko] ?? ko : ko;
+  const s = lang === 'en' ? EN[ko] ?? bare(ko) : bare(ko);
   return s.split(/(\{\w+\})/).map((part, i) => {
     const m = part.match(/^\{(\w+)\}$/);
     return createElement(Fragment, { key: i }, m && m[1]! in vars ? vars[m[1]!] : part);

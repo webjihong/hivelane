@@ -3,6 +3,8 @@
  * 설치한 앱(바로가기)은 브라우저의 당겨서 새로고침이 없어서 직접 만든다.
  * 새로고침은 주소 뒤에 값을 붙여 크롬이 예전에 받아 둔 화면 파일을 쓰지 않게 한다.
  */
+import { t } from './i18n.ts';
+
 const THRESHOLD = 80;
 
 function scrollParent(el: Element | null): HTMLElement | null {
@@ -30,16 +32,16 @@ export function installPullToRefresh(): void {
   const show = (d: number) => {
     bar.style.transform = `translate(-50%, ${Math.min(d, THRESHOLD + 30) - 44}px)`;
     bar.style.opacity = String(Math.min(1, d / THRESHOLD));
-    bar.textContent = d >= THRESHOLD ? '놓으면 새로고침' : '↓ 당겨서 새로고침';
+    bar.textContent = d >= THRESHOLD ? t('놓으면 새로고침') : t('↓ 당겨서 새로고침');
     bar.classList.toggle('ready', d >= THRESHOLD);
   };
   const reset = () => { pulling = false; dist = 0; bar.style.transform = ''; bar.style.opacity = '0'; bar.classList.remove('ready'); };
 
   addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
-    const t = e.target as Element;
-    if (t.closest('textarea, input, select, [contenteditable], .rt-table, .ptr-off')) return;
-    const sp = scrollParent(t);
+    const tg = e.target as Element;
+    if (tg.closest('textarea, input, select, [contenteditable], .rt-table, .ptr-off')) return;
+    const sp = scrollParent(tg);
     if (sp && sp.scrollTop > 0) return;
     if (document.scrollingElement && document.scrollingElement.scrollTop > 0) return;
     startY = e.touches[0]!.clientY;
@@ -59,7 +61,7 @@ export function installPullToRefresh(): void {
     if (!pulling) return;
     const go = dist >= THRESHOLD;
     reset();
-    if (go) { bar.textContent = '새로고침 중…'; bar.style.opacity = '1'; bar.style.transform = 'translate(-50%, 8px)'; freshReload(); }
+    if (go) { bar.textContent = t('새로고침 중…'); bar.style.opacity = '1'; bar.style.transform = 'translate(-50%, 8px)'; freshReload(); }
   });
   addEventListener('touchcancel', reset);
 }

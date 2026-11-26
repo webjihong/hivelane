@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CleanItem, CleanScanView, GitCleanSummary } from '../../shared/types.ts';
 import { act, api, refreshState, toast } from './store.ts';
+import { t, tn, locale } from './i18n.ts';
 
 type Resp = { summary: GitCleanSummary; scans: CleanScanView[]; lines?: string[] };
 
@@ -9,7 +10,7 @@ function Row({ it, on, toggle, disabled }: { it: CleanItem; on: boolean; toggle?
   return (
     <label className={`gc-row ${it.verdict}`}>
       {toggle ? <input type="checkbox" checked={on} onChange={toggle} disabled={disabled} /> : <span className="gc-nobox" />}
-      <span className="gc-kind">{it.kind === 'worktree' ? 'worktree' : '브랜치'}</span>
+      <span className="gc-kind">{it.kind === 'worktree' ? 'worktree' : t('브랜치')}</span>
       <span className="gc-main">
         <span className="mono gc-label">{it.label}</span>{it.sub && <span className="muted small"> · {it.sub}</span>}
         <span className="gc-why">{it.why}{it.dirty?.length ? `: ${it.dirty.slice(0, 6).join(', ')}${it.dirty.length > 6 ? ' …' : ''}` : ''}</span>
@@ -38,17 +39,17 @@ function Project({ s, local, onDone }: { s: CleanScanView; local: boolean; onDon
   if (!removable.length && !asks.length) return null;
   return (
     <section className="gc-proj">
-      <h3>{s.project_name} <small className="muted">기준 {s.base} · 정리 가능 {removable.length} · 확인 필요 {asks.length} · 남김 {keeps.length}</small></h3>
-      {removable.length > 0 && <div className="gc-g"><div className="gc-gh">정리 가능 <span className="muted small">합쳐졌거나 원격에 있는 것 · 12시간 넘게 안 쓴 깨끗한 worktree</span></div>{removable.map((i) => <Row key={i.id} it={i} on={pick.has(i.id)} toggle={local ? () => flip(i.id) : undefined} />)}</div>}
-      {asks.length > 0 && <div className="gc-g"><div className="gc-gh warn-t">확인 필요 <span className="muted small">고르면 커밋 안 한 변경·어디에도 없는 커밋을 버립니다</span></div>{asks.map((i) => <Row key={i.id} it={i} on={pick.has(i.id)} toggle={local ? () => flip(i.id) : undefined} />)}</div>}
-      {keeps.length > 0 && <details className="gc-g"><summary className="gc-gh muted">남김 {keeps.length} <span className="small">쓰는 중·최근 사용·기준 브랜치 — 지우지 않음</span></summary>{keeps.map((i) => <Row key={i.id} it={i} on={false} />)}</details>}
+      <h3>{s.project_name} <small className="muted">{t('기준 {base} · 정리 가능 {r} · 확인 필요 {a} · 남김 {k}', { base: s.base, r: removable.length, a: asks.length, k: keeps.length })}</small></h3>
+      {removable.length > 0 && <div className="gc-g"><div className="gc-gh">{t('정리 가능')} <span className="muted small">{t('합쳐졌거나 원격에 있는 것 · 12시간 넘게 안 쓴 깨끗한 worktree')}</span></div>{removable.map((i) => <Row key={i.id} it={i} on={pick.has(i.id)} toggle={local ? () => flip(i.id) : undefined} />)}</div>}
+      {asks.length > 0 && <div className="gc-g"><div className="gc-gh warn-t">{t('확인 필요')} <span className="muted small">{t('고르면 커밋 안 한 변경·어디에도 없는 커밋을 버립니다')}</span></div>{asks.map((i) => <Row key={i.id} it={i} on={pick.has(i.id)} toggle={local ? () => flip(i.id) : undefined} />)}</div>}
+      {keeps.length > 0 && <details className="gc-g"><summary className="gc-gh muted">{t('남김 {n}', { n: keeps.length })} <span className="small">{t('쓰는 중·최근 사용·기준 브랜치 — 지우지 않음')}</span></summary>{keeps.map((i) => <Row key={i.id} it={i} on={false} />)}</details>}
       {local ? (
         <div className="gc-acts">
           {!sure
-            ? <button className={`btn${discard ? ' danger' : ' primary'}`} type="button" disabled={!ids.length || busy} onClick={() => setSure(true)}>선택한 {ids.length}개 지우기{discard ? ' (변경 버림 포함)' : ''}</button>
-            : <span className="confirm"><span>{discard ? '확인 필요 항목의 변경·커밋까지 버립니다. 되돌릴 수 없습니다.' : '지운 worktree 는 되돌릴 수 없습니다(브랜치는 원격·기준에 남아 있는 것만).'}</span><button className="btn danger" type="button" disabled={busy} onClick={() => void go()}>{busy ? '지우는 중…' : '확인'}</button><button className="btn" type="button" onClick={() => setSure(false)}>취소</button></span>}
+            ? <button className={`btn${discard ? ' danger' : ' primary'}`} type="button" disabled={!ids.length || busy} onClick={() => setSure(true)}>{t('선택한 {n}개 지우기', { n: ids.length })}{discard ? ` ${t('(변경 버림 포함)')}` : ''}</button>
+            : <span className="confirm"><span>{discard ? t('확인 필요 항목의 변경·커밋까지 버립니다. 되돌릴 수 없습니다.') : t('지운 worktree 는 되돌릴 수 없습니다(브랜치는 원격·기준에 남아 있는 것만).')}</span><button className="btn danger" type="button" disabled={busy} onClick={() => void go()}>{busy ? t('지우는 중…') : t('확인')}</button><button className="btn" type="button" onClick={() => setSure(false)}>{t('취소')}</button></span>}
         </div>
-      ) : <p className="muted small">지우기는 맥에서만 할 수 있습니다.</p>}
+      ) : <p className="muted small">{t('지우기는 맥에서만 할 수 있습니다.')}</p>}
     </section>
   );
 }
@@ -65,18 +66,18 @@ export function GitCleanPanel({ local, onClose }: { local: boolean; onClose: () 
   return createPortal(
     <>
       <div className="scrim" onClick={onClose} />
-      <aside className="drawer" aria-label="worktree·브랜치 정리">
+      <aside className="drawer" aria-label={t('worktree·브랜치 정리')}>
         <div className="drawer-h">
-          <div><h2>worktree·브랜치 정리</h2><div className="drawer-sub muted">등록된 저장소의 안 쓰는 worktree·로컬 브랜치 · 다른 Claude 세션이 쓰는 것은 「남김」</div></div>
-          <div className="row"><button className="btn" type="button" disabled={loading} onClick={() => load(true)}>{loading ? '살펴보는 중…' : '다시 살펴보기'}</button><button className="btn" type="button" onClick={onClose}>닫기</button></div>
+          <div><h2>{t('worktree·브랜치 정리')}</h2><div className="drawer-sub muted">{t('등록된 저장소의 안 쓰는 worktree·로컬 브랜치 · 다른 Claude 세션이 쓰는 것은 「남김」')}</div></div>
+          <div className="row"><button className="btn" type="button" disabled={loading} onClick={() => load(true)}>{loading ? t('살펴보는 중…') : t('다시 살펴보기')}</button><button className="btn" type="button" onClick={onClose}>{t('닫기')}</button></div>
         </div>
         <div className="drawer-b gc">
-          {err && <p className="crit-t">불러오지 못했습니다: {err}</p>}
-          {!d && !err && <p className="muted">살펴보는 중… (저장소마다 몇 초)</p>}
-          {d?.lines && <details open className="gc-res"><summary>방금 정리 결과</summary><pre>{d.lines.join('\n')}</pre></details>}
-          {d && !shown.length && <p className="muted">정리할 것이 없습니다.</p>}
+          {err && <p className="crit-t">{t('불러오지 못했습니다:')} {err}</p>}
+          {!d && !err && <p className="muted">{t('살펴보는 중… (저장소마다 몇 초)')}</p>}
+          {d?.lines && <details open className="gc-res"><summary>{t('방금 정리 결과')}</summary><pre>{d.lines.join('\n')}</pre></details>}
+          {d && !shown.length && <p className="muted">{t('정리할 것이 없습니다.')}</p>}
           {shown.map((s) => <Project key={s.project_id} s={s} local={local} onDone={setD} />)}
-          {d && <p className="muted small">마지막 확인 {d.summary.takenAt ? new Date(d.summary.takenAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'} · 10분마다 자동으로 살펴봅니다 · 브랜치를 지워도 원격 브랜치는 그대로입니다 · 지운 것의 변경은 패치로 남습니다 · <a href="#finished/log" onClick={onClose}>정리 기록 보기 →</a></p>}
+          {d && <p className="muted small">{t('마지막 확인')} {d.summary.takenAt ? new Date(d.summary.takenAt).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : '-'} · {t('10분마다 자동으로 살펴봅니다 · 브랜치를 지워도 원격 브랜치는 그대로입니다 · 지운 것의 변경은 패치로 남습니다')} · <a href="#finished/log" onClick={onClose}>{t('정리 기록 보기 →')}</a></p>}
         </div>
       </aside>
     </>,
@@ -96,18 +97,18 @@ export function WorktreeCleanButton({ teamId, className = 'btn' }: { teamId: str
     if (!r) { setStep('idle'); return; }
     if (r.result === 'dirty') { setDirty(r.dirty ?? []); setStep('dirty'); return; }
     setStep('idle');
-    toast(r.result === 'done' ? 'worktree 를 정리했습니다 · 브랜치는 남김' : r.message, r.result === 'done' ? 'good' : 'crit');
+    toast(r.result === 'done' ? t('worktree 를 정리했습니다 · 브랜치는 남김') : r.message, r.result === 'done' ? 'good' : 'crit');
     void refreshState();
   };
-  if (step === 'idle') return <button className={className} type="button" onClick={() => setStep('sure')} title="이 팀의 worktree 폴더를 지웁니다(브랜치는 남김)">worktree 정리</button>;
+  if (step === 'idle') return <button className={className} type="button" onClick={() => setStep('sure')} title={t('이 팀의 worktree 폴더를 지웁니다(브랜치는 남김)')}>{t('worktree 정리')}</button>;
   if (step === 'sure') return (
-    <span className="confirm"><span>worktree 를 지울까요? 브랜치는 남습니다.</span><button className="btn danger" type="button" disabled={busy} onClick={() => void run(false)}>{busy ? '정리 중…' : '확인'}</button><button className="btn" type="button" onClick={() => setStep('idle')}>취소</button></span>
+    <span className="confirm"><span>{t('worktree 를 지울까요? 브랜치는 남습니다.')}</span><button className="btn danger" type="button" disabled={busy} onClick={() => void run(false)}>{busy ? t('정리 중…') : t('확인')}</button><button className="btn" type="button" onClick={() => setStep('idle')}>{t('취소')}</button></span>
   );
   return (
     <span className="confirm wt-dirty">
-      <span>커밋 안 한 변경 {dirty.length}개: <span className="mono">{dirty.slice(0, 4).join(', ')}{dirty.length > 4 ? ' …' : ''}</span> — 버리고 지울까요?</span>
-      <button className="btn danger" type="button" disabled={busy} onClick={() => void run(true)}>{busy ? '정리 중…' : '버리고 지우기'}</button>
-      <button className="btn" type="button" onClick={() => setStep('idle')}>취소</button>
+      <span>{tn('커밋 안 한 변경 {n}개: {files} — 버리고 지울까요?', { n: dirty.length, files: <span className="mono">{dirty.slice(0, 4).join(', ')}{dirty.length > 4 ? ' …' : ''}</span> })}</span>
+      <button className="btn danger" type="button" disabled={busy} onClick={() => void run(true)}>{busy ? t('정리 중…') : t('버리고 지우기')}</button>
+      <button className="btn" type="button" onClick={() => setStep('idle')}>{t('취소')}</button>
     </span>
   );
 }

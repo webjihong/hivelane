@@ -4,17 +4,18 @@ import { teamName, useTeamNames } from './teamNames.ts';
 import { useState, type ReactNode } from 'react';
 import { STAGES, type AgentView, type Priority, type TeamState, type TeamView } from '../../shared/types.ts';
 import { avatar, toolKind } from './art.ts';
+import { t } from './i18n.ts';
 
 export const STATE_LABEL: Record<TeamState, string> = {
-  running: '가동중', paused: '일시정지', waiting_human: '정지 · 확인 필요', queued: '생산대기', done: '생산완료', failed: '실패',
-  idle: '대기', down: '응답 없음', reviving: '되살리는 중', archived: '보관됨',
+  running: t('가동중'), paused: t('일시정지'), waiting_human: t('정지 · 확인 필요'), queued: t('생산대기'), done: t('생산완료'), failed: t('실패'),
+  idle: t('대기'), down: t('응답 없음'), reviving: t('되살리는 중'), archived: t('보관됨'),
 };
-export const PRI: Record<Priority, string> = { urgent: '긴급', normal: '보통', low: '낮음' };
+export const PRI: Record<Priority, string> = { urgent: t('긴급'), normal: t('보통'), low: t('낮음') };
 /** 기록에 남은 이름(예전 「PO」)을 화면 이름으로 */
-export function whoLabel(l: string | null | undefined): string { return l === 'PO' ? '총괄' : l === 'PO 엔진' ? '총괄 엔진' : l ?? ''; }
-export const KIND_LABEL: Record<string, string> = { instruction: '지시', handoff: '넘김', question: '질문', reply: '답변', report: '보고', review: '검토', engine: '총괄 엔진' };
-export const MODE_LABEL = { session: '독립 세션', subagent: '서브에이전트' } as const;
-export const AGENT_STATE_LABEL = { busy: '작업 중', idle: '쉬는 중', stop: '일시정지' } as const;
+export function whoLabel(l: string | null | undefined): string { return l === 'PO' || l === '총괄' ? t('총괄') : l === 'PO 엔진' || l === '총괄 엔진' ? t('총괄 엔진') : l === '사용자' ? t('사용자') : l ?? ''; }
+export const KIND_LABEL: Record<string, string> = { instruction: t('지시'), handoff: t('넘김'), question: t('질문'), reply: t('답변'), report: t('보고'), review: t('검토'), engine: t('총괄 엔진') };
+export const MODE_LABEL = { session: t('독립 세션'), subagent: t('서브에이전트') };
+export const AGENT_STATE_LABEL = { busy: t('작업 중'), idle: t('쉬는 중'), stop: t('일시정지') };
 
 /** 로봇 그림(내부에서 esc 된 SVG 문자열). */
 export function Robot({ agent, cls }: { agent: Pick<AgentView, 'model' | 'role_key' | 'role_name'>; cls?: string }) {
@@ -30,7 +31,7 @@ export function Steps({ stage }: { stage: number }) {
       {STAGES.map((s, i) => (
         <span key={s} className="steps-i">
           {i > 0 && <span className="arrow">›</span>}
-          <span className={`step ${i < stage ? 'done' : i === stage ? 'now' : ''}`}>{s}</span>
+          <span className={`step ${i < stage ? 'done' : i === stage ? 'now' : ''}`}>{t(s)}</span>
         </span>
       ))}
     </div>
@@ -57,22 +58,22 @@ export function hhmm(iso: string | null | undefined): string {
 export function duration(ms: number): string {
   if (ms < 0) ms = 0;
   const m = Math.floor(ms / 60000);
-  if (m < 1) return '방금';
-  if (m < 60) return `${m}분`;
+  if (m < 1) return t('방금');
+  if (m < 60) return t('{m}분', { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}시간 ${m % 60}분`;
-  return `${Math.floor(h / 24)}일 ${h % 24}시간`;
+  if (h < 24) return t('{h}시간 {m}분', { h, m: m % 60 });
+  return t('{d}일 {h}시간', { d: Math.floor(h / 24), h: h % 24 });
 }
-export function elapsed(t: TeamView, now: number): string {
-  if (!t.started_at) return '-';
-  const end = t.finished_at ? new Date(t.finished_at).getTime() : now;
-  return duration(end - new Date(t.started_at).getTime());
+export function elapsed(tm: TeamView, now: number): string {
+  if (!tm.started_at) return '-';
+  const end = tm.finished_at ? new Date(tm.finished_at).getTime() : now;
+  return duration(end - new Date(tm.started_at).getTime());
 }
 export function agoSec(iso: string | null, now: number): string {
-  if (!iso) return '기록 없음';
+  if (!iso) return t('기록 없음');
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 120) return `${s}초 전`;
-  return `${duration(s * 1000)} 전`;
+  if (s < 120) return t('{s}초 전', { s });
+  return t('{d} 전', { d: duration(s * 1000) });
 }
 export const money = (n: number) => `$${n.toFixed(2)}`;
 
@@ -83,8 +84,8 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, className = 'btn
   return (
     <span className="confirm">
       <span>{confirmLabel}</span>
-      <button className="btn danger" type="button" onClick={() => { setAsk(false); onConfirm(); }}>확인</button>
-      <button className="btn" type="button" onClick={() => setAsk(false)}>취소</button>
+      <button className="btn danger" type="button" onClick={() => { setAsk(false); onConfirm(); }}>{t('확인')}</button>
+      <button className="btn" type="button" onClick={() => setAsk(false)}>{t('취소')}</button>
     </span>
   );
 }
@@ -173,12 +174,12 @@ export function RichText({ text }: { text: string }) {
     <div className="rt">
       {shown.map((b, i) => {
         if (b.t === 'code') return <pre key={i} className="rt-code"><code>{b.lines.join('\n')}</code></pre>;
-        if (b.t === 'img') return <a key={i} href={b.src} target="_blank" rel="noreferrer"><img className="rt-img" src={b.src} alt={b.alt || '첨부 이미지'} loading="lazy" /></a>;
+        if (b.t === 'img') return <a key={i} href={b.src} target="_blank" rel="noreferrer"><img className="rt-img" src={b.src} alt={b.alt || t('첨부 이미지')} loading="lazy" /></a>;
         if (b.t === 'h') return <div key={i} className="rt-h">{inline(b.text)}</div>;
         if (b.t === 'ul') return <ul key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ul>;
         if (b.t === 'ol') return <ol key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ol>;
         if (b.t === 'table') return <div key={i} className="rt-table"><table><thead><tr>{b.rows[0]!.map((c, j) => <th key={j}>{inline(c)}</th>)}</tr></thead><tbody>{b.rows.slice(1).map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{inline(c)}</td>)}</tr>)}</tbody></table></div>;
-        const lead = i === 0 && /^\**\s*결론/.test(b.lines[0]!);
+        const lead = i === 0 && /^\**\s*(결론|conclusion|bottom line|summary)/i.test(b.lines[0]!);
         const sentences = b.lines.length > 2 && b.lines.every((l) => l.length < 400) && b.lines.join(' ').length >= 180;
         return <p key={i} className={lead ? 'rt-lead' : sentences ? 'rt-sent' : undefined}>{b.lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l)}</span>)}</p>;
       })}
