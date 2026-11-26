@@ -6,6 +6,7 @@ import type { ScriptRunner } from '../scripts.ts';
 import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
 import type { AccountManager } from '../accounts.ts';
+import type { BackupManager } from '../backup/index.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { run } from '../util.ts';
@@ -34,7 +35,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 const log = logger('http');
 const VERSION = '0.1.0';
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager; backups?: BackupManager }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 const roleZ = z.object({ key: z.string().min(1).max(20).regex(/^[a-z0-9_-]+$/), name: z.string().min(1).max(20), model: z.enum(['opus', 'sonnet', 'haiku']), mode: z.enum(['session', 'subagent']), tools: z.enum(['pm', 'write', 'verify', 'read']), prompt: z.string().max(4000).optional(), account: z.string().max(40).nullable().optional() });
@@ -225,6 +226,35 @@ export function createApp(d: AppDeps): Hono<Env> {
     const lines = await gc().apply(b.project_id, b.ids, b.discard);
     return c.json({ lines, summary: gc().summary, scans: gc().views });
   });
+  /* ---------- 백업(저장소: 이 맥 폴더·NAS·S3) · 열어 보기 · 복구 ---------- */
+  const bk = () => { if (!d.backups) throw new HttpError(404, '백업 기능을 쓸 수 없습니다'); return d.backups; };
+  const bkErr = async <T>(f: () => Promise<T> | T): Promise<T> => { try { return await f(); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } };
+  const targetZ = z.object({
+    id: z.string().max(40).default(''), type: z.enum(['local', 'webdav', 's3']), name: z.string().min(1).max(40), enabled: z.boolean().default(true),
+    path: z.string().max(500).optional(), url: z.string().max(500).optional(), username: z.string().max(200).optional(),
+    bucket: z.string().max(200).optional(), region: z.string().max(50).optional(), endpoint: z.string().max(500).optional(), prefix: z.string().max(200).optional(), accessKeyId: z.string().max(200).optional(),
+  });
+  app.get('/api/backups', async (c) => c.json(await bk().view()));
+  app.put('/api/backups/config', async (c) => {
+    localOnly(c);
+    const b = await body(c, z.object({
+      schedule: z.object({ mode: z.enum(['off', 'daily', 'weekly']), time: z.string().regex(/^\d{2}:\d{2}$/), weekday: z.number().int().min(0).max(6) }).partial().optional(),
+      keep: z.number().int().min(1).max(365).optional(), skipUnchanged: z.boolean().optional(),
+      targets: z.array(targetZ).max(10).optional(), secrets: z.record(z.string(), z.string().max(500)).optional(),
+    }));
+    const { secrets, ...patch } = b;
+    return c.json(await bkErr(() => bk().saveConfig(patch as never, secrets ?? {})));
+  });
+  app.post('/api/backups/test', async (c) => { localOnly(c); const b = await body(c, z.object({ target: targetZ, secret: z.string().max(500).optional() })); return c.json(await bk().test(b.target as never, b.secret)); });
+  app.post('/api/backups/run', async (c) => { localOnly(c); return c.json(await bk().backupNow('manual')); });
+  app.delete('/api/backups/:target/:name', async (c) => { localOnly(c); await bkErr(() => bk().remove(c.req.param('target'), c.req.param('name'))); return c.json({ ok: true }); });
+  app.post('/api/backups/restore', async (c) => { localOnly(c); const b = await body(c, z.object({ target: z.string(), name: z.string() })); return c.json(await bkErr(() => bk().restore(b.target, b.name))); });
+  app.post('/api/backups/open', async (c) => { const b = await body(c, z.object({ target: z.string(), name: z.string() })); return c.json({ id: await bkErr(() => bk().open(b.target, b.name)) }); });
+  app.get('/api/backups/view/:id/teams', async (c) => c.json({ teams: await bkErr(() => bk().viewTeams(c.req.param('id'), c.req.query('q') ?? '')) }));
+  app.get('/api/backups/view/:id/teams/:team', async (c) => c.json(await bkErr(() => bk().viewTeam(c.req.param('id'), c.req.param('team')))));
+  app.get('/api/backups/view/:id/po', async (c) => c.json({ chat: await bkErr(() => bk().viewPo(c.req.param('id'))) }));
+  app.delete('/api/backups/view/:id', (c) => { bk().close(c.req.param('id')); return c.json({ ok: true }); });
+
   /* ---------- AI 계정 여러 개(계정별 로그인·사용량, 역할·총괄이 고름) ---------- */
   const accts = () => { if (!d.accounts) throw new HttpError(404, '계정 기능을 쓸 수 없습니다'); return d.accounts; };
   /** 계정을 쓰는 곳: 템플릿 역할·직속/업무 팀 역할·총괄 */

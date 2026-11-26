@@ -21,11 +21,14 @@ import { Search } from './search/index.ts';
 import { seedTemplates, Store } from './store.ts';
 import { Orchestrator } from './teams/orchestrator.ts';
 import { createApp } from './http/app.ts';
+import { applyPendingRestore, BackupManager } from './backup/index.ts';
 
 const cfg = loadConfig();
 ensureDirs(cfg);
 initLog(cfg.logsDir);
 const log = logger('main');
+// 복구를 골랐으면 DB 를 열기 전에 풀어 둔 백업으로 바꿔 끼운다
+try { const r = applyPendingRestore(cfg); if (r) log.warn(`백업으로 복구함: ${r}`); } catch (e) { log.error('백업 복구 실패(지금 DB 그대로 씀)', e); }
 
 const store = new Store(openDb(cfg.dbPath));
 seedTemplates(store);
@@ -71,7 +74,15 @@ fillTimer.unref();
 setTimeout(() => void gitClean.refresh(), 20_000).unref();
 const gitCleanTimer = setInterval(() => void gitClean.refresh(), 600_000);
 gitCleanTimer.unref();
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama, accounts });
+// 백업: launchd 서비스로 돌 때만 복구 후 스스로 내려가 다시 뜬다(KeepAlive)
+const underLaunchd = (process.env.XPC_SERVICE_NAME ?? '').includes('com.webjihong.hivelane');
+const backups = new BackupManager({
+  cfg, store, onChange: () => bus.emitEvent({ type: 'state', reason: 'backup' }),
+  notify: (title, body, ok) => void notifier.send({ title, body, level: ok ? 'good' : 'warn', url: '/#settings/backup', tag: 'backup' }),
+  exit: underLaunchd ? () => void shutdown('restore') : undefined,
+});
+backups.start();
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama, accounts, backups });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });
@@ -94,6 +105,7 @@ async function shutdown(sig: string) {
   log.info(`${sig} 받음 · 종료`);
   engine.stop();
   ollama.stop();
+  backups.stop();
   caffeinate?.kill();
   server.close();
   remoteServer.close();

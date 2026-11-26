@@ -366,3 +366,25 @@ export const TOOL_PRESET_LABEL: Record<ToolPreset, string> = {
   verify: '읽기·Bash (검사 명령)',
   read: '읽기·검색만',
 };
+
+/* ---------- 백업 ---------- */
+export type BackupTargetType = 'local' | 'webdav' | 's3';
+/** 백업 저장소. 비밀값(비밀번호·S3 비밀 키)은 맥 키체인에만 두고 여기엔 없다 */
+export interface BackupTarget {
+  id: string; type: BackupTargetType; name: string; enabled: boolean;
+  /** local: 폴더 경로(시놀로지 NAS 를 Finder 로 연결한 /Volumes/… 도 여기) */
+  path?: string;
+  /** webdav: 주소(예: https://nas.local:5006/backup/hivelane) · 사용자 */
+  url?: string; username?: string;
+  /** s3: 버킷·지역·접근 키 ID · S3 호환(시놀로지 C2·MinIO)이면 엔드포인트 · 폴더(접두사) */
+  bucket?: string; region?: string; endpoint?: string; prefix?: string; accessKeyId?: string;
+}
+export interface BackupSchedule { mode: 'off' | 'daily' | 'weekly'; time: string; weekday: number }
+export interface BackupConfig { schedule: BackupSchedule; keep: number; skipUnchanged: boolean; targets: BackupTarget[] }
+export interface BackupRunResult { at: string; ok: boolean; reason: string; file: string | null; size: number; skipped?: boolean; results: { target: string; ok: boolean; error?: string }[]; error?: string }
+export interface BackupItem { target: string; name: string; size: number; at: string | null }
+export interface BackupView {
+  config: Omit<BackupConfig, 'targets'> & { targets: (BackupTarget & { hasSecret: boolean })[] };
+  last: BackupRunResult | null; running: boolean; nextAt: string | null;
+  items: BackupItem[]; listErrors: Record<string, string>;
+}

@@ -47,7 +47,7 @@ function BottomNav({ snap, r }: { snap: StateSnapshot; r: Route }) {
 
 const SET_TABS: [string, string, string][] = [
   ['display', '화면', '#settings/display'], ['engine', '총괄·엔진', '#settings'], ['accounts', 'AI 계정', '#settings/accounts'], ['projects', '프로젝트', '#settings/projects'], ['standing', '직속 팀', '#settings/standing'],
-  ['templates', '팀 템플릿', '#templates'], ['notify', '알림', '#settings/notify'], ['remote', '원격 접속', '#settings/remote'], ['search', '검색', '#settings/search'], ['storage', '저장 공간', '#settings/storage'],
+  ['templates', '팀 템플릿', '#templates'], ['notify', '알림', '#settings/notify'], ['remote', '원격 접속', '#settings/remote'], ['search', '검색', '#settings/search'], ['storage', '저장 공간', '#settings/storage'], ['backup', '백업', '#settings/backup'],
 ];
 /** 설정: 왼쪽 탭(휴대폰은 위쪽 가로) + 구역 하나 */
 function SettingsLayout({ cur, children }: { cur: string; children: ReactElement }) {
@@ -95,7 +95,7 @@ export function App() {
   // 휴대폰: 첫 화면은 채널 목록. 데스크톱: 첫 화면은 「지금 볼 것」
   const showList = mobile && (r.name === 'home' || r.name === 'list');
   let main: ReactElement;
-  if (r.name === 'settings') { const tab = (['projects', 'standing', 'notify', 'remote', 'search', 'storage', 'display', 'accounts'].includes(r.tab ?? '') ? r.tab : 'engine') as SettingsTab; main = <div className="page"><SettingsLayout cur={tab}><Settings snap={snap} tab={tab} /></SettingsLayout></div>; }
+  if (r.name === 'settings') { const tab = (['projects', 'standing', 'notify', 'remote', 'search', 'storage', 'display', 'accounts', 'backup'].includes(r.tab ?? '') ? r.tab : 'engine') as SettingsTab; main = <div className="page"><SettingsLayout cur={tab}><Settings snap={snap} tab={tab} /></SettingsLayout></div>; }
   else if (r.name === 'templates') main = <div className="page"><SettingsLayout cur="templates"><Templates snap={snap} /></SettingsLayout></div>;
   else if (r.name === 'scripts') main = <div className="page"><Scripts snap={snap} /></div>;
   else if (r.name === 'finished') main = <div className="page"><Finished snap={snap} tab={r.tab} /></div>;
