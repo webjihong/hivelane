@@ -68,14 +68,25 @@ describe('업무 팀을 끝난 팀으로 보내기(보관)', () => {
     expect(env.store.getTask(env.store.getTeam(queued.id)!.task_id!)?.status).toBe('done');
   });
 
-  it('직속 팀·일하는 팀·이미 끝난 팀은 거부', async () => {
+  it('끝난(done) 팀도 「팀 정리」로 보관 — worktree 가 이미 없으면 상태만 바뀐다', async () => {
+    const env = setup(async (spec) => { (spec.toolsImpl as TeamTools).report('done', '끝'); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    expect(env.store.getTeam(team.id)!.state).toBe('done');
+    env.store.updateTeam(team.id, { worktree_path: null }); // 폴더는 이미 정리된 팀(예: tm-58g1i2066)
+    await env.orch.closeTask(team.id);
+    expect(env.store.getTeam(team.id)!.state).toBe('archived');
+    expect(env.store.getTask(env.store.getTeam(team.id)!.task_id!)?.status).toBe('done');
+  });
+
+  it('직속 팀·일하는 팀·이미 보관된 팀은 거부', async () => {
     const env = setup();
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
     await expect(env.orch.closeTask(st.id)).rejects.toThrow('직속 팀');
     const tm = env.orch.createFromProposal(env.propose().id);
     env.store.updateTeam(tm.id, { state: 'running' });
     await expect(env.orch.closeTask(tm.id)).rejects.toThrow('일하는 중');
-    env.store.updateTeam(tm.id, { state: 'done' });
+    env.store.updateTeam(tm.id, { state: 'archived' });
     await expect(env.orch.closeTask(tm.id)).rejects.toThrow('이미 끝난');
   });
 

@@ -400,7 +400,7 @@ function poMcpServer(impl: PoTools) {
       async (a) => text(await impl.endStanding(a.team_id, a.reason))),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
     T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
-    T('archive_team', '업무 팀을 「끝난 팀」으로 보낸다(보관). 실패·멈춤·대기·사람 확인 상태의 업무 팀만 된다(일하는 팀·직속 팀은 안 됨). worktree 가 남아 있으면 변경을 패치로 남기고 정리한다(브랜치는 남김). 사용자가 이 대화에서 그 팀을 닫으라고(끝내라·목록에서 빼라·보관하라) 했을 때만 쓴다. 일을 끝내려고 멈춤·재개를 우회하지 말 것.', { team_id: z.string(), reason: z.string().describe('사용자가 닫으라고 한 말과 이유') }, async (a) => text(await impl.archiveTeam(a.team_id, a.reason))),
+    T('archive_team', '업무 팀을 「끝난 팀」으로 보낸다(보관). 끝남·실패·멈춤·대기·사람 확인 상태의 업무 팀만 된다(일하는 팀·직속 팀은 안 됨). worktree 가 남아 있으면 변경을 패치로 남기고 정리한다(브랜치는 남김). 사용자가 이 대화에서 그 팀을 닫으라고(끝내라·목록에서 빼라·보관하라) 했을 때만 쓴다. 일을 끝내려고 멈춤·재개를 우회하지 말 것.', { team_id: z.string(), reason: z.string().describe('사용자가 닫으라고 한 말과 이유') }, async (a) => text(await impl.archiveTeam(a.team_id, a.reason))),
     T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),
     T('resume_team', '멈춘 팀을 재개', { team_id: z.string() }, async (a) => text(await impl.resumeTeam(a.team_id))),
     T('pin_team', '「멈추지 않음」 설정/해제', { team_id: z.string(), on: z.boolean() }, async (a) => text(impl.pinTeam(a.team_id, a.on))),

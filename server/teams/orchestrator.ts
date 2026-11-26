@@ -821,8 +821,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     store.addDecision(teamId, 'user', 'cancel', st('사용자가 중단'));
   }
 
-  /** 끝난 팀으로 보낼 수 있는 업무 팀 상태(일하는 중이 아닌 것) */
-  static readonly CLOSABLE = ['failed', 'paused', 'queued', 'waiting_human'];
+  /** 「팀 정리」로 끝난 팀에 보낼 수 있는 업무 팀 상태(일하는 중이 아닌 것) */
+  static readonly CLOSABLE = ['done', 'failed', 'paused', 'queued', 'waiting_human'];
 
   /**
    * 업무 팀을 「끝난 팀」으로 보낸다(보관). 실패·멈춤·대기·사람 확인 팀에 쓴다.
@@ -842,7 +842,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     this.revokeGrants(teamId);
     const why = reason.trim() || st('끝난 팀으로 보냄');
     store.updateTeam(teamId, { finished_at: t.finished_at ?? nowIso(), question: null, paused_reason: null, pause_kind: null });
-    if (t.task_id) store.updateTask(t.task_id, { status: t.state === 'failed' ? 'failed' : 'done', finished_at: nowIso() });
+    if (t.task_id) store.updateTask(t.task_id, { status: t.state === 'failed' ? 'failed' : 'done', finished_at: store.getTask(t.task_id)?.finished_at ?? nowIso() });
     store.db.prepare("UPDATE agents SET state = 'stop', current_step = ? WHERE team_id = ?").run(st('끝난 팀'), teamId);
     store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: st('끝난 팀으로 보냄({by}) · {why}', { by, why }) });
     // worktree 가 남아 있으면 기존 정리 흐름(패치 보관 → 삭제)으로 함께 정리하고 archived 로
