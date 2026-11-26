@@ -122,6 +122,8 @@ export async function applyCleanup(cfg: AppConfig, store: Store, project: Projec
       r = await git(project.path, ['worktree', 'remove', '--force', w.path], 120_000);
       if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, discarded: w.verdict === 'ask', patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? st('커밋 안 한 변경 {n}개 파일을 패치로 보관', { n: patch.files }) : w.why });
     }
+    // 지운(또는 이미 없던) worktree 를 가리키던 팀 기록도 비운다 — 안 비우면 나중에 「팀 정리」가 없는 폴더를 지우려다 실패한다
+    if (r.code === 0) clearTeamWorktree(store, w.path);
     out.push(r.code === 0 ? st('지움 worktree {target}', { target: w.path }) : st('실패 {target}: {err}', { target: w.path, err: r.stderr.trim() }));
   }
   await git(project.path, ['worktree', 'prune']);
@@ -142,3 +144,11 @@ export async function applyCleanup(cfg: AppConfig, store: Store, project: Projec
 
 /** applyCleanup 결과 중 지운 줄 수(「지움 …」 · 영어면 「Removed …」) */
 export const countRemoved = (lines: string[]): number => lines.filter((l) => l.startsWith('지움') || l.startsWith(st('지움'))).length;
+
+/** 이 경로를 worktree 로 기록한 팀(끝난 팀 포함)의 worktree_path 를 비운다 */
+export function clearTeamWorktree(store: Store, path: string): number {
+  const rows = store.db.prepare('SELECT id, worktree_path FROM teams WHERE worktree_path IS NOT NULL').all() as { id: string; worktree_path: string }[];
+  const hit = rows.filter((r) => resolve(r.worktree_path) === resolve(path) || real(r.worktree_path) === real(path));
+  for (const r of hit) store.updateTeam(r.id, { worktree_path: null });
+  return hit.length;
+}

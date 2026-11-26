@@ -117,8 +117,16 @@ export async function addWorktree(root: string, baseRef: string, dir: string, br
 }
 
 export async function removeWorktree(root: string, dir: string): Promise<void> {
-  if (!existsSync(dir)) { await git(root, ['worktree', 'prune']); return; }
+  if (!existsSync(dir)) { await pruneWorktrees(root); return; }
   await gitOk(root, ['worktree', 'remove', '--force', dir]);
+}
+
+/** git 에 남은 「없는 worktree」 기록 지우기 */
+export async function pruneWorktrees(root: string): Promise<void> { await git(root, ['worktree', 'prune']); }
+
+/** worktree 를 지우려 했는데 이미 지워졌거나 git 이 worktree 로 모를 때의 오류인지 */
+export function isGoneWorktreeError(e: unknown): boolean {
+  return /is not a working tree|not a git repository|No such file or directory/i.test(e instanceof Error ? e.message : String(e));
 }
 
 /** 패키지 디렉토리(package.json 이 있는 곳) 목록. git 이 추적하는 것만. */

@@ -1,13 +1,13 @@
 import { forAgent } from '../uploads.ts';
 import { isOpt, st } from '../i18n.ts';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { AppConfig } from '../config.ts';
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
-import { addWorktree, collectChanges, prepareDeps, removeWorktree, slug } from '../projects/git.ts';
+import { addWorktree, collectChanges, isGoneWorktreeError, prepareDeps, pruneWorktrees, removeWorktree, slug } from '../projects/git.ts';
 import { saveWorktreePatch } from '../projects/archive.ts';
 import { effectiveBlocked, splitApproval, type AgentRow, type Store, type TeamRow } from '../store.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
@@ -859,10 +859,22 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (this.isRunning(teamId)) throw new Error(st('돌고 있는 팀은 정리할 수 없습니다. 먼저 중단하세요.'));
     const p = store.getProject(t.project_id);
     let patch: { path: string; files: number } | null = null;
-    if (p && t.worktree_path) {
+    // 폴더가 없거나 git 이 더는 worktree 로 모르면(다른 정리로 이미 지워짐) 「이미 정리됨」으로 보고 보관을 계속한다
+    let already = !!t.worktree_path && (!p || !existsSync(t.worktree_path));
+    if (p && t.worktree_path && !already) {
       // 지우기 전에 변경을 패치로 남긴다(지운 뒤에도 팀 상세·총괄이 볼 수 있게)
       patch = await saveWorktreePatch(cfg, t.worktree_path, t.base_sha, t.id).catch((e) => { log.warn(`패치 저장 실패 ${teamId}`, e); return null; });
-      await removeWorktree(p.path, t.worktree_path);
+      try { await removeWorktree(p.path, t.worktree_path); }
+      catch (e) {
+        if (!isGoneWorktreeError(e)) throw e;
+        log.warn(`worktree 가 이미 정리됨 ${teamId}: ${t.worktree_path}`);
+        already = true; patch = null;
+      }
+    }
+    if (already && t.worktree_path) {
+      if (p) await pruneWorktrees(p.path).catch(() => undefined);
+      store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, note: st('폴더가 이미 정리됨(기록만 정리)') });
+    } else if (p && t.worktree_path) {
       store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: !!o.discarded, patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? st('변경 {n}개 파일을 패치로 보관', { n: patch.files }) : st('변경 없음') });
     }
     store.updateTeam(teamId, { state: 'archived', worktree_path: null });

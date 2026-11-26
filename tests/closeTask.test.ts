@@ -1,4 +1,5 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TurnHandle, TurnResult, TurnSpec } from '../server/agents/runner.ts';
@@ -7,6 +8,7 @@ import { PoAgent } from '../server/po/agent.ts';
 import { HeavySlots } from '../server/po/slots.ts';
 import { Search } from '../server/search/index.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../server/store.ts';
+import { clearTeamWorktree } from '../server/projects/gitclean.ts';
 import type { TeamTools } from '../server/teams/tools.ts';
 import { Orchestrator, type TurnRunner } from '../server/teams/orchestrator.ts';
 import { isActiveTask } from '../web/src/chan.ts';
@@ -99,5 +101,40 @@ describe('업무 팀을 끝난 팀으로 보내기(보관)', () => {
     expect(env.store.getTeam(tm.id)!.state).toBe('archived');
     const st = env.orch.createStanding({ name: '점검', project_id: null, template_id: 'tpl-ops', brief: 'b' });
     expect(await tools.archiveTeam(st.id, 'x')).toContain('보내지 못했다');
+  });
+});
+
+describe('이미 정리된 worktree 를 가리키는 팀 정리(tm-58g1i2066 같은 경우)', () => {
+  const failedWithWorktree = async () => {
+    const env = setup(async (spec) => { (spec.toolsImpl as TeamTools).report('failed', '못 끝냄'); });
+    const team = env.orch.createFromProposal(env.propose().id);
+    await env.orch.start(team.id); await env.orch.idle();
+    return { env, team: env.store.getTeam(team.id)! };
+  };
+
+  it('다른 정리로 git worktree 가 이미 지워졌는데 worktree_path 가 남아 있어도 보관된다', async () => {
+    const { env, team } = await failedWithWorktree();
+    const repo = env.store.getProject(team.project_id)!.path;
+    execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', team.worktree_path!]); // git_cleanup 이 먼저 지운 상황
+    expect(env.store.getTeam(team.id)!.worktree_path).toBe(team.worktree_path);
+    await env.orch.closeTask(team.id);
+    expect(env.store.getTeam(team.id)).toMatchObject({ state: 'archived', worktree_path: null });
+    const log = env.store.db.prepare('SELECT note FROM cleanup_log WHERE team_id = ?').get(team.id) as { note: string };
+    expect(log.note).toContain('이미 정리됨');
+  });
+
+  it('폴더는 있는데 git 이 worktree 로 모르는 경우(is not a working tree)도 보관된다', async () => {
+    const { env, team } = await failedWithWorktree();
+    const repo = env.store.getProject(team.project_id)!.path;
+    execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', team.worktree_path!]);
+    mkdirSync(team.worktree_path!, { recursive: true }); // 빈 폴더만 남음
+    await env.orch.closeTask(team.id);
+    expect(env.store.getTeam(team.id)).toMatchObject({ state: 'archived', worktree_path: null });
+  });
+
+  it('git 정리(applyCleanup)가 팀 worktree 를 지우면 그 팀의 worktree_path 도 비운다', async () => {
+    const { env, team } = await failedWithWorktree();
+    expect(clearTeamWorktree(env.store, team.worktree_path!)).toBe(1);
+    expect(env.store.getTeam(team.id)!.worktree_path).toBeNull();
   });
 });

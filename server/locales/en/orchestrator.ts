@@ -109,4 +109,5 @@ export default {
   '끝난 팀': 'Finished',
   '끝난 팀으로 보냄({by}) · {why}': 'Moved to finished teams ({by}) · {why}',
   '끝난 팀으로 보냄 · {why}': 'Moved to finished teams · {why}',
+  '폴더가 이미 정리됨(기록만 정리)': 'Folder was already cleaned up (record only)',
 } as Record<string, string>;
