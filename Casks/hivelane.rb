@@ -1,5 +1,6 @@
 # Homebrew 설치 · 업데이트 / Install & update with Homebrew
 #   brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+#   brew trust webjihong/hivelane    # Homebrew 7+: 외부 tap 허용
 #   brew install --cask hivelane     # 설치 / install
 #   brew upgrade --cask hivelane     # 새 버전으로 / update (서버는 일하는 팀이 없을 때 새 버전으로 저절로 다시 시작)
 # version·sha256 은 릴리스 때 scripts/release.ts 가 바꾼다.
@@ -18,14 +19,9 @@ cask "hivelane" do
   end
 
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Hivelane.app"
-
-  # Apple 공증 전이라, 내려받기 격리 표시를 지워 「손상된 앱」 경고 없이 열리게 한다
-  postflight do
-    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/Hivelane.app"]
-  end
 
   uninstall quit: "com.webjihong.hivelane.desktop"
 
@@ -35,7 +31,9 @@ cask "hivelane" do
   ]
 
   caveats <<~EOS
-    On first launch, click "Install server and start". / 처음 열면 「서버 설치하고 시작」을 누르세요.
+    The app is not notarized yet: on first launch macOS blocks it once — open System Settings › Privacy & Security › "Open Anyway".
+    아직 Apple 공증 전이라 처음 한 번은 시스템 설정 › 개인정보 보호 및 보안 › 「그래도 열기」를 누르세요.
+    Then click "Install server and start". / 그다음 「서버 설치하고 시작」을 누르세요.
     Update: brew upgrade --cask hivelane — the server switches to the new version once no team is working.
     업데이트: brew upgrade --cask hivelane — 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다.
     Your data in ~/.hivelane is kept. / 기록(~/.hivelane)은 지우지 않습니다.

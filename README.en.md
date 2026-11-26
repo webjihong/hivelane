@@ -172,13 +172,14 @@ You'll need **macOS** (Apple Silicon recommended) and a **Claude subscription** 
 
 ```bash
 brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+brew trust webjihong/hivelane     # Homebrew 7+: allow this tap
 brew install --cask hivelane
 
 # when a new version is out
 brew upgrade --cask hivelane
 ```
 
-Open Hivelane and click "Install server and start". After an update the server restarts on the new version by itself once no team is working. Installing with Homebrew skips the "unidentified developer" step.
+Open Hivelane and click "Install server and start". After an update the server restarts on the new version by itself once no team is working. Like the DMG, the first launch needs "Open Anyway" once (not notarized yet).
 
 ### Install the Mac app (recommended), no terminal needed
 

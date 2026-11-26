@@ -172,13 +172,14 @@ flowchart LR
 
 ```bash
 brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+brew trust webjihong/hivelane     # Homebrew 7+: allow this tap
 brew install --cask hivelane
 
 # 새 버전이 나오면
 brew upgrade --cask hivelane
 ```
 
-설치한 뒤 Hivelane을 열고 「서버 설치하고 시작」을 누릅니다. 업데이트하면 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다. Homebrew로 설치하면 「확인되지 않은 개발자」 경고 단계가 없습니다.
+설치한 뒤 Hivelane을 열고 「서버 설치하고 시작」을 누릅니다. 업데이트하면 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다. 처음 한 번은 DMG와 같이 「그래도 열기」가 필요합니다(아직 Apple 공증 전).
 
 ### 맥 앱으로 설치(권장) — 터미널 없이
 

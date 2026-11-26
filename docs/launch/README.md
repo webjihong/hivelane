@@ -52,7 +52,7 @@ What I found useful in daily use:
 - Several Claude/Codex accounts per role with automatic switching at a usage threshold, same conversation continues
 - Searchable history + backups (folder / NAS / S3)
 
-Install: `brew tap webjihong/hivelane https://github.com/webjihong/hivelane && brew install --cask hivelane`
+Install: `brew tap webjihong/hivelane https://github.com/webjihong/hivelane && brew trust webjihong/hivelane && brew install --cask hivelane`
 Repo: https://github.com/webjihong/hivelane (MIT)
 
 (r/macapps 는 홍보 글 규칙이 있으니 올리기 전 사이드바 규칙 확인)
@@ -73,5 +73,5 @@ Repo: https://github.com/webjihong/hivelane (MIT)
 - 대화·명령·변경 기록을 검색하고 맥 폴더·시놀로지 NAS·S3 에 백업합니다.
 - 휴대폰은 Tailscale 로 내 기기에서만, 화면은 한국어·영어.
 
-설치: `brew tap webjihong/hivelane https://github.com/webjihong/hivelane && brew install --cask hivelane`
+설치: `brew tap webjihong/hivelane https://github.com/webjihong/hivelane && brew trust webjihong/hivelane && brew install --cask hivelane`
 저장소: https://github.com/webjihong/hivelane (MIT)
