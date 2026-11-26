@@ -5,6 +5,18 @@
 Versions follow [Semantic Versioning](https://semver.org/): **major.feature.fix** (e.g. 1.2.3).
 The Mac app (DMG) for each version is published on [Releases](https://github.com/webjihong/hivelane/releases).
 
+## 1.0.2 — 2026-11-26
+
+### Fixed
+- "Clean up team" failed when the worktree had already been removed: if the folder is gone or git no longer knows it, it is recorded as already cleaned and the team is archived. Git cleanup now also clears the team's worktree record when it removes a team folder.
+- Instructions, answers and Lead chat were limited to 8,000 characters → now 100,000 (standing briefs 20,000), with a clear message before sending if you go over.
+- When started as a service or Mac app, the server could not read the Mac language and defaulted AI replies and notifications to English → it now uses the Mac system language.
+- Codex accounts showed up in the default and Lead account pickers.
+
+### Changed
+- AI accounts "Switch order": separate Claude and Codex lists, reordered by dragging rows (the row follows your pointer and the others slide aside; touch and keyboard work too).
+- Creating, uploading to or editing a GitHub release is no longer hard-blocked: it runs once after a human approves that exact command. Deleting releases, merging PRs and the like stay blocked, and commands that cannot run even with approval are reported as "a human must run this" instead of asking for approval.
+
 ## 1.0.1 — 2026-11-26
 
 ### Korean and English
