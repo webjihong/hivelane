@@ -1,6 +1,8 @@
 /** 서버와 화면이 함께 쓰는 타입. */
 
 export type Priority = 'urgent' | 'normal' | 'low';
+/** 언어: 화면은 기기마다(web/src/i18n.ts), AI 답변·알림·서버 글은 settings.lang */
+export type Lang = 'ko' | 'en';
 export type Model = 'opus' | 'sonnet' | 'haiku';
 export type RunMode = 'session' | 'subagent';
 export type ToolPreset = 'pm' | 'write' | 'verify' | 'read';
@@ -84,6 +86,8 @@ export interface Settings {
   poAccount: string | null;
   /** 계정 사용량이 기준을 넘으면 다음 계정으로: off 끔 · ask 알리고 한 번 눌러 전환 · auto 자동 */
   accountSwitch: { mode: 'off' | 'ask' | 'auto'; thresholdPct: number; order: string[] };
+  /** AI 답변·알림·서버가 만드는 글의 언어. 처음엔 맥 언어(한국어가 아니면 영어) */
+  lang?: Lang;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

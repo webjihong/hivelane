@@ -491,7 +491,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     autoApprove: z.boolean(), defaultBudgetUsd: z.number().positive().max(10000).nullable(), poModel: z.enum(['opus', 'sonnet', 'haiku']), contextLimitTokens: z.number().int().min(20000).max(1_000_000),
     remindUnreadMin: z.number().int().min(0).max(1440), autoCleanDays: z.number().int().min(0).max(365), ownerLogin: z.string().max(200).nullable(), slackWebhook: z.string().url().nullable().or(z.literal('').transform(() => null)),
     embedding: z.object({ provider: z.enum(['off', 'ollama', 'voyage']), model: z.string().max(100), url: z.string().max(200) }).partial(),
-    defaultAccount: z.string().max(40), poAccount: z.string().max(40).nullable(),
+    defaultAccount: z.string().max(40), poAccount: z.string().max(40).nullable(), lang: z.enum(['ko', 'en']),
     accountSwitch: z.object({ mode: z.enum(['off', 'ask', 'auto']), thresholdPct: z.number().int().min(10).max(100), order: z.array(z.string().max(40)).max(20) }).partial(),
   }).partial();
   app.put('/api/settings', async (c) => {

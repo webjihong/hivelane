@@ -1,3 +1,4 @@
+import { systemLang } from './i18n.ts';
 import type { DB } from './db/index.ts';
 import { bus, type AgentEventRow, type ChatRow } from './bus.ts';
 import { newId, nowIso, parseJson } from './util.ts';
@@ -84,7 +85,7 @@ export class Store {
   getSettings(): Settings {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'app'").get() as { value: string } | undefined;
     const saved = parseJson<Partial<Settings>>(row?.value, {});
-    return { ...DEFAULT_SETTINGS, ...saved, engine: { ...DEFAULT_SETTINGS.engine, ...(saved.engine ?? {}) }, embedding: { ...DEFAULT_SETTINGS.embedding, ...(saved.embedding ?? {}) }, accountSwitch: { ...DEFAULT_SETTINGS.accountSwitch, ...(saved.accountSwitch ?? {}) } };
+    return { ...DEFAULT_SETTINGS, lang: systemLang(), ...saved, engine: { ...DEFAULT_SETTINGS.engine, ...(saved.engine ?? {}) }, embedding: { ...DEFAULT_SETTINGS.embedding, ...(saved.embedding ?? {}) }, accountSwitch: { ...DEFAULT_SETTINGS.accountSwitch, ...(saved.accountSwitch ?? {}) } };
   }
   saveSettings(patch: Partial<Settings>): Settings {
     const cur = this.getSettings();

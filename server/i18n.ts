@@ -1,0 +1,27 @@
+/**
+ * 서버가 만드는 글(알림·오류·엔진·시스템 메시지)의 언어 = 설정 › 총괄·엔진 「AI 답변·알림 언어」(settings.lang).
+ * 쓰는 법은 화면과 같다: 한국어 문장을 키로 st('…', { n }) — 번역은 server/locales/en/<파일>.ts 에 { '한국어': 'English' }.
+ * 저장된 기록(이미 남은 메시지)은 바꾸지 않는다. 새로 만드는 글부터 그 언어로 쓴다.
+ */
+import type { Lang } from '../shared/types.ts';
+
+type Dict = Record<string, string>;
+let EN: Dict | null = null;
+let current: () => Lang = () => 'ko';
+
+/** 서버 시작 때 한 번: 언어를 읽는 함수와 영어 사전(server/locales/en/*.ts) 연결 */
+export function initServerI18n(getLang: () => Lang, dict: Dict): void { current = getLang; EN = dict; }
+
+/** 맥·셸 언어로 기본값(한국어가 아니면 영어) */
+export function systemLang(): Lang {
+  const loc = (process.env.HIVELANE_LANG ?? process.env.LANG ?? Intl.DateTimeFormat().resolvedOptions().locale ?? 'ko').toLowerCase();
+  return loc.startsWith('ko') ? 'ko' : 'en';
+}
+
+export function serverLang(): Lang { try { return current(); } catch { return 'ko'; } }
+
+const fill = (s: string, vars?: Record<string, string | number>) => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s);
+
+export function st(ko: string, vars?: Record<string, string | number>): string {
+  return fill(serverLang() === 'en' ? EN?.[ko] ?? ko : ko, vars);
+}

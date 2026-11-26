@@ -1,3 +1,4 @@
+import { lang, setLang, t } from './i18n.ts';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, isDesktopApp, refreshState, toast } from './store.ts';
@@ -636,6 +637,12 @@ function DisplayPanel() {
   return (
     <div className="stack-s">
       <div className="panel">
+        <h3>{t('언어')} <small className="muted">{t('화면에 보이는 말 · 이 기기에만 저장 · AI 답변·알림 언어는 설정 › 총괄·엔진에서')}</small></h3>
+        <div className="bk-seg" role="radiogroup" aria-label="Language">
+          {(['ko', 'en'] as const).map((l) => <button key={l} type="button" role="radio" aria-checked={lang === l} className={lang === l ? 'on' : ''} onClick={() => { if (l !== lang) setLang(l); }}>{l === 'ko' ? '한국어' : 'English'}</button>)}
+        </div>
+      </div>
+      <div className="panel">
         <h3>테마 <small className="muted">색만 바뀌고 화면 구성은 그대로 · 이 기기에만 저장(맥·휴대폰 따로)</small></h3>
         <div className="th-grid">
           {allThemes(p).map((t) => {
@@ -813,6 +820,11 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
               {CONC_ROWS.map(([k, l, sub, u]) => <Row key={k} label={l} sub={sub} htmlFor={`set-${k}`}><NumField id={`set-${k}`} value={s.engine[k]} unit={u} disabled={ro} onSave={eng(k)} /></Row>)}
             </div>
             <div className="panel"><h3>총괄 에이전트</h3>
+              <Row label={t('AI 답변·알림 언어')} sub={t('총괄·팀이 답하는 말과 알림·시스템 메시지의 언어 · 화면 언어는 설정 › 화면에서 기기마다')} htmlFor="set-lang">
+                <select id="set-lang" disabled={ro} value={s.lang ?? 'ko'} onChange={(e) => void saveSettings({ lang: e.target.value as 'ko' | 'en' })}>
+                  <option value="ko">한국어</option><option value="en">English</option>
+                </select>
+              </Row>
               <Row label="총괄 모델" htmlFor="set-poModel">
                 <select id="set-poModel" disabled={ro} value={s.poModel} onChange={(e) => void saveSettings({ poModel: e.target.value as Model })}>
                   <option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option>

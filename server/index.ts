@@ -1,3 +1,5 @@
+import { initServerI18n } from './i18n.ts';
+import { SERVER_EN } from './locales/en/index.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { ensureDirs, loadConfig } from './config.ts';
@@ -31,6 +33,7 @@ const log = logger('main');
 try { const r = applyPendingRestore(cfg); if (r) log.warn(`백업으로 복구함: ${r}`); } catch (e) { log.error('백업 복구 실패(지금 DB 그대로 씀)', e); }
 
 const store = new Store(openDb(cfg.dbPath));
+initServerI18n(() => store.getSettings().lang ?? 'ko', SERVER_EN);
 seedTemplates(store);
 const notifier = new AppNotifier(store, cfg.home);
 store.initSeenBaseline();
