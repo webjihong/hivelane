@@ -829,11 +829,12 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sw-move .icon-btn { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; font-size: 14px; line-height: 1; }
 .sw-move .icon-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .sw-move .icon-btn:disabled { opacity: .35; cursor: default; }
-/* 끌어서 순서 바꾸기 */
-.sw-handle { cursor: grab; touch-action: none; user-select: none; color: var(--muted); font-size: 16px; line-height: 1; padding: 4px 2px; border-radius: 4px; }
-.sw-handle:hover, .sw-handle:focus-visible { color: var(--fg); background: var(--surface-2); outline: none; }
-.sw-list.dragging, .sw-list.dragging .sw-handle { cursor: grabbing; }
-.sw-item.is-drag { background: var(--accent-soft, var(--surface-2)); opacity: .85; }
-.sw-item.drop-before::before, .sw-item.drop-after::after { content: ''; position: absolute; left: 6px; right: 6px; height: 3px; border-radius: 2px; background: var(--accent); }
-.sw-item.drop-before::before { top: -2px; }
-.sw-item.drop-after::after { bottom: -2px; }
+/* 끌어서 순서 바꾸기: 잡은 줄이 포인터를 따라가고, 다른 줄은 미끄러지듯 비켜선다 */
+.sw-list { overflow: visible; }
+.sw-item { transition: transform .18s ease, box-shadow .18s ease, background .12s; will-change: transform; }
+.sw-item.grab { cursor: grab; touch-action: none; user-select: none; }
+.sw-list.dragging .sw-item { cursor: grabbing; }
+.sw-item.is-drag { background: var(--surface); box-shadow: 0 10px 28px rgba(0,0,0,.18), 0 0 0 1px var(--accent); border-radius: 8px; }
+.sw-handle { color: var(--muted); font-size: 16px; line-height: 1; padding: 4px 2px; border-radius: 4px; }
+.sw-item:hover .sw-handle, .sw-handle:focus-visible { color: var(--fg); background: var(--surface-2); outline: none; }
+.sw-list.settle .sw-item { transition: none; }

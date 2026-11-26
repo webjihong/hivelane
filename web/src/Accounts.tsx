@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { AccountSwitchView, AiAccountView, AuthLoginView, Provider, StateSnapshot } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { Section } from './ui.tsx';
@@ -56,8 +56,9 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
         <div className="set-row">
           <label htmlFor="acc-default">{t('기본 계정')}<small>{t('템플릿 역할에 계정을 고르지 않으면 평소 이 계정을 씁니다 · 사용량 기준 전환이 켜져 있으면 이 계정이 기준을 넘는 동안만 다음 계정을 빌려 씁니다')}</small></label>
           <span className="set-v">
-            <select id="acc-default" disabled={ro || !list} value={snap.settings.defaultAccount} onChange={(e) => void save({ defaultAccount: e.target.value }, t('기본 계정을 바꿨습니다'))}>
-              {(list ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            <select id="acc-default" disabled={ro || !list} value={claudeAccounts.find((a) => a.isDefault)?.id ?? snap.settings.defaultAccount} onChange={(e) => void save({ defaultAccount: e.target.value }, t('기본 계정을 바꿨습니다'))}>
+              {/* 기본·총괄 계정은 Claude 만(Codex 는 독립 세션 팀원 전용) */}
+              {claudeAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </span>
         </div>
@@ -66,7 +67,7 @@ export function AccountsSection({ snap, ro }: { snap: StateSnapshot; ro: boolean
           <span className="set-v">
             <select id="acc-po" disabled={ro || !list} value={snap.settings.poAccount ?? ''} onChange={(e) => void save({ poAccount: e.target.value || null }, t('총괄 계정을 바꿨습니다'))}>
               <option value="">{t('기본 계정 따라감')}</option>
-              {(list ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {claudeAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </span>
         </div>
@@ -204,45 +205,71 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
 }
 
 /**
- * 끌어서 순서 바꾸기(마우스·터치 모두: pointer 이벤트). 손잡이를 잡고 위아래로 끌면 놓을 자리가 표시되고, 놓으면 저장한다.
+ * 끌어서 순서 바꾸기(마우스·터치 모두: pointer 이벤트).
+ * 줄을 잡으면 그 줄이 손가락·마우스를 그대로 따라 움직이고, 다른 줄은 비켜서 자리를 만든다. 놓으면 그 자리로 저장.
  * 키보드: 손잡이에 초점을 두고 ↑/↓ 로 한 칸씩.
  */
-function OrderList({ title, ids, list, ro, onReorder }: { title: string; ids: string[]; list: AiAccountView[]; ro: boolean; onReorder: (next: string[]) => void }) {
-  const [drag, setDrag] = useState<{ id: string; over: number } | null>(null);
-  const ref = useRef<HTMLOListElement>(null);
-  /** 포인터 높이 → 놓을 자리(0..n) */
-  const slotAt = (y: number) => {
-    const items = [...(ref.current?.querySelectorAll<HTMLElement>('[data-sw-id]') ?? [])];
-    let slot = items.length;
-    for (let k = 0; k < items.length; k++) { const r = items[k]!.getBoundingClientRect(); if (y < r.top + r.height / 2) { slot = k; break; } }
-    return slot;
+function OrderList({ title, ids: propIds, list, ro, onReorder }: { title: string; ids: string[]; list: AiAccountView[]; ro: boolean; onReorder: (next: string[]) => void }) {
+  type Drag = { id: string; from: number; startY: number; dy: number; h: number; over: number };
+  const [drag, setDrag] = useState<Drag | null>(null);
+  // 놓은 직후 한 프레임은 움직임 효과를 끈다(새 순서로 다시 그릴 때 줄이 튀지 않게)
+  const [settle, setSettle] = useState(false);
+  // 놓자마자 새 순서로 보이게(저장이 끝날 때까지 기다리지 않음). 서버 순서가 바뀌어 오면 그걸 따른다
+  const [local, setLocal] = useState<string[] | null>(null);
+  useEffect(() => setLocal(null), [propIds.join()]);
+  const ids = local ?? propIds;
+  const commit = (next: string[]) => { if (next.join() !== ids.join()) { setLocal(next); onReorder(next); } };
+  const moveTo = (from: number, to: number) => { const n = [...ids]; const [x] = n.splice(from, 1); n.splice(to, 0, x!); commit(n); };
+
+  const start = (e: React.PointerEvent<HTMLLIElement>, id: string, k: number) => {
+    if (ro || e.button > 0) return;
+    if ((e.target as HTMLElement).closest('button, a, input, select')) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const r = e.currentTarget.getBoundingClientRect();
+    setDrag({ id, from: k, startY: e.clientY, dy: 0, h: r.height, over: k });
   };
-  const moveTo = (id: string, slot: number) => {
-    const rest = ids.filter((x) => x !== id);
-    const from = ids.indexOf(id);
-    const at = slot > from ? slot - 1 : slot;
-    onReorder([...rest.slice(0, at), id, ...rest.slice(at)]);
+  const move = (e: React.PointerEvent<HTMLLIElement>) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    const over = Math.max(0, Math.min(ids.length - 1, drag.from + Math.round(dy / drag.h)));
+    setDrag({ ...drag, dy, over });
   };
+  const end = () => {
+    if (!drag) return;
+    const { from, over } = drag;
+    setSettle(true); setDrag(null);
+    if (over !== from) moveTo(from, over);
+    requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
+  };
+
+  /** 끄는 동안 각 줄의 위치: 끄는 줄은 포인터를 따라가고, 사이에 낀 줄은 한 칸 비켜선다 */
+  const shift = (k: number): number => {
+    if (!drag) return 0;
+    if (k === drag.from) return drag.dy;
+    if (drag.from < drag.over && k > drag.from && k <= drag.over) return -drag.h;
+    if (drag.from > drag.over && k >= drag.over && k < drag.from) return drag.h;
+    return 0;
+  };
+
   return (
     <div className="sw-group">
       <div className="sw-group-h">{title}</div>
-      <ol className={`sw-list${drag ? ' dragging' : ''}`} ref={ref}>
+      <ol className={`sw-list${drag ? ' dragging' : ''}${settle ? ' settle' : ''}`}>
         {ids.map((id, k) => {
           const a = list.find((x) => x.id === id)!;
           const pct = a.peakPct;
-          const cls = ['sw-item', drag?.id === id ? 'is-drag' : '', drag && drag.id !== id && drag.over === k ? 'drop-before' : '', drag && drag.id !== id && drag.over === ids.length && k === ids.length - 1 ? 'drop-after' : ''].filter(Boolean).join(' ');
+          const me = drag?.id === id;
+          const num = drag ? (me ? drag.over : k - (shift(k) < 0 ? 1 : shift(k) > 0 ? -1 : 0)) : k;
           return (
-            <li key={id} className={cls} data-sw-id={id}>
+            <li key={id} className={`sw-item${me ? ' is-drag' : ''}${ro ? '' : ' grab'}`}
+              style={{ transform: `translateY(${shift(k)}px)${me ? ' scale(1.02)' : ''}`, transition: me ? 'none' : undefined, zIndex: me ? 2 : undefined }}
+              onPointerDown={(e) => start(e, id, k)} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
               {!ro && (
                 <span className="sw-handle" role="button" tabIndex={0} aria-label={t('끌어서 순서 바꾸기')} title={t('끌어서 순서 바꾸기')}
-                  onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDrag({ id, over: k }); }}
-                  onPointerMove={(e) => { if (drag?.id === id) { const over = slotAt(e.clientY); if (over !== drag.over) setDrag({ id, over }); } }}
-                  onPointerUp={() => { if (drag?.id === id) { const slot = drag.over; setDrag(null); if (slot !== k && slot !== k + 1) moveTo(id, slot); } }}
-                  onPointerCancel={() => setDrag(null)}
-                  onKeyDown={(e) => { if (e.key === 'ArrowUp' && k > 0) { e.preventDefault(); moveTo(id, k - 1); } if (e.key === 'ArrowDown' && k < ids.length - 1) { e.preventDefault(); moveTo(id, k + 2); } }}
-                >⠿</span>
+                  onKeyDown={(e) => { if (e.key === 'ArrowUp' && k > 0) { e.preventDefault(); moveTo(k, k - 1); } if (e.key === 'ArrowDown' && k < ids.length - 1) { e.preventDefault(); moveTo(k, k + 1); } }}>⠿</span>
               )}
-              <span className="sw-num">{k + 1}</span>
+              <span className="sw-num">{num + 1}</span>
               <span className="sw-name">
                 <b className="ellipsis">{a.name}</b>
                 <span className="small muted">{a.usage?.login?.loggedIn ? (pct === null ? t('사용량 모름') : t('{pct}% 사용', { pct: Math.round(pct) })) : t('로그인 필요')}</span>
