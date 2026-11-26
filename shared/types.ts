@@ -379,7 +379,8 @@ export interface BackupTarget {
   /** s3: 버킷·지역·접근 키 ID · S3 호환(시놀로지 C2·MinIO)이면 엔드포인트 · 폴더(접두사) */
   bucket?: string; region?: string; endpoint?: string; prefix?: string; accessKeyId?: string;
 }
-export interface BackupSchedule { mode: 'off' | 'daily' | 'weekly'; time: string; weekday: number }
+/** 자동 백업 주기: interval = everyMin 분마다(자정 기준으로 맞춤: 30분이면 :00·:30) · daily = 매일 time · weekly = 매주 weekday 요일 time */
+export interface BackupSchedule { mode: 'off' | 'interval' | 'daily' | 'weekly'; time: string; weekday: number; everyMin: number }
 export interface BackupConfig { schedule: BackupSchedule; keep: number; skipUnchanged: boolean; targets: BackupTarget[] }
 export interface BackupRunResult { at: string; ok: boolean; reason: string; file: string | null; size: number; skipped?: boolean; results: { target: string; ok: boolean; error?: string }[]; error?: string }
 export interface BackupItem { target: string; name: string; size: number; at: string | null }

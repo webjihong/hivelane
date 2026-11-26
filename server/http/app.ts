@@ -238,7 +238,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.put('/api/backups/config', async (c) => {
     localOnly(c);
     const b = await body(c, z.object({
-      schedule: z.object({ mode: z.enum(['off', 'daily', 'weekly']), time: z.string().regex(/^\d{2}:\d{2}$/), weekday: z.number().int().min(0).max(6) }).partial().optional(),
+      schedule: z.object({ mode: z.enum(['off', 'interval', 'daily', 'weekly']), time: z.string().regex(/^\d{2}:\d{2}$/), weekday: z.number().int().min(0).max(6), everyMin: z.number().int().min(15).max(1440) }).partial().optional(),
       keep: z.number().int().min(1).max(365).optional(), skipUnchanged: z.boolean().optional(),
       targets: z.array(targetZ).max(10).optional(), secrets: z.record(z.string(), z.string().max(500)).optional(),
     }));

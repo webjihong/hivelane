@@ -19,7 +19,7 @@ import { BACKUP_RE, makeTarget, type TargetIO } from './targets.ts';
 
 const log = logger('backup');
 
-export const DEFAULT_BACKUP: BackupConfig = { schedule: { mode: 'off', time: '03:00', weekday: 1 }, keep: 14, skipUnchanged: true, targets: [] };
+export const DEFAULT_BACKUP: BackupConfig = { schedule: { mode: 'off', time: '03:00', weekday: 1, everyMin: 60 }, keep: 14, skipUnchanged: true, targets: [] };
 
 /** 비밀값 보관(기본: 맥 키체인). 테스트는 메모리로 바꾼다 */
 export interface SecretStore { get(id: string): Promise<string | null>; set(id: string, v: string): Promise<void>; del(id: string): Promise<void> }
@@ -33,6 +33,18 @@ export const keychain: SecretStore = {
 /** 예정 시각 계산: now 이전 가장 최근 예정 시각과 다음 예정 시각 */
 export function scheduleTimes(s: BackupConfig['schedule'], now: Date): { lastDue: Date | null; next: Date | null } {
   if (s.mode === 'off') return { lastDue: null, next: null };
+  if (s.mode === 'interval') {
+    // 자정부터 everyMin 분 간격(30분이면 :00·:30, 6시간이면 0·6·12·18시)
+    const every = Math.max(15, Math.min(1440, s.everyMin || 60));
+    const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+    const k = Math.floor((now.getTime() - midnight.getTime()) / 60_000 / every);
+    const lastDue = new Date(midnight.getTime() + k * every * 60_000);
+    let next = new Date(lastDue.getTime() + every * 60_000);
+    // 하루가 간격으로 나누어떨어지지 않으면 자정에서 다시 맞춘다
+    const nextMidnight = new Date(midnight); nextMidnight.setDate(nextMidnight.getDate() + 1);
+    if (next > nextMidnight) next = nextMidnight;
+    return { lastDue, next };
+  }
   const [hh, mm] = s.time.split(':').map((x) => Number(x));
   const at = (d: Date) => { const x = new Date(d); x.setHours(hh ?? 3, mm ?? 0, 0, 0); return x; };
   const step = s.mode === 'daily' ? 1 : 7;

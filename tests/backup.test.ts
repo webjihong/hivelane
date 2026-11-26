@@ -63,15 +63,24 @@ describe('백업', () => {
     expect(secrets.m.has('dav')).toBe(false);
   }, 20_000);
 
-  it('예정 시각: 매일 03:00 · 매주 월요일 · 끄기', () => {
+  it('예정 시각: 매일 03:00 · 매주 월요일 · 끄기 · 30분/6시간마다', () => {
     const now = new Date(2026, 10, 26, 10, 0); // 목요일 10:00
-    const d = scheduleTimes({ mode: 'daily', time: '03:00', weekday: 1 }, now);
+    const d = scheduleTimes({ mode: 'daily', time: '03:00', weekday: 1, everyMin: 60 }, now);
     expect(d.lastDue?.getDate()).toBe(26); expect(d.next?.getDate()).toBe(27);
-    const early = scheduleTimes({ mode: 'daily', time: '23:00', weekday: 1 }, now);
+    const early = scheduleTimes({ mode: 'daily', time: '23:00', weekday: 1, everyMin: 60 }, now);
     expect(early.lastDue?.getDate()).toBe(25);
-    const w = scheduleTimes({ mode: 'weekly', time: '03:00', weekday: 1 }, now);
+    const w = scheduleTimes({ mode: 'weekly', time: '03:00', weekday: 1, everyMin: 60 }, now);
     expect(w.lastDue?.getDay()).toBe(1); expect(w.lastDue?.getDate()).toBe(23); expect(w.next?.getDate()).toBe(30);
-    expect(scheduleTimes({ mode: 'off', time: '03:00', weekday: 1 }, now)).toEqual({ lastDue: null, next: null });
+    expect(scheduleTimes({ mode: 'off', time: '03:00', weekday: 1, everyMin: 60 }, now)).toEqual({ lastDue: null, next: null });
+    // 30분마다: 10:00 → 지난 예정 10:00, 다음 10:30 · 10:47 → 10:30 / 11:00
+    const h = scheduleTimes({ mode: 'interval', time: '03:00', weekday: 1, everyMin: 30 }, new Date(2026, 10, 26, 10, 47));
+    expect([h.lastDue?.getHours(), h.lastDue?.getMinutes(), h.next?.getHours(), h.next?.getMinutes()]).toEqual([10, 30, 11, 0]);
+    // 6시간마다: 0·6·12·18시
+    const six = scheduleTimes({ mode: 'interval', time: '03:00', weekday: 1, everyMin: 360 }, new Date(2026, 10, 26, 13, 5));
+    expect([six.lastDue?.getHours(), six.next?.getHours()]).toEqual([12, 18]);
+    // 하루가 나누어떨어지지 않으면 다음 예정은 자정에서 다시 맞춤(7시간: 21시 → 다음은 자정)
+    const seven = scheduleTimes({ mode: 'interval', time: '03:00', weekday: 1, everyMin: 420 }, new Date(2026, 10, 26, 22, 0));
+    expect([seven.lastDue?.getHours(), seven.next?.getDate(), seven.next?.getHours()]).toEqual([21, 27, 0]);
   });
 
   it('복구: 직전 상태를 먼저 백업하고 풀어 둔 뒤 다시 시작 → 시작할 때 바꿔 끼움(지금 DB 는 restored-old 로)', async () => {

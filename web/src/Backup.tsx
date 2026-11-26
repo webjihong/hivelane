@@ -8,6 +8,14 @@ const fmtSize = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)}GB`
 const fmtAt = (iso: string | null) => { if (!iso) return '-'; const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} (${WEEKDAYS[d.getDay()]}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 /** 파일 이름 hivelane-backup-20261126-030000[-before-restore].tar.gz → 시각 */
 const nameAt = (n: string) => { const m = n.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/); return m ? new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!).toISOString() : null; };
+const EVERY: [number, string][] = [[30, '30분'], [60, '1시간'], [120, '2시간'], [180, '3시간'], [360, '6시간'], [720, '12시간']];
+/** 보관 개수가 몇 시간·며칠치인지(주기 기준) */
+function keepSpan(s: BackupView['config']['schedule'], keep: number): string | null {
+  const min = s.mode === 'interval' ? s.everyMin : s.mode === 'daily' ? 1440 : s.mode === 'weekly' ? 10080 : 0;
+  if (!min) return null;
+  const total = min * keep;
+  return total < 1440 ? `약 ${Math.round(total / 60 * 10) / 10}시간치` : total < 1440 * 60 ? `약 ${Math.round(total / 1440)}일치` : `약 ${Math.round(total / 10080)}주치`;
+}
 const KIND: Record<BackupTargetType, string> = { local: '이 맥 폴더', webdav: 'NAS (WebDAV)', s3: 'S3' };
 
 /** 설정 › 백업: 주기·보관 · 저장소(이 맥 폴더·시놀로지 NAS·S3) · 백업 목록(열어 보기·복구·지우기) */
@@ -43,11 +51,19 @@ export function BackupSection({ snap }: { snap: StateSnapshot }) {
         <div className="panel stack-s">
           <div className="acc-kind-h">자동 백업</div>
           <div className="bk-seg" role="radiogroup" aria-label="자동 백업 주기">
-            {(['off', 'daily', 'weekly'] as const).map((m) => (
-              <button key={m} type="button" role="radio" aria-checked={cfg.schedule.mode === m} className={cfg.schedule.mode === m ? 'on' : ''} disabled={ro} onClick={() => void save({ schedule: { mode: m } }, m === 'off' ? '자동 백업을 껐습니다' : '자동 백업을 켰습니다')}>{{ off: '끄기', daily: '매일', weekly: '매주' }[m]}</button>
+            {(['off', 'interval', 'daily', 'weekly'] as const).map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={cfg.schedule.mode === m} className={cfg.schedule.mode === m ? 'on' : ''} disabled={ro} onClick={() => void save({ schedule: { mode: m } }, m === 'off' ? '자동 백업을 껐습니다' : '자동 백업을 켰습니다')}>{{ off: '끄기', interval: '몇 시간마다', daily: '매일', weekly: '매주' }[m]}</button>
             ))}
           </div>
-          {cfg.schedule.mode !== 'off' && (
+          {cfg.schedule.mode === 'interval' && (
+            <div className="bk-when">
+              <select value={cfg.schedule.everyMin} disabled={ro} onChange={(e) => void save({ schedule: { everyMin: Number(e.target.value) } }, '간격을 바꿨습니다')} aria-label="간격">
+                {EVERY.map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+              </select>
+              <span className="small muted">마다 · 다음 {fmtAt(v.nextAt)}</span>
+            </div>
+          )}
+          {(cfg.schedule.mode === 'daily' || cfg.schedule.mode === 'weekly') && (
             <div className="bk-when">
               {cfg.schedule.mode === 'weekly' && (
                 <select value={cfg.schedule.weekday} disabled={ro} onChange={(e) => void save({ schedule: { weekday: Number(e.target.value) } }, '요일을 바꿨습니다')} aria-label="요일">
@@ -62,7 +78,7 @@ export function BackupSection({ snap }: { snap: StateSnapshot }) {
             <label className="row small" style={{ gap: 6 }}>최근
               <input type="number" min={1} max={365} defaultValue={cfg.keep} key={cfg.keep} disabled={ro} style={{ width: 64 }} aria-label="보관 개수"
                 onBlur={(e) => { const n = Math.max(1, Math.min(365, Math.round(Number(e.target.value)))); if (n !== cfg.keep) void save({ keep: n }, `최근 ${n}개만 보관합니다`); }} />
-              개만 보관(저장소마다, 오래된 것부터 지움)</label>
+              개만 보관(저장소마다, 오래된 것부터 지움){keepSpan(cfg.schedule, cfg.keep) ? <span className="muted"> · {keepSpan(cfg.schedule, cfg.keep)}</span> : null}</label>
             <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={cfg.skipUnchanged} disabled={ro} onChange={(e) => void save({ skipUnchanged: e.target.checked }, '바꿨습니다')} />바뀐 기록이 없으면 자동 백업을 건너뜀</label>
           </div>
           <div className="small muted">맥이 잠들어 있어 예정 시각을 놓치면, 깨어나는 대로 바로 백업합니다.</div>
