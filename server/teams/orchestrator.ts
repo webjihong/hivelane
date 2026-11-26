@@ -9,7 +9,8 @@ import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
 import { addWorktree, collectChanges, isGoneWorktreeError, prepareDeps, pruneWorktrees, removeWorktree, slug } from '../projects/git.ts';
 import { saveWorktreePatch } from '../projects/archive.ts';
-import { effectiveBlocked, splitApproval, type AgentRow, type Store, type TeamRow } from '../store.ts';
+import { effectiveBlocked, GH_RELEASE_APPROVAL, splitApproval, type AgentRow, type Store, type TeamRow } from '../store.ts';
+import { matchesAny } from '../util.ts';
 import { nowIso, parseJson, truncate } from '../util.ts';
 import { descendants, listProcs, signalTree } from '../po/resources.ts';
 import { pmPrompt, rolePrompt } from '../agents/prompts.ts';
@@ -206,9 +207,18 @@ export class Orchestrator {
   /** 팀 작업 환경: 격리(기본) / 내 Claude Code 와 동일 */
   private envFor(team: TeamRow, project: Project | null): { envMine: boolean; blocked: string[]; approval?: TurnSpec['approval']; extraWritable: string[]; note: string } {
     const base = [...effectiveBlocked(project), ...(project?.deps_strategy === 'symlink' ? DEPS_MUTATE : [])];
-    if (team.env_mode !== 'mine') return { envMine: false, blocked: base, extraWritable: [], note: '' };
-    const { hard, approval } = splitApproval(base);
     const l = this.L(team.id);
+    if (team.env_mode !== 'mine') {
+      // 격리 팀: 운영 DB·배포는 그대로 막고, GitHub 릴리스(만들기·올리기·고치기)만 사람 승인 1회 뒤 실행
+      const release = base.filter((p) => p === GH_RELEASE_APPROVAL);
+      if (!release.length) return { envMine: false, blocked: base, extraWritable: [], note: '' };
+      return {
+        envMine: false, blocked: base.filter((p) => p !== GH_RELEASE_APPROVAL), extraWritable: [],
+        approval: { patterns: release, take: (cmd) => l.approved.delete(cmd) },
+        note: '\n\n## GitHub 릴리스\n- `gh release create|upload|edit` 는 mcp__hivelane__request_approval 로 사람 승인을 받은 뒤 같은 명령을 그대로 한 번 실행한다. `gh release delete` 등 막힌 명령은 승인해도 실행되지 않는다(사람이 직접 실행).',
+      };
+    }
+    const { hard, approval } = splitApproval(base);
     const memories = project ? project.memory_paths : this.deps.store.listProjects().flatMap((p) => p.memory_paths);
     return {
       envMine: true, blocked: hard, extraWritable: memories,
@@ -479,8 +489,16 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       setStage: (stage) => { store.updateTeam(teamId, { stage }); return `단계를 ${['기획', '구현', '검사', '보고'][stage]}(으)로 바꿨다.`; },
       askHuman: (question, options) => { l.asked = { question, options }; return '질문을 올렸다. 지금 턴을 끝내라. 답은 다음 메시지로 온다.'; },
       requestApproval: (command, reason) => {
-        l.asked = { question: st('이 명령을 실행해도 될까요?\n\n`{command}`\n\n이유: {reason}', { command: command.trim(), reason }), options: [st('승인'), st('거절')], kind: 'approval', command: command.trim() };
-        return '승인을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지로 알려 주니 같은 명령을 그대로 실행해라.';
+        const cmd = command.trim();
+        // 승인해도 실행할 수 없는(하드 차단) 명령은 묻지 않는다 — 사람이 직접 실행하도록 안내
+        const team = store.getTeam(teamId);
+        const env = team ? this.envFor(team, store.getProject(team.project_id)) : null;
+        const hard = env ? matchesAny(cmd, env.blocked) : null;
+        if (hard) return `이 명령은 막힌 명령이라 승인해도 실행되지 않는다(패턴: ${hard}). 승인을 묻지 말고, 사람이 직접 실행해야 한다고 명령 전체와 함께 report/ask_human 으로 알려라:\n${cmd}`;
+        if (env && !matchesAny(cmd, env.approval?.patterns ?? [])) return '이 명령은 승인 없이 실행할 수 있다(승인 대상이 아님). 그대로 실행해라.';
+        const repo = cmd.match(/--repo[=\s]+(\S+)/)?.[1] ?? store.getProject(team?.project_id)?.name ?? '-';
+        l.asked = { question: st('이 명령을 실행해도 될까요?\n\n`{command}`\n\n대상 저장소: {repo}\n이유: {reason}\n\n승인은 이 명령 그대로 1번에만 유효합니다.', { command: cmd, repo, reason }), options: [st('승인'), st('거절')], kind: 'approval', command: cmd };
+        return '승인을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지로 알려 주니 같은 명령을 그대로(한 글자도 바꾸지 말고) 한 번 실행해라.';
       },
       requestTools: (tools, reason) => {
         const want = expandGrant(tools).filter((t) => t !== 'MultiEdit');

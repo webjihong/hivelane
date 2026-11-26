@@ -47,7 +47,7 @@ const SAFE_ABS = ['/dev/null', '/dev/stdout', '/dev/stderr', '/tmp/', '/private/
 /** Bash 명령이 막을 패턴이거나 허용 루트 밖에 쓰려고 하면 거부 사유. */
 export function checkBash(command: string, cwd: string, writableRoots: string[], blocked: string[]): string | null {
   const hit = matchesAny(command, blocked);
-  if (hit) return `이 팀에서는 실행할 수 없는 명령입니다 (막힌 패턴: ${hit}). 커밋·푸시·운영 작업은 사람이 합니다.`;
+  if (hit) return `이 팀에서는 실행할 수 없는 명령입니다 (막힌 패턴: ${hit}). 승인해도 실행되지 않으니 request_approval 로 묻지 말고, 사람이 직접 실행해야 한다고 명령 전체와 함께 알려라. 커밋·푸시·운영 작업은 사람이 합니다.`;
   // 리다이렉션·tee 로 루트 밖 절대 경로에 쓰는지 대략 확인
   const re = /(?:>>?|\btee\s+(?:-a\s+)?)\s*(["']?)((?:~|\/)[^\s"';|&]+)\1/g;
   for (const m of command.matchAll(re)) {

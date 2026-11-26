@@ -110,4 +110,5 @@ export default {
   '끝난 팀으로 보냄({by}) · {why}': 'Moved to finished teams ({by}) · {why}',
   '끝난 팀으로 보냄 · {why}': 'Moved to finished teams · {why}',
   '폴더가 이미 정리됨(기록만 정리)': 'Folder was already cleaned up (record only)',
+  '이 명령을 실행해도 될까요?\n\n`{command}`\n\n대상 저장소: {repo}\n이유: {reason}\n\n승인은 이 명령 그대로 1번에만 유효합니다.': 'Run this command?\n\n`{command}`\n\nRepository: {repo}\nReason: {reason}\n\nApproval is valid for this exact command, once.',
 } as Record<string, string>;

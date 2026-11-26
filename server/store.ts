@@ -48,6 +48,8 @@ export const DEFAULT_BLOCKED = [
   '\\brm\\s+-rf?\\s+(/|~|\\$HOME)(\\s|$)', '\\bsudo\\b', 'npm\\s+publish',
 ];
 
+/** GitHub 릴리스 만들기·파일 올리기·고치기 — 푸시 허용 프로젝트에서 사람 승인 뒤 1회 실행 */
+export const GH_RELEASE_APPROVAL = '\\bgh\\s+release\\s+(create|upload|edit)\\b';
 const GIT_PRE = '\\bgit\\b(\\s+(-C|-c)\\s+\\S+|\\s+--?[\\w-]+(=\\S+)?)*\\s+';
 /** 기본 막을 명령 중 git·gh 관련(커밋·푸시 허용 프로젝트에서는 아래 GIT_PUSH_BLOCKED 로 바꾼다) */
 export const isGitDefault = (p: string) => p.startsWith('\\bgit\\b') || p.startsWith('\\bgh\\s');
@@ -61,12 +63,14 @@ export function gitPushBlocked(protectedBranches: string[]): string[] {
     `${GIT_PRE}(update-ref|filter-branch|replace|notes)\\b`,
     `${GIT_PRE}worktree\\s+(add|remove|prune|move)\\b`,
     `${GIT_PRE}clean\\b`,
-    '\\bgh\\s+(pr\\s+(merge|close)|repo\\s+(create|delete|edit|rename|archive)|release\\b|api\\b[^|;&]*-X\\s*(DELETE|PUT|PATCH))',
+    '\\bgh\\s+(pr\\s+(merge|close)|repo\\s+(create|delete|edit|rename|archive)|release\\s+delete\\b|api\\b[^|;&]*-X\\s*(DELETE|PUT|PATCH))',
+    // 릴리스 만들기·올리기·고치기는 막지 않고 사람 승인 1회 뒤 실행(isApprovable). 지우기는 위에서 하드 차단
+    GH_RELEASE_APPROVAL,
   ];
 }
 /** 「내 환경」 팀에서는 막지 않고 사람 승인 뒤 실행하는 명령(운영 DB·배포·인프라) */
 /** 운영 DB·배포·클라우드 프로필·인프라·패키지 배포 계열의 막을 명령이면 승인 대상(패턴 글자가 아니라 종류로 판정 → 프로젝트마다 바꾼 패턴도 그대로) */
-export const isApprovable = (p: string): boolean => /db:prod|prod:sync|--profile|terraform|npm\\s\+publish|npm\s+publish/.test(p);
+export const isApprovable = (p: string): boolean => p === GH_RELEASE_APPROVAL || /db:prod|prod:sync|--profile|terraform|npm\\s\+publish|npm\s+publish/.test(p);
 export function splitApproval(blocked: string[]): { hard: string[]; approval: string[] } {
   return { hard: blocked.filter((p) => !isApprovable(p)), approval: blocked.filter((p) => isApprovable(p)) };
 }
