@@ -1,3 +1,4 @@
+import { CLOSABLE, TeamCleanButton } from './GitClean.tsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Priority, StateSnapshot, TeamDetail, TeamView } from '../../shared/types.ts';
 import { MODEL_LABEL } from './art.ts';
@@ -7,8 +8,6 @@ import { act, api, clock, debounce, go, onLive, openAgent, refreshState, toast, 
 import { t } from './i18n.ts';
 import { AGENT_STATE_LABEL, ConfirmButton, KIND_LABEL, MODE_LABEL, PRI, RichText, Robot, STATE_LABEL, Steps, agoSec, elapsed, hhmm, lampState, money, whoLabel } from './ui.tsx';
 
-/** 「팀 정리」로 끝난 팀에 보낼 수 있는 업무 팀 상태(서버 Orchestrator.CLOSABLE 과 같게) */
-const CLOSABLE = ['done', 'failed', 'paused', 'queued', 'waiting_human'];
 
 const ACTOR: Record<string, string> = { engine: t('총괄 엔진'), agent: t('총괄'), user: t('사용자') };
 
@@ -234,9 +233,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
           {/* 「다시 시작」과 떨어뜨려 오른쪽 끝에. 대화 종료 · 작업 폴더 패치 보관 후 삭제 · 목록에서 빼기를 한 번에 */}
           {!standing && CLOSABLE.includes(tm.state) && !remote && (
             <span className="team-close">
-              <ConfirmButton className="btn ghost" label={t('팀 정리')}
-                confirmLabel={tm.worktree_path ? t('팀을 정리할까요? 대화를 끝내고, 작업 폴더는 변경을 패치로 남긴 뒤 지우고(브랜치는 남김), 업무 팀 목록에서 빼 끝난 팀으로 옮깁니다.') : t('팀을 정리할까요? 대화를 끝내고 업무 팀 목록에서 빼 끝난 팀으로 옮깁니다.')}
-                onConfirm={() => void call('close', {}, t('팀을 정리했습니다 · 끝난 팀으로 옮김'))} />
+              <TeamCleanButton teamId={tm.id} hasWorktree={!!tm.worktree_path} />
             </span>
           )}
         </div>

@@ -5,7 +5,7 @@ import { ChatInput } from './ChatInput.tsx';
 import { DOT_LABEL, dotOf, isApproval, sideNote } from './chan.ts';
 import { act, api, clock, go, refreshState, toast, useBox } from './store.ts';
 import { Team, useTeamDetail } from './Team.tsx';
-import { WorktreeCleanButton } from './GitClean.tsx';
+import { CLOSABLE, TeamCleanButton } from './GitClean.tsx';
 import { t, tn } from './i18n.ts';
 import { RichText, hhmm, money, whoLabel } from './ui.tsx';
 
@@ -72,7 +72,7 @@ function Head({ tm, snap, detail }: { tm: TeamView; snap: StateSnapshot; detail:
         {tm.state === 'running' && tm.lifetime === 'task' && <button className="btn" type="button" onClick={() => void call('pause', t('멈춤 요청을 보냈습니다'))}>{t('멈춤')}</button>}
         {tm.state === 'paused' && <button className="btn primary" type="button" onClick={() => void call('resume', t('재개했습니다 · 15분 동안 자동 멈춤 안 함'))}>{t('재개')}</button>}
         {tm.state === 'failed' && <button className="btn primary" type="button" onClick={() => void call('retry', t('대기열에 다시 넣었습니다'))}>{t('다시 시작')}</button>}
-        {tm.lifetime === 'task' && (tm.state === 'done' || tm.state === 'failed') && tm.worktree_path && snap.access === 'local' && <WorktreeCleanButton teamId={tm.id} />}
+        {tm.lifetime === 'task' && CLOSABLE.includes(tm.state) && snap.access === 'local' && <TeamCleanButton teamId={tm.id} hasWorktree={!!tm.worktree_path} />}
         <a className={`btn${detail ? ' on' : ''}`} href={detail ? `#team-${tm.id}` : `#team-${tm.id}/detail`} aria-pressed={detail}>{t('팀 상세')}</a>
       </div>
     </header>

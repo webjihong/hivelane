@@ -1,3 +1,4 @@
+import { ConfirmButton } from './ui.tsx';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CleanItem, CleanScanView, GitCleanSummary } from '../../shared/types.ts';
@@ -86,29 +87,18 @@ export function GitCleanPanel({ local, onClose }: { local: boolean; onClose: () 
 }
 
 /** 끝난 팀의 worktree 정리 버튼: 두 번 눌러 확인 · 커밋 안 한 변경이 있으면 목록을 보여 주고 「버리고 지우기」를 한 번 더 */
-export function WorktreeCleanButton({ teamId, className = 'btn' }: { teamId: string; className?: string }) {
-  const [step, setStep] = useState<'idle' | 'sure' | 'dirty'>('idle');
-  const [dirty, setDirty] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const run = async (discard: boolean) => {
-    setBusy(true);
-    const r = await act(() => api<{ result: 'done' | 'dirty' | 'blocked'; message: string; dirty?: string[] }>(`/api/teams/${encodeURIComponent(teamId)}/clean-worktree`, 'POST', { discard }));
-    setBusy(false);
-    if (!r) { setStep('idle'); return; }
-    if (r.result === 'dirty') { setDirty(r.dirty ?? []); setStep('dirty'); return; }
-    setStep('idle');
-    toast(r.result === 'done' ? t('worktree 를 정리했습니다 · 브랜치는 남김') : r.message, r.result === 'done' ? 'good' : 'crit');
-    void refreshState();
-  };
-  if (step === 'idle') return <button className={className} type="button" onClick={() => setStep('sure')} title={t('이 팀의 worktree 폴더를 지웁니다(브랜치는 남김)')}>{t('worktree 정리')}</button>;
-  if (step === 'sure') return (
-    <span className="confirm"><span>{t('worktree 를 지울까요? 브랜치는 남습니다.')}</span><button className="btn danger" type="button" disabled={busy} onClick={() => void run(false)}>{busy ? t('정리 중…') : t('확인')}</button><button className="btn" type="button" onClick={() => setStep('idle')}>{t('취소')}</button></span>
-  );
+/** 「팀 정리」로 끝난 팀에 보낼 수 있는 업무 팀 상태(서버 Orchestrator.CLOSABLE 과 같게) */
+export const CLOSABLE = ['done', 'failed', 'paused', 'queued', 'waiting_human'];
+
+/**
+ * 「팀 정리」 — 팀 상세·팀 채널·끝난 팀 목록 어디서나 같은 동작:
+ * 대화 종료 · worktree 는 변경을 패치로 남긴 뒤 삭제(브랜치는 남김) · 업무 팀 목록에서 빼 끝난 팀(보관)으로.
+ */
+export function TeamCleanButton({ teamId, hasWorktree, className = 'btn' }: { teamId: string; hasWorktree: boolean; className?: string }) {
+  const close = () => act(async () => { await api(`/api/teams/${encodeURIComponent(teamId)}/close`, 'POST', {}); await refreshState(); }, t('팀을 정리했습니다 · 끝난 팀으로 옮김'));
   return (
-    <span className="confirm wt-dirty">
-      <span>{tn('커밋 안 한 변경 {n}개: {files} — 버리고 지울까요?', { n: dirty.length, files: <span className="mono">{dirty.slice(0, 4).join(', ')}{dirty.length > 4 ? ' …' : ''}</span> })}</span>
-      <button className="btn danger" type="button" disabled={busy} onClick={() => void run(true)}>{busy ? t('정리 중…') : t('버리고 지우기')}</button>
-      <button className="btn" type="button" onClick={() => setStep('idle')}>{t('취소')}</button>
-    </span>
+    <ConfirmButton className={className} label={t('팀 정리')}
+      confirmLabel={hasWorktree ? t('팀을 정리할까요? 대화를 끝내고, 작업 폴더는 변경을 패치로 남긴 뒤 지우고(브랜치는 남김), 업무 팀 목록에서 빼 끝난 팀으로 옮깁니다.') : t('팀을 정리할까요? 대화를 끝내고 업무 팀 목록에서 빼 끝난 팀으로 옮깁니다.')}
+      onConfirm={() => void close()} />
   );
 }

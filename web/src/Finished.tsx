@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CleanupLogView, FinishedTeamView, StateSnapshot } from '../../shared/types.ts';
-import { WorktreeCleanButton } from './GitClean.tsx';
+import { TeamCleanButton } from './GitClean.tsx';
 import { api, toast } from './store.ts';
 import { money } from './ui.tsx';
 import { locale, t } from './i18n.ts';
@@ -81,7 +81,7 @@ function TeamsTab({ snap }: { snap: StateSnapshot }) {
                 </div>
                 {tm.summary && <div className="fin-sum">{tm.summary}</div>}
               </div>
-              {tm.worktree && (tm.state === 'done' || tm.state === 'failed') && local && <WorktreeCleanButton teamId={tm.id} />}
+              {(tm.state === 'done' || tm.state === 'failed') && local && <TeamCleanButton teamId={tm.id} hasWorktree={!!tm.worktree} />}
             </div>
           ))}
           {items.length < total && <button className="btn" type="button" onClick={() => load(items.length)}>{t('더 보기 ({n}/{total})', { n: items.length, total })}</button>}
