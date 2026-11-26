@@ -17,11 +17,11 @@
   <a href="docs/GUIDE.md">사용 가이드</a>
 </p>
 
+**한국어** · [English](README.en.md)
+
 <p align="center">
   <img src="docs/images/po-chat.png" alt="총괄에게 말로 일을 맡기고 팀 상황을 표로 받는 화면" width="900" />
 </p>
-
-> *Hivelane is a local "control room" for AI coding agents on macOS. You talk to a lead agent in a chat; it spins up teams (PM, developer, QA…) of Claude Code / Codex agents that work in parallel in isolated git worktrees, while a resource engine pauses and resumes them based on your Mac's CPU and memory. You follow along from a messenger-style web UI on your Mac or phone. The UI and docs are in Korean.*
 
 ---
 
@@ -243,7 +243,7 @@ open http://127.0.0.1:4310
 <details>
 <summary><b>화면이 한국어뿐인가요?</b></summary>
 
-네, 지금은 한국어만 있습니다.
+아니요. 화면은 한국어와 영어를 지원합니다. **설정 › 화면 › 언어**에서 고르고, 기기마다 따로 저장되며 처음에는 맥·브라우저 언어를 따릅니다. 총괄·팀이 답하는 말과 알림의 언어는 따로 **설정 › 총괄·엔진 › AI 답변·알림 언어**에서 정합니다. 맥 앱의 메뉴 막대·처음 설정 화면은 맥 언어를 따릅니다. 문서는 [English](README.en.md)도 있습니다(명세는 한국어만).
 </details>
 
 ---

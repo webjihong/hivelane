@@ -1,3 +1,5 @@
+**한국어** · [English](en/MAC_APP.md)
+
 # 맥 앱 가이드 (DMG)
 
 터미널을 몰라도 Hivelane을 쓸 수 있게 만든 맥 앱입니다.

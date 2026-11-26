@@ -1,0 +1,42 @@
+[한국어](CHANGELOG.md) · **English**
+
+# Changelog
+
+Versions follow [Semantic Versioning](https://semver.org/): **major.feature.fix** (e.g. 1.2.3).
+The Mac app (DMG) for each version is published on [Releases](https://github.com/webjihong/hivelane/releases).
+
+## 1.1.0 — 2026-11-26
+
+### Korean and English
+- UI language: Settings › Display › Language (한국어 / English). Saved per device; the first run follows the Mac/browser language. The Mac app's menu bar and first-run setup follow the Mac language.
+- AI reply & notification language: Settings › Lead & engine. Set to English and the Lead, PMs and members answer in English, and notifications, errors and system messages are in English too (existing records stay as they are).
+- English docs: README.en.md, docs/en (install, Mac app, user guide) and English screenshots.
+
+### Also
+- Team ids in text (tm-…, s-…) are shown as "team name · id" chips that open the team. Notifications write them as "name (id)".
+- The app version is read from package.json and shown in the UI and integrations.
+
+## 1.0.0 — 2026-11-26
+
+The first official release.
+
+### Lead and teams
+- Hand work to the Lead AI in a chat and it proposes a team (PM, developer, QA, reviewer, models, budget); approve it and the team is created and gets to work.
+- Each team works separately in its own git worktree, and its stage (Plan → Build → Check → Report), to-dos, what each member is doing and its cost are shown in real time.
+- When a team gets stuck it posts a question, and you answer with buttons in the Inbox. Production DB and deploy commands run only after human approval.
+- Standing teams: always-on teams you instruct directly without going through the Lead (checks, incident response) that revive themselves if they die.
+- Lead engine: pauses and resumes teams based on CPU and memory, and queues heavy commands (tests, builds).
+
+### AI accounts
+- Connect multiple Claude accounts, pick an account per role, and see plan usage per account.
+- Usage-based switching (Off · Notify, switch with one click · Switch automatically): past the threshold, the next account is borrowed, and the original returns once the limit resets. Ongoing conversations continue even when the account changes.
+- Codex (OpenAI) accounts: run as Separate session members that a PM delegates work to (sandboxed to the worktree, network off).
+
+### Records and backup
+- Every conversation, tool run, changed file and summary is stored in SQLite, with Korean-aware search (optional vector search).
+- Backup: a folder on this Mac, Synology NAS (connected folder or WebDAV) and AWS S3 (including compatible services); automatic every 30 minutes to weekly, skipped when nothing changed, number of backups to keep, read-only "Browse", and restore.
+
+### UI
+- Messenger-style web UI (Mac and phone); phone access limited to your own devices via Tailscale; web push, Slack and macOS notifications.
+- Mac app (DMG): first-run setup guide, honeycomb menu bar icon (working / needs you), macOS notifications.
+- PRs (checks, reviews, merging), repository status, script buttons, git cleanup, 11 themes and text sizes.

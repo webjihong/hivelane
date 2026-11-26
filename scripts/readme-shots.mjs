@@ -9,7 +9,8 @@ import { join } from 'node:path';
 
 const URL = process.env.HL_URL ?? 'http://127.0.0.1:4391';
 const T = JSON.parse(process.env.HL_TEAMS ?? '{}');
-const OUT = join(import.meta.dirname, '..', 'docs', 'images');
+const LANG = process.env.HL_LANG === 'en' ? 'en' : 'ko'; // en: 영어 화면(docs/images/en)
+const OUT = join(import.meta.dirname, '..', 'docs', 'images', ...(LANG === 'en' ? ['en'] : []));
 mkdirSync(OUT, { recursive: true });
 
 const SHOTS = [
@@ -31,6 +32,9 @@ app.whenReady().then(async () => {
   for (const s of SHOTS.filter((x) => !only || only.includes(x.file))) {
     const win = new BrowserWindow({ width: s.w, height: s.h, show: false, useContentSize: true, webPreferences: { offscreen: false } });
     if (s.mobile) win.webContents.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1');
+    await win.loadURL(`${URL}/`).catch(() => undefined);
+    await sleep(800);
+    await win.webContents.executeJavaScript(`localStorage.setItem('hl-lang', ${JSON.stringify(LANG)})`);
     await win.loadURL(`${URL}/`).catch(() => undefined);
     await sleep(800);
     await win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(s.hash)}`);
