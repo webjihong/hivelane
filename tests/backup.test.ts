@@ -52,13 +52,20 @@ describe('백업', () => {
   }, 20_000);
 
   it('주기: 바뀐 게 없으면 건너뜀 · 켜진 저장소가 없으면 실패로 남김 · 지운 저장소의 비밀값도 지움', async () => {
-    const { dir, bm, secrets } = setup();
+    const { cfg, store, dir, bm, secrets } = setup();
     expect((await bm.backupNow('schedule')).error).toContain('저장소가 없습니다');
     await bm.saveConfig({ targets: [{ id: 'loc', type: 'local', name: '맥', enabled: true, path: dir }, { id: 'dav', type: 'webdav', name: 'NAS', enabled: false, url: 'https://nas.local/backup' }] }, { dav: 'pw' });
     expect(secrets.m.get('dav')).toBe('pw');
     expect((await bm.backupNow('schedule')).skipped).toBeUndefined();
     expect((await bm.backupNow('schedule')).skipped).toBe(true);
     expect((await bm.backupNow('manual')).skipped).toBeUndefined(); // 직접 누르면 늘 만든다
+    // 대화가 아니어도 설정·이미지가 바뀌면 다시 백업한다
+    expect((await bm.backupNow('schedule')).skipped).toBe(true);
+    store.saveSettings({ autoCleanDays: 9 });
+    expect((await bm.backupNow('schedule')).skipped).toBeUndefined();
+    writeFileSync(join(cfg.uploadsDir, 'u-new.png'), 'x');
+    expect((await bm.backupNow('schedule')).skipped).toBeUndefined();
+    expect((await bm.backupNow('schedule')).skipped).toBe(true);
     await bm.saveConfig({ targets: [{ id: 'loc', type: 'local', name: '맥', enabled: true, path: dir }] });
     expect(secrets.m.has('dav')).toBe(false);
   }, 20_000);

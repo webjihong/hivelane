@@ -7,6 +7,7 @@
  * - 복구: 직전에 지금 상태를 백업 → 받아 풀어 restore-pending 에 두고 → 서버를 다시 띄우면 시작할 때 바꿔 끼운다.
  */
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -116,7 +117,17 @@ export class BackupManager {
   private signature(): string {
     const db = this.deps.store.db;
     const q = (sql: string) => { try { return (db.prepare(sql).get() as { n: number | null }).n ?? 0; } catch { return 0; } };
-    return [q('SELECT max(id) n FROM messages'), q('SELECT max(id) n FROM agent_events'), q('SELECT max(id) n FROM po_chat'), q('SELECT count(*) n FROM teams'), q('SELECT max(id) n FROM work_summaries')].join(':');
+    const qs = (sql: string) => { try { return String((db.prepare(sql).get() as { n: unknown } | undefined)?.n ?? ''); } catch { return ''; } };
+    const settingsHash = () => { try { const rows = db.prepare("SELECT key, value FROM settings WHERE key NOT LIKE 'seen%' AND key NOT LIKE 'chat_indexed%' AND key NOT LIKE 'remind:%' AND key <> 'last_remote_login' ORDER BY key").all() as { key: string; value: string }[]; return createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 12); } catch { return ''; } };
+    // 폴더(올린 이미지·정리한 패치): 파일 수 + 가장 최근 수정 시각
+    const dirSig = (dir: string) => { try { const names = readdirSync(dir); return `${names.length}/${Math.max(0, ...names.map((n) => statSync(join(dir, n)).mtimeMs)).toFixed(0)}`; } catch { return '0'; } };
+    return [
+      q('SELECT max(id) n FROM messages'), q('SELECT max(id) n FROM agent_events'), q('SELECT max(id) n FROM po_chat'), q('SELECT max(id) n FROM work_summaries'),
+      q('SELECT count(*) n FROM teams'), qs('SELECT max(updated_at) n FROM teams'), // 팀 상태·이름 바뀜
+      settingsHash(), // 설정·템플릿·계정 등
+      qs('SELECT count(*) || \'.\' || coalesce(sum(done), 0) n FROM checklist'), qs('SELECT count(*) || \'.\' || coalesce(max(updated_at), \'\') n FROM po_knowledge'), q('SELECT count(*) n FROM projects'),
+      dirSig(this.deps.cfg.uploadsDir), dirSig(join(this.deps.cfg.home, 'archive')),
+    ].join(':');
   }
 
   /** 백업 파일 하나 만들기 → 켜진 저장소마다 올리고 보관 개수 넘는 것 지우기 */
