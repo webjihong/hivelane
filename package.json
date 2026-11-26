@@ -1,6 +1,6 @@
 {
   "name": "@webjihong/hivelane",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "로컬 맥에서 AI 팀(PO·PM·개발·QA)을 여러 개 돌리고 리소스에 맞춰 지휘하는 관제실",
   "license": "MIT",
@@ -15,6 +15,7 @@
     "build": "vite build",
     "build:server": "tsx scripts/bundle-server.ts",
     "desktop": "npm run build && npm run build:server && HIVELANE_APP_ROOT=$PWD electron desktop/main.mjs",
+    "release": "tsx scripts/release.ts",
     "dist:mac": "tsx scripts/build-desktop.ts",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

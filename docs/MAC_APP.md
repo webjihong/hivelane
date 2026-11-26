@@ -25,7 +25,7 @@ Node.js나 다른 프로그램은 따로 설치하지 않아도 됩니다. 앱 �
 
 ### 1-2. 설치하기
 
-1. 받은 `Hivelane-<버전>-arm64.dmg` 파일을 더블클릭합니다.
+1. **[GitHub Releases 최신 버전](https://github.com/webjihong/hivelane/releases/latest)** 의 「Assets」에서 `Hivelane-<버전>-arm64.dmg` 를 받아 더블클릭합니다.
 2. 열린 창에서 **Hivelane** 아이콘을 **Applications(응용 프로그램)** 폴더 쪽으로 끌어다 놓습니다.
 3. 창을 닫고, 바탕화면이나 Finder 왼쪽에 생긴 「Hivelane」 디스크를 꺼냅니다(⏏ 단추).
 
@@ -195,18 +195,22 @@ npm run desktop
 
 DMG를 만들지 않고 앱 창만 띄웁니다. 이미 이 맥에 Hivelane 서버가 떠 있으면 그 서버에 붙습니다. 창을 닫아도 메뉴 막대에 남으니, 끝내려면 메뉴 막대 아이콘 › Hivelane 앱 종료.
 
-### 2-5. 버전 올리기
+### 2-5. 버전 매기기
 
-`package.json` 맨 위의 `"version": "0.1.0"` 을 `0.1.1` 처럼 올린 뒤 `npm run dist:mac` 을 다시 실행합니다. 파일 이름에 새 버전이 붙습니다.
+버전은 **큰 변화.기능 추가.고침**(예: `1.2.3`)으로 매깁니다. 기능을 더하면 가운데, 고치기만 하면 끝 숫자를 올립니다. 바뀐 점은 저장소 맨 위의 [CHANGELOG.md](../CHANGELOG.md)에 버전마다 적습니다.
 
-### 2-6. 나눠 주기
+### 2-6. 릴리스(새 버전 DMG 올리기)
 
-DMG 파일 하나만 전달하면 됩니다(메신저·구글 드라이브·USB 등). GitHub에 올려 링크로 나누려면:
+원본 저장소에서 main 이 깨끗하고 최신인 상태로:
 
-1. GitHub 저장소 페이지 › 오른쪽 **Releases** › **Draft a new release**.
-2. **Choose a tag** 에 `v0.1.0` 처럼 버전을 적고 「Create new tag」.
-3. 아래 「Attach binaries」 칸에 DMG 파일을 끌어다 놓고 **Publish release**.
-4. 받는 사람에게는 그 페이지 주소와 이 문서의 **1부** 를 알려 주세요.
+1. `CHANGELOG.md` 맨 위에 `## 1.1.0 — 2026-12-01` 처럼 새 버전 단락을 쓰고 커밋·푸시합니다.
+2. 아래 명령 하나로 버전 올리기 → 커밋·태그(`v1.1.0`) → 푸시 → DMG 만들기 → GitHub Releases 에 DMG 올리기까지 합니다.
+
+```bash
+npm run release -- 1.1.0          # --dry 를 붙이면 할 일만 보여 줌
+```
+
+GitHub CLI(`gh`)에 저장소 주인 계정으로 로그인돼 있어야 합니다(`gh auth status`). 받는 사람에게는 [Releases](https://github.com/webjihong/hivelane/releases) 주소와 이 문서의 **1부** 를 알려 주세요.
 
 받는 사람은 서명 없는 앱이라 1-3의 「그래도 열기」를 한 번 해야 합니다. 이 단계를 없애려면 Apple 개발자 계정(연 $99)으로 서명·공증을 해야 합니다(아직 지원하지 않음).
 
