@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import type { Notifier } from '../notify/index.ts';
@@ -22,7 +23,7 @@ export function checkListOf(r: GhPr['statusCheckRollup']): PrView['check_list'] 
     const v = (c.conclusion ?? c.state ?? c.status ?? '').toUpperCase();
     const state: PrView['check_list'][number]['state'] = ['SUCCESS', 'NEUTRAL'].includes(v) ? 'pass' : ['SKIPPED'].includes(v) ? 'skip'
       : ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(v) ? 'fail' : 'pending';
-    const name = c.name ? (c.workflowName && c.workflowName !== c.name ? `${c.workflowName} / ${c.name}` : c.name) : c.context ?? '검사';
+    const name = c.name ? (c.workflowName && c.workflowName !== c.name ? `${c.workflowName} / ${c.name}` : c.name) : c.context ?? st('검사');
     return { name, state, url: c.detailsUrl ?? c.targetUrl ?? null };
   });
 }
@@ -58,9 +59,9 @@ export class PrWatcher {
       const now = Date.now();
       for (const p of this.deps.store.listProjects()) {
         const r = await run(this.deps.gh ?? 'gh', ['pr', 'list', '--state', 'all', '--limit', '30', '--json', FIELDS], { cwd: p.path, timeoutMs: 25_000 });
-        if (r.code !== 0) { if (!/no git remotes/i.test(r.stderr)) errors[p.name] = r.stderr.trim().slice(0, 200) || `gh 종료 코드 ${r.code}`; continue; }
+        if (r.code !== 0) { if (!/no git remotes/i.test(r.stderr)) errors[p.name] = r.stderr.trim().slice(0, 200) || st('gh 종료 코드 {code}', { code: String(r.code) }); continue; }
         let rows: GhPr[] = [];
-        try { rows = JSON.parse(r.stdout) as GhPr[]; } catch { errors[p.name] = 'gh 출력 해석 실패'; continue; }
+        try { rows = JSON.parse(r.stdout) as GhPr[]; } catch { errors[p.name] = st('gh 출력 해석 실패'); continue; }
         for (const g of rows) {
           if (g.state !== 'OPEN' && now - Date.parse(g.mergedAt ?? g.updatedAt) > KEEP_CLOSED_MS) continue;
           out.push({
@@ -76,7 +77,7 @@ export class PrWatcher {
         const key = `${pr.url}#${pr.state}`;
         if (!this.known.has(key) && !this.first && pr.team_id) {
           const t = this.deps.store.getTeam(pr.team_id);
-          const what = pr.state === 'OPEN' ? '새 PR' : pr.state === 'MERGED' ? 'PR 병합됨' : 'PR 닫힘';
+          const what = pr.state === 'OPEN' ? st('새 PR') : pr.state === 'MERGED' ? st('PR 병합됨') : st('PR 닫힘');
           void this.deps.notifier.send({ title: `${what} · ${pr.project_name} #${pr.number}`, body: `${pr.title}\n${pr.base} ← ${pr.head}${t ? ` · ${t.name}` : ''}`, level: pr.state === 'OPEN' ? 'info' : 'good', url: pr.url, tag: `pr-${pr.url}` });
         }
         this.known.add(key);
@@ -91,12 +92,12 @@ export class PrWatcher {
   /** 화면에서 병합: gh pr merge. 보호 규칙·충돌은 gh 가 거절하고 그 이유를 돌려준다. */
   async merge(projectId: string, number: number, method: 'merge' | 'squash' | 'rebase'): Promise<{ ok: boolean; message: string }> {
     const p = this.deps.store.getProject(projectId);
-    if (!p) return { ok: false, message: '프로젝트가 없습니다' };
+    if (!p) return { ok: false, message: st('프로젝트가 없습니다') };
     const r = await run(this.deps.gh ?? 'gh', ['pr', 'merge', String(number), `--${method}`], { cwd: p.path, timeoutMs: 60_000 });
     const message = (r.stdout + '\n' + r.stderr).trim().slice(0, 600);
     log.info(`PR 병합 ${p.name} #${number} (${method}) → ${r.code === 0 ? '성공' : '실패'} ${message}`);
     void this.refresh();
-    return { ok: r.code === 0, message: message || (r.code === 0 ? '병합했습니다' : `gh 종료 코드 ${r.code}`) };
+    return { ok: r.code === 0, message: message || (r.code === 0 ? st('병합했습니다') : st('gh 종료 코드 {code}', { code: String(r.code) })) };
   }
 
   /** PR 을 만든 Hivelane 팀: 팀 브랜치가 head 이거나, 팀 기록에 PR 주소가 남아 있으면 */

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppConfig } from './config.ts';
+import { st } from './i18n.ts';
 
 /** 사람이 붙여 넣은 이미지. ~/.hivelane/uploads/<id>.<ext> 에 저장하고, 에이전트는 Read 도구로 본다. */
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
@@ -10,10 +11,10 @@ const ID = /^u-[a-z0-9]{12}\.(png|jpg|gif|webp)$/;
 
 export function saveUpload(cfg: AppConfig, type: string, base64: string): string {
   const ext = IMAGE_TYPES[type];
-  if (!ext) throw new Error('이미지(png·jpg·gif·webp)만 올릴 수 있습니다');
+  if (!ext) throw new Error(st('이미지(png·jpg·gif·webp)만 올릴 수 있습니다'));
   const buf = Buffer.from(base64, 'base64');
-  if (!buf.length) throw new Error('빈 파일입니다');
-  if (buf.length > MAX_UPLOAD_BYTES) throw new Error('이미지는 10MB 까지입니다');
+  if (!buf.length) throw new Error(st('빈 파일입니다'));
+  if (buf.length > MAX_UPLOAD_BYTES) throw new Error(st('이미지는 10MB 까지입니다'));
   mkdirSync(cfg.uploadsDir, { recursive: true });
   const id = `u-${randomBytes(6).toString('hex')}.${ext}`;
   writeFileSync(join(cfg.uploadsDir, id), buf);

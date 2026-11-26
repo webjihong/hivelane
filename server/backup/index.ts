@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import type { BackupConfig, BackupItem, BackupRunResult, BackupTarget, BackupView } from '../../shared/types.ts';
 import type { AppConfig } from '../config.ts';
 import { logger } from '../log.ts';
+import { st } from '../i18n.ts';
 import type { Store } from '../store.ts';
 import { newId, nowIso, run } from '../util.ts';
 import { BACKUP_RE, makeTarget, type TargetIO } from './targets.ts';
@@ -27,7 +28,7 @@ export interface SecretStore { get(id: string): Promise<string | null>; set(id: 
 const SERVICE = 'hivelane-backup';
 export const keychain: SecretStore = {
   async get(id) { const r = await run('security', ['find-generic-password', '-s', SERVICE, '-a', id, '-w']); return r.code === 0 ? r.stdout.replace(/\n$/, '') : null; },
-  async set(id, v) { const r = await run('security', ['add-generic-password', '-U', '-s', SERVICE, '-a', id, '-w', v]); if (r.code !== 0) throw new Error(`키체인 저장 실패: ${r.stderr.trim()}`); },
+  async set(id, v) { const r = await run('security', ['add-generic-password', '-U', '-s', SERVICE, '-a', id, '-w', v]); if (r.code !== 0) throw new Error(st('키체인 저장 실패: {err}', { err: r.stderr.trim() })); },
   async del(id) { await run('security', ['delete-generic-password', '-s', SERVICE, '-a', id]); },
 };
 
@@ -109,7 +110,7 @@ export class BackupManager {
       const seen = (await io.list()).some((x) => x.name === name);
       await io.del(name);
       rmSync(f, { force: true });
-      return seen ? { ok: true } : { ok: false, error: '올렸지만 목록에서 보이지 않습니다' };
+      return seen ? { ok: true } : { ok: false, error: st('올렸지만 목록에서 보이지 않습니다') };
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
   }
 
@@ -143,7 +144,7 @@ export class BackupManager {
     const at = new Date();
     this.setState({ lastAttemptAt: at.toISOString() });
     const res: BackupRunResult = { at: at.toISOString(), ok: false, reason, file: null, size: 0, results: [] };
-    if (!targets.length) { res.error = '켜진 저장소가 없습니다'; this.setState({ last: res }); return res; }
+    if (!targets.length) { res.error = st('켜진 저장소가 없습니다'); this.setState({ last: res }); return res; }
     const sig = this.signature();
     if (reason === 'schedule' && cfg.skipUnchanged && sig === this.state().lastSig) {
       const r = { ...res, ok: true, skipped: true };
@@ -162,7 +163,7 @@ export class BackupManager {
       }
       writeFileSync(join(stage, 'manifest.json'), JSON.stringify({ app: 'hivelane', format: 1, created_at: at.toISOString(), reason }, null, 2));
       const t = await run('tar', ['-czf', out, '-C', stage, '.'], { timeoutMs: 600_000 });
-      if (t.code !== 0) throw new Error(`압축 실패: ${t.stderr.trim()}`);
+      if (t.code !== 0) throw new Error(st('압축 실패: {err}', { err: t.stderr.trim() }));
       res.file = name; res.size = statSync(out).size;
       for (const target of targets) {
         try {
@@ -183,7 +184,7 @@ export class BackupManager {
     if (!res.ok) {
       const why = res.error ?? res.results.filter((r) => !r.ok).map((r) => `${cfg.targets.find((t) => t.id === r.target)?.name ?? r.target}: ${r.error}`).join(' · ');
       log.warn('백업 실패', why);
-      this.deps.notify?.('백업 실패', why, false);
+      this.deps.notify?.(st('백업 실패'), why, false);
     } else log.info(`백업 완료 ${name} (${Math.round(res.size / 1024)}KB)`);
     return res;
   }
@@ -210,13 +211,13 @@ export class BackupManager {
     const cfg = this.config();
     const targets = await Promise.all(cfg.targets.map(async (t) => ({ ...t, hasSecret: t.type === 'local' ? true : !!(await this.secrets.get(t.id).catch(() => null)) })));
     const { items, errors } = await this.list();
-    const st = this.state();
-    return { config: { ...cfg, targets }, last: st.last, running: !!this.running, nextAt: scheduleTimes(cfg.schedule, new Date()).next?.toISOString() ?? null, items, listErrors: errors };
+    const state = this.state();
+    return { config: { ...cfg, targets }, last: state.last, running: !!this.running, nextAt: scheduleTimes(cfg.schedule, new Date()).next?.toISOString() ?? null, items, listErrors: errors };
   }
 
   async remove(targetId: string, name: string): Promise<void> {
     const t = this.config().targets.find((x) => x.id === targetId);
-    if (!t) throw new Error('없는 저장소입니다');
+    if (!t) throw new Error(st('없는 저장소입니다'));
     await (await this.io(t)).del(name);
     this.deps.onChange();
   }
@@ -224,16 +225,16 @@ export class BackupManager {
   /** 백업을 받아 풀기 */
   private async fetchAndExtract(targetId: string, name: string, dir: string): Promise<void> {
     const t = this.config().targets.find((x) => x.id === targetId);
-    if (!t) throw new Error('없는 저장소입니다');
-    if (!BACKUP_RE.test(name)) throw new Error('백업 파일 이름이 올바르지 않습니다');
+    if (!t) throw new Error(st('없는 저장소입니다'));
+    if (!BACKUP_RE.test(name)) throw new Error(st('백업 파일 이름이 올바르지 않습니다'));
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const file = join(dir, name);
     await (await this.io(t)).get(name, file);
     const r = await run('tar', ['-xzf', file, '-C', dir], { timeoutMs: 600_000 });
     rmSync(file, { force: true });
-    if (r.code !== 0) throw new Error(`압축 풀기 실패: ${r.stderr.trim()}`);
-    if (!existsSync(join(dir, 'hivelane.db'))) throw new Error('Hivelane 백업 파일이 아닙니다(hivelane.db 없음)');
+    if (r.code !== 0) throw new Error(st('압축 풀기 실패: {err}', { err: r.stderr.trim() }));
+    if (!existsSync(join(dir, 'hivelane.db'))) throw new Error(st('Hivelane 백업 파일이 아닙니다(hivelane.db 없음)'));
   }
 
   /* ---------- 열어 보기(읽기 전용) ---------- */
@@ -260,7 +261,7 @@ export class BackupManager {
 
   private vdb(id: string): Database.Database {
     const v = this.views.get(id);
-    if (!v) throw new Error('열린 백업이 없습니다. 다시 「열어 보기」를 누르세요');
+    if (!v) throw new Error(st('열린 백업이 없습니다. 다시 「열어 보기」를 누르세요'));
     v.openedAt = Date.now();
     return v.db;
   }
@@ -289,7 +290,7 @@ export class BackupManager {
   /** 직전 상태를 백업하고, 고른 백업을 restore-pending 에 풀어 둔 뒤 서버를 다시 띄운다(시작할 때 바꿔 끼움) */
   async restore(targetId: string, name: string): Promise<{ restarting: boolean; before: BackupRunResult }> {
     const before = await this.backupNow('before-restore');
-    if (!before.results.some((r) => r.ok)) throw new Error(`복구 전에 지금 상태를 백업하지 못해 멈췄습니다: ${before.error ?? before.results.map((r) => r.error).join(' · ')}`);
+    if (!before.results.some((r) => r.ok)) throw new Error(st('복구 전에 지금 상태를 백업하지 못해 멈췄습니다: {err}', { err: before.error ?? before.results.map((r) => r.error).join(' · ') }));
     const pending = join(this.deps.cfg.home, 'restore-pending');
     await this.fetchAndExtract(targetId, name, pending);
     writeFileSync(join(pending, 'RESTORE'), JSON.stringify({ name, target: targetId, at: nowIso() }));

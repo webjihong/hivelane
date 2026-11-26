@@ -1,6 +1,7 @@
 import * as sqliteVec from 'sqlite-vec';
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
+import { st } from '../i18n.ts';
 import type { Store } from '../store.ts';
 import type { SearchStatusView } from '../../shared/types.ts';
 
@@ -34,17 +35,17 @@ export class Search {
     const e = this.store.getSettings().embedding;
     if (e.provider === 'ollama') {
       const r = await fetch(`${e.url.replace(/\/$/, '')}/api/embed`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: e.model, input: texts }), signal: AbortSignal.timeout(60_000) });
-      if (!r.ok) throw new Error(`Ollama 임베딩 실패 ${r.status}`);
+      if (!r.ok) throw new Error(st('Ollama 임베딩 실패 {status}', { status: r.status }));
       return ((await r.json()) as { embeddings: number[][] }).embeddings;
     }
     if (e.provider === 'voyage') {
       const key = process.env.VOYAGE_API_KEY;
-      if (!key) throw new Error('VOYAGE_API_KEY 환경 변수가 없습니다');
+      if (!key) throw new Error(st('VOYAGE_API_KEY 환경 변수가 없습니다'));
       const r = await fetch('https://api.voyageai.com/v1/embeddings', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: JSON.stringify({ model: e.model || 'voyage-3.5', input: texts }), signal: AbortSignal.timeout(60_000) });
-      if (!r.ok) throw new Error(`Voyage 임베딩 실패 ${r.status}`);
+      if (!r.ok) throw new Error(st('Voyage 임베딩 실패 {status}', { status: r.status }));
       return ((await r.json()) as { data: { embedding: number[] }[] }).data.map((d) => d.embedding);
     }
-    throw new Error('임베딩이 꺼져 있습니다');
+    throw new Error(st('임베딩이 꺼져 있습니다'));
   }
 
   private ensureVecTable(dim: number): void {
@@ -107,7 +108,7 @@ export class Search {
 
   /** 다시 색인을 백그라운드로 시작(진행률은 status().job) */
   startReindex(): SearchStatusView {
-    if (!this.enabled()) throw new Error('임베딩이 꺼져 있습니다');
+    if (!this.enabled()) throw new Error(st('임베딩이 꺼져 있습니다'));
     if (this.job?.running) return this.status();
     this.job = { running: true, done: 0, total: 0, error: null, startedAt: new Date().toISOString() };
     void this.reindexAll().catch((err) => { if (this.job) this.job = { ...this.job, running: false, error: err instanceof Error ? err.message : String(err) }; });
@@ -137,7 +138,7 @@ export class Search {
 
   /** 지금까지의 FTS 기록 전체를 벡터로 다시 색인. */
   async reindexAll(): Promise<number> {
-    if (!this.enabled()) throw new Error('임베딩이 꺼져 있습니다');
+    if (!this.enabled()) throw new Error(st('임베딩이 꺼져 있습니다'));
     const rows = this.store.db.prepare('SELECT rowid, text FROM search_fts').all() as { rowid: number; text: string }[];
     const e = this.store.getSettings().embedding;
     const m = this.meta();

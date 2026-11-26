@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { bus } from '../bus.ts';
 import { logger } from '../log.ts';
 import { remoteOf } from './git.ts';
@@ -26,7 +27,7 @@ export class RepoWatcher {
     if (fetch && v.remote) {
       const f = await this.git(p.path, ['fetch', '--quiet', '--prune']);
       if (f.code === 0) v.fetched_at = new Date().toISOString();
-      else v.error = `fetch 실패: ${f.stderr.trim().slice(0, 160)}`;
+      else v.error = st('fetch 실패: {err}', { err: f.stderr.trim().slice(0, 160) });
     } else if (v.remote) v.fetched_at = this.list.find((x) => x.project_id === p.id)?.fetched_at ?? null;
     const b = await this.git(p.path, ['rev-parse', '--abbrev-ref', 'HEAD']);
     v.branch = b.code === 0 ? b.stdout.trim() : null;
@@ -66,8 +67,8 @@ export class RepoWatcher {
   /** git pull --ff-only: 로컬 커밋과 갈라졌거나 로컬 변경과 겹치면 git 이 거절하고 그 이유를 돌려준다. */
   async pull(projectId: string): Promise<{ ok: boolean; message: string }> {
     const p = this.deps.store.getProject(projectId);
-    if (!p) return { ok: false, message: '프로젝트가 없습니다' };
-    if (this.pulling.has(projectId)) return { ok: false, message: '이미 받는 중입니다' };
+    if (!p) return { ok: false, message: st('프로젝트가 없습니다') };
+    if (this.pulling.has(projectId)) return { ok: false, message: st('이미 받는 중입니다') };
     this.pulling.add(projectId); bus.changed('repos');
     try {
       const before = (await this.git(p.path, ['rev-parse', '--short', 'HEAD'])).stdout.trim();
@@ -78,12 +79,12 @@ export class RepoWatcher {
       const v = await this.status(projectId, false);
       if (v) { this.list = this.list.map((x) => (x.project_id === projectId ? { ...v, fetched_at: new Date().toISOString() } : x)); }
       if (r.code !== 0) {
-        const why = /diverged|Not possible to fast-forward/i.test(text) ? '로컬 커밋과 원격이 갈라져 빨리 감기로 받을 수 없습니다(직접 병합·리베이스 필요)'
-          : /would be overwritten|Please commit your changes or stash/i.test(text) ? '받을 내용이 로컬에서 고친 파일과 겹칩니다(커밋하거나 치운 뒤 다시)'
-          : /no tracking information/i.test(text) ? '이 브랜치는 원격 브랜치가 연결되어 있지 않습니다' : text.slice(0, 300);
+        const why = /diverged|Not possible to fast-forward/i.test(text) ? st('로컬 커밋과 원격이 갈라져 빨리 감기로 받을 수 없습니다(직접 병합·리베이스 필요)')
+          : /would be overwritten|Please commit your changes or stash/i.test(text) ? st('받을 내용이 로컬에서 고친 파일과 겹칩니다(커밋하거나 치운 뒤 다시)')
+          : /no tracking information/i.test(text) ? st('이 브랜치는 원격 브랜치가 연결되어 있지 않습니다') : text.slice(0, 300);
         return { ok: false, message: why };
       }
-      return { ok: true, message: before === after ? '이미 최신입니다' : `${before} → ${after} 받았습니다` };
+      return { ok: true, message: before === after ? st('이미 최신입니다') : st('{before} → {after} 받았습니다', { before, after }) };
     } finally { this.pulling.delete(projectId); bus.changed('repos'); }
   }
 }

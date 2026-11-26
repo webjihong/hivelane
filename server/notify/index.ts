@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { withTeamNames } from '../../shared/teamRefs.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,7 +16,7 @@ export interface Notifier { send(n: Notice): Promise<void>; vapidPublicKey(): st
 
 /** 마크다운 → 슬랙 mrkdwn: **굵게** → *굵게*, 제목 # → 굵게, 표는 그대로. */
 export function toSlack(md: string): string {
-  return md.replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/^#{1,4}\s+(.+)$/gm, '*$1*').replace(/!\[([^\]]*)\]\(\/api\/uploads\/[^)]+\)/g, '[이미지 $1]');
+  return md.replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/^#{1,4}\s+(.+)$/gm, '*$1*').replace(/!\[([^\]]*)\]\(\/api\/uploads\/[^)]+\)/g, `[${st('이미지')} $1]`);
 }
 
 /** 맥 앱이 켜져 있으면 같은 맥의 브라우저 웹 푸시는 건너뛴다(앱이 맥 알림을 띄우므로 겹치고, 크롬 알림엔 127.0.0.1 주소가 붙는다). */
@@ -76,16 +77,16 @@ export class AppNotifier implements Notifier {
     if (!url) return;
     const icon = { info: '🐝', warn: '🟠', crit: '🔴', good: '🟢' }[n.level ?? 'info'];
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `${icon} *${n.title}*\n${toSlack(n.body)}${n.url ? `\n<${/^https?:/.test(n.url) ? n.url : this.baseUrl() + n.url}|열기>` : ''}` }), signal: AbortSignal.timeout(8000) });
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `${icon} *${n.title}*\n${toSlack(n.body)}${n.url ? `\n<${/^https?:/.test(n.url) ? n.url : this.baseUrl() + n.url}|${st('열기')}>` : ''}` }), signal: AbortSignal.timeout(8000) });
       if (!r.ok) log.warn(`슬랙 전송 실패 ${r.status}`);
     } catch (e) { log.warn('슬랙 전송 실패', e); }
   }
 
   /** 한 기기에만 보내고 푸시 서비스 응답을 그대로 돌려준다(점검용). */
   async sendTo(endpoint: string, n: Notice): Promise<{ ok: boolean; status?: number; error?: string }> {
-    if (!this.vapid) return { ok: false, error: 'VAPID 키 없음' };
+    if (!this.vapid) return { ok: false, error: st('VAPID 키 없음') };
     const s = this.store.pushSubs().find((x) => x.endpoint === endpoint);
-    if (!s) return { ok: false, error: '서버에 이 기기 구독이 없습니다' };
+    if (!s) return { ok: false, error: st('서버에 이 기기 구독이 없습니다') };
     try {
       const r = await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, JSON.stringify({ title: `Hivelane · ${n.title}`, body: n.body, url: n.url ?? '/', tag: n.tag, level: n.level ?? 'info' }), { TTL: 600, urgency: 'high', vapidDetails: this.vapidDetails() });
       log.info(`푸시 점검 보냄 · ${s.device} · ${r.statusCode}`);

@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { spawn } from 'node:child_process';
 import {
   query, type AgentDefinition, type HookCallbackMatcher, type HookInput, type HookJSONOutput, type McpServerConfig, type Options, type Query,
@@ -163,12 +164,12 @@ export class AgentRunner {
         const needs = spec.approval?.patterns.find((p) => { try { return new RegExp(p).test(cmd); } catch { return false; } });
         if (needs) {
           if (!spec.approval!.take(cmd.trim())) return deny(`사람 승인이 필요한 명령입니다(패턴: ${needs}). mcp__hivelane__request_approval(command=이 명령 그대로, reason=이유) 로 승인을 요청하고 턴을 끝내라. 승인되면 같은 명령을 그대로 다시 실행한다.`);
-          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'note', name: 'Bash', body: `사람 승인된 명령 실행: ${truncate(cmd, 200)}` });
+          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'note', name: 'Bash', body: st('사람 승인된 명령 실행: {cmd}', { cmd: truncate(cmd, 200) }) });
         }
         if (isHeavy(cmd, spec.heavyPatterns ?? [])) {
           const started = Date.now();
-          store.updateAgent(owner, { current_step: `무거운 명령 대기 (${this.deps.slots.waitingPosition(teamId ?? '') || '…'}번째)`, state: 'busy' });
-          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: `무거운 명령 자리 대기: ${truncate(cmd, 120)}` });
+          store.updateAgent(owner, { current_step: st('무거운 명령 대기 ({n}번째)', { n: this.deps.slots.waitingPosition(teamId ?? '') || '…' }), state: 'busy' });
+          store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: st('무거운 명령 자리 대기: {cmd}', { cmd: truncate(cmd, 120) }) });
           try {
             const release = await this.deps.slots.acquire(teamId ?? 'po', spec.priority ?? 'normal', !!spec.standing, AbortSignal.any([signal, handle.abort.signal]));
             if (handle.done) { release(); return deny('턴이 끝났습니다.'); }
@@ -177,7 +178,7 @@ export class AgentRunner {
             return deny('무거운 명령 대기가 취소되었습니다(팀 멈춤).');
           }
           const waited = Date.now() - started;
-          if (waited > 1000) store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: `자리 받음 · ${Math.round(waited / 1000)}초 대기` });
+          if (waited > 1000) store.addAgentEvent({ agent_id: owner, team_id: teamId, kind: 'wait', name: 'Bash', body: st('자리 받음 · {sec}초 대기', { sec: Math.round(waited / 1000) }) });
           store.addRunWait(id, waited);
           if (handle.pauseRequested) { handle.releases.get(id)?.(); handle.releases.delete(id); return deny('팀이 일시정지되었습니다.'); }
         }
@@ -241,7 +242,7 @@ export class AgentRunner {
     };
     if (this.deps.pathToClaude) options.pathToClaudeCodeExecutable = this.deps.pathToClaude;
 
-    store.updateAgent(spec.agent.id, { state: 'busy', current_step: '생각 중' });
+    store.updateAgent(spec.agent.id, { state: 'busy', current_step: st('생각 중') });
     const result: TurnResult = { ok: false, subtype: 'unknown', text: '', costUsd: 0, sessionId: spec.resume ?? null, interrupted: false, error: null, contextTokens: 0 };
     let lastText = '';
     try {
@@ -260,7 +261,7 @@ export class AgentRunner {
     }
     result.interrupted = handle.interrupted;
     if (!result.text) result.text = lastText;
-    for (const id of new Set([spec.agent.id, ...subByType.values()])) store.updateAgent(id, { state: handle.pauseRequested ? 'stop' : 'idle', current_step: handle.pauseRequested ? '일시정지' : result.ok ? '턴 완료' : '대기' });
+    for (const id of new Set([spec.agent.id, ...subByType.values()])) store.updateAgent(id, { state: handle.pauseRequested ? 'stop' : 'idle', current_step: handle.pauseRequested ? st('일시정지') : result.ok ? st('턴 완료') : st('대기') });
     if (result.sessionId) store.updateAgent(spec.agent.id, { session_id: result.sessionId });
     return result;
   }
@@ -302,7 +303,7 @@ export class AgentRunner {
             c.agentTaskUse.set(b.id, input.subagent_type);
             const subId = c.subByType.get(input.subagent_type);
             const label = c.subLabel.get(input.subagent_type) ?? input.subagent_type;
-            if (subId) store.updateAgent(subId, { state: 'busy', current_step: truncate(String(input.description ?? '작업 시작'), 80) });
+            if (subId) store.updateAgent(subId, { state: 'busy', current_step: truncate(String(input.description ?? st('작업 시작')), 80) });
             if (c.teamId) store.addMessage({ team_id: c.teamId, from_label: pmLabel, to_label: label, kind: 'handoff', body: String(input.prompt ?? input.description ?? '') });
           }
         }
@@ -336,7 +337,7 @@ export class AgentRunner {
         if (sub) {
           const subId = c.subByType.get(sub);
           const label = c.subLabel.get(sub) ?? sub;
-          if (subId) store.updateAgent(subId, { state: 'idle', current_step: tr.is_error ? '실패로 끝남' : '보고 완료' });
+          if (subId) store.updateAgent(subId, { state: 'idle', current_step: tr.is_error ? st('실패로 끝남') : st('보고 완료') });
           if (c.teamId) store.addMessage({ team_id: c.teamId, from_label: label, to_label: pmLabel, kind: 'report', body: truncate(text, 6000) });
         }
       }
@@ -348,12 +349,12 @@ export class AgentRunner {
       c.result.costUsd = m.total_cost_usd ?? 0;
       c.result.sessionId = m.session_id;
       if (m.subtype === 'success') c.result.text = m.result;
-      else c.result.error = m.subtype === 'error_max_budget_usd' ? '예산 상한에 도달했습니다' : `실행 오류: ${m.subtype}`;
+      else c.result.error = m.subtype === 'error_max_budget_usd' ? st('예산 상한에 도달했습니다') : st('실행 오류: {code}', { code: m.subtype });
       const u = m.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
       const billedIn = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
       store.addAgentUsage(spec.agent.id, { cost: c.result.costUsd, inTok: billedIn, outTok: u.output_tokens ?? 0, context: c.result.contextTokens });
       if (c.teamId) store.addTeamCost(c.teamId, c.result.costUsd);
-      store.addAgentEvent({ agent_id: spec.agent.id, team_id: c.teamId, kind: 'result', body: `${c.result.ok ? '턴 완료' : c.result.error ?? m.subtype} · $${c.result.costUsd.toFixed(3)} · ${m.num_turns}턴` });
+      store.addAgentEvent({ agent_id: spec.agent.id, team_id: c.teamId, kind: 'result', body: `${c.result.ok ? st('턴 완료') : c.result.error ?? m.subtype} · $${c.result.costUsd.toFixed(3)} · ${st('{n}턴', { n: m.num_turns })}` });
     }
   }
 }

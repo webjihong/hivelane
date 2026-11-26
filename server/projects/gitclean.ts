@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import type { AppConfig } from '../config.ts';
@@ -12,7 +13,7 @@ const ACTIVE = ['running', 'reviving', 'queued', 'paused', 'waiting_human', 'idl
 const ALWAYS_KEEP = ['main', 'master', 'dev', 'develop', 'prod', 'production', 'staging', 'release'];
 
 export type Verdict = 'remove' | 'ask' | 'keep';
-export interface WtItem { id: string; path: string; branch: string | null; kind: 'hivelane' | 'claude' | 'other'; verdict: Verdict; why: string; dirty: string[]; touchedH: number | null; team_id: string | null; missing: boolean }
+export interface WtItem { id: string; path: string; branch: string | null; kind: 'hivelane' | 'claude' | 'other'; verdict: Verdict; why: string; dirty: string[]; touchedH: number | null; team_id: string | null; missing: boolean; recent?: boolean }
 export interface BrItem { id: string; name: string; verdict: Verdict; why: string; unpushed: number; lastCommit: string; inWorktree: string | null }
 export interface Scan { project: Project; base: string; worktrees: WtItem[]; branches: BrItem[] }
 
@@ -49,22 +50,22 @@ export async function scanGit(cfg: AppConfig, store: Store, project: Project): P
     const kind: WtItem['kind'] = under(cfg.worktreesDir, path) || under(cfg.standingDir, path) ? 'hivelane' : /\/\.claude\/worktrees\/|\/claude-\d+\/|scratchpad/.test(path) ? 'claude' : 'other';
     const t = teams.find((x) => x.worktree_path && (resolve(x.worktree_path) === resolve(path) || real(x.worktree_path) === real(path))) ?? null;
     const item: WtItem = { id: `wt:${path}`, path, branch, kind, verdict: 'remove', why: '', dirty: [], touchedH: null, team_id: t?.id ?? null, missing };
-    if (missing) { item.why = '폴더가 이미 없음(기록만 남음)'; worktrees.push(item); continue; }
-    const st = await git(path, ['status', '--porcelain']);
-    item.dirty = st.stdout.split('\n').filter(Boolean).map((l) => l.slice(3)).filter((f) => !f.includes('node_modules'));
+    if (missing) { item.why = st('폴더가 이미 없음(기록만 남음)'); worktrees.push(item); continue; }
+    const gs = await git(path, ['status', '--porcelain']);
+    item.dirty = gs.stdout.split('\n').filter(Boolean).map((l) => l.slice(3)).filter((f) => !f.includes('node_modules'));
     const gd = (await git(path, ['rev-parse', '--absolute-git-dir'])).stdout.trim();
     // 끝난 Hivelane 팀 폴더는 Hivelane 자신의 조회가 index 를 건드렸을 수 있어 바뀐 파일 시각만 본다
     const finishedTeam = !!t && !ACTIVE.includes(t.state);
     const touched = Math.max(...(finishedTeam ? [Date.parse(t!.finished_at ?? t!.updated_at) || 0] : [mtime(join(gd, 'index')), mtime(join(gd, 'HEAD')), mtime(join(gd, 'logs', 'HEAD'))]), ...item.dirty.slice(0, 40).map((f) => mtime(join(path, f))));
     item.touchedH = touched ? Math.round((now - touched) / 36e5 * 10) / 10 : null;
-    const ageNote = item.touchedH != null ? `마지막 손댐 ${item.touchedH < 48 ? `${item.touchedH}시간` : `${Math.round(item.touchedH / 24)}일`} 전` : '';
-    if (/^locked/m.test(block)) { item.verdict = 'keep'; item.why = '잠겨 있음(다른 세션이 잠금)'; }
-    else if (t && t.lifetime === 'standing' && t.state !== 'archived') { item.verdict = 'keep'; item.why = `직속 팀 「${t.name}」 작업 폴더`; }
-    else if (t && ACTIVE.includes(t.state)) { item.verdict = 'keep'; item.why = `팀 「${t.name}」 ${t.state}`; }
-    else if (cwds.some((c) => under(path, c))) { item.verdict = 'keep'; item.why = '이 폴더 안에서 프로그램이 돌고 있음'; }
-    else if (item.touchedH != null && item.touchedH < RECENT_H) { item.verdict = 'keep'; item.why = `최근 ${RECENT_H}시간 안에 사용(${ageNote})`; }
-    else if (item.dirty.length) { item.verdict = 'ask'; item.why = `커밋 안 한 변경 ${item.dirty.length}개 · ${ageNote}`; }
-    else item.why = `변경 없음 · ${ageNote}${t ? ` · 끝난 팀 「${t.name}」` : ''}`;
+    const ageNote = item.touchedH != null ? (item.touchedH < 48 ? st('마지막 손댐 {h}시간 전', { h: item.touchedH }) : st('마지막 손댐 {d}일 전', { d: Math.round(item.touchedH / 24) })) : '';
+    if (/^locked/m.test(block)) { item.verdict = 'keep'; item.why = st('잠겨 있음(다른 세션이 잠금)'); }
+    else if (t && t.lifetime === 'standing' && t.state !== 'archived') { item.verdict = 'keep'; item.why = st('직속 팀 「{name}」 작업 폴더', { name: t.name }); }
+    else if (t && ACTIVE.includes(t.state)) { item.verdict = 'keep'; item.why = st('팀 「{name}」 {state}', { name: t.name, state: t.state }); }
+    else if (cwds.some((c) => under(path, c))) { item.verdict = 'keep'; item.why = st('이 폴더 안에서 프로그램이 돌고 있음'); }
+    else if (item.touchedH != null && item.touchedH < RECENT_H) { item.verdict = 'keep'; item.recent = true; item.why = st('최근 {h}시간 안에 사용({age})', { h: RECENT_H, age: ageNote }); }
+    else if (item.dirty.length) { item.verdict = 'ask'; item.why = st('커밋 안 한 변경 {n}개 · {age}', { n: item.dirty.length, age: ageNote }); }
+    else item.why = st('변경 없음 · {age}', { age: ageNote }) + (t ? ` · ${st('끝난 팀 「{name}」', { name: t.name })}` : '');
     worktrees.push(item);
   }
 
@@ -77,17 +78,17 @@ export async function scanGit(cfg: AppConfig, store: Store, project: Project): P
   for (const line of bl.stdout.split('\n').filter(Boolean)) {
     const [name, lastCommit = ''] = line.split('\t') as [string, string?];
     const b: BrItem = { id: `br:${name}`, name, verdict: 'remove', why: '', unpushed: 0, lastCommit, inWorktree: wtBranch.get(name) ?? null };
-    if (name === cur) { b.verdict = 'keep'; b.why = '본 폴더에서 쓰는 중'; }
-    else if (keepNames.has(name)) { b.verdict = 'keep'; b.why = '기준·보호 브랜치'; }
-    else if (keptWtBranch.has(name)) { b.verdict = 'keep'; b.why = '남기는 worktree 가 쓰는 중'; }
+    if (name === cur) { b.verdict = 'keep'; b.why = st('본 폴더에서 쓰는 중'); }
+    else if (keepNames.has(name)) { b.verdict = 'keep'; b.why = st('기준·보호 브랜치'); }
+    else if (keptWtBranch.has(name)) { b.verdict = 'keep'; b.why = st('남기는 worktree 가 쓰는 중'); }
     else {
       const un = await git(root, ['rev-list', '--count', name, '--not', '--remotes', base]);
       b.unpushed = Number(un.stdout.trim()) || 0;
-      if (merged.has(name)) b.why = `${base} 에 이미 합쳐짐`;
-      else if (!b.unpushed) b.why = '모든 커밋이 원격에 있음(로컬 사본만 지움)';
-      else { b.verdict = 'ask'; b.why = `어디에도 없는 커밋 ${b.unpushed}개(원격·${base} 에 없음)`; }
-      b.why += ` · 마지막 커밋 ${lastCommit}`;
-      if (b.inWorktree) b.why += ' · worktree 정리 후 지움';
+      if (merged.has(name)) b.why = st('{base} 에 이미 합쳐짐', { base });
+      else if (!b.unpushed) b.why = st('모든 커밋이 원격에 있음(로컬 사본만 지움)');
+      else { b.verdict = 'ask'; b.why = st('어디에도 없는 커밋 {n}개(원격·{base} 에 없음)', { n: b.unpushed, base }); }
+      b.why += ` · ${st('마지막 커밋 {when}', { when: lastCommit })}`;
+      if (b.inWorktree) b.why += ` · ${st('worktree 정리 후 지움')}`;
     }
     branches.push(b);
   }
@@ -111,30 +112,33 @@ export async function applyCleanup(cfg: AppConfig, store: Store, project: Projec
   const want = new Set(ids.map((i) => { if (!i.startsWith('wt:')) return i; const p = i.slice(3).replace(/^~(?=\/|$)/, home); const hit = s.worktrees.find((w) => resolve(w.path) === resolve(p) || real(w.path) === real(p)); return hit ? hit.id : `wt:${p}`; }));
   const out: string[] = [];
   for (const w of s.worktrees.filter((x) => want.has(x.id))) {
-    if (w.verdict === 'keep') { out.push(`남김 ${w.path}: ${w.why}`); continue; }
-    if (w.verdict === 'ask' && !discard) { out.push(`멈춤 ${w.path}: ${w.why} — 사용자 동의 후 discard_changes`); continue; }
+    if (w.verdict === 'keep') { out.push(st('남김 {target}: {why}', { target: w.path, why: w.why })); continue; }
+    if (w.verdict === 'ask' && !discard) { out.push(st('멈춤 {target}: {why} — 사용자 동의 후 discard_changes', { target: w.path, why: w.why })); continue; }
     if (w.team_id) await archiveTeam(w.team_id); // 팀 worktree 는 보관하면서 패치·기록을 남긴다
     let r: { code: number; stderr: string } = { code: 0, stderr: '' };
-    if (w.missing) { r = await git(project.path, ['worktree', 'prune']); store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, note: '폴더가 이미 없음(기록만 정리)' }); }
+    if (w.missing) { r = await git(project.path, ['worktree', 'prune']); store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, note: st('폴더가 이미 없음(기록만 정리)') }); }
     else if (existsSync(w.path)) {
       const patch = await saveWorktreePatch(cfg, w.path, null, `wt-${w.path.split('/').pop() ?? 'x'}`).catch(() => null);
       r = await git(project.path, ['worktree', 'remove', '--force', w.path], 120_000);
-      if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, discarded: w.verdict === 'ask', patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? `커밋 안 한 변경 ${patch.files}개 파일을 패치로 보관` : w.why });
+      if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: w.team_id, kind: 'worktree', target: w.path, branch: w.branch, by, discarded: w.verdict === 'ask', patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? st('커밋 안 한 변경 {n}개 파일을 패치로 보관', { n: patch.files }) : w.why });
     }
-    out.push(r.code === 0 ? `지움 worktree ${w.path}` : `실패 ${w.path}: ${r.stderr.trim()}`);
+    out.push(r.code === 0 ? st('지움 worktree {target}', { target: w.path }) : st('실패 {target}: {err}', { target: w.path, err: r.stderr.trim() }));
   }
   await git(project.path, ['worktree', 'prune']);
   const s2 = want.size && [...want].some((i) => i.startsWith('br:')) ? await scanGit(cfg, store, project) : s;
   for (const b of s2.branches.filter((x) => want.has(x.id))) {
-    if (b.verdict === 'keep') { out.push(`남김 ${b.name}: ${b.why}`); continue; }
-    if (b.verdict === 'ask' && !discard) { out.push(`멈춤 ${b.name}: ${b.why} — 사용자 동의 후 discard_changes`); continue; }
+    if (b.verdict === 'keep') { out.push(st('남김 {target}: {why}', { target: b.name, why: b.why })); continue; }
+    if (b.verdict === 'ask' && !discard) { out.push(st('멈춤 {target}: {why} — 사용자 동의 후 discard_changes', { target: b.name, why: b.why })); continue; }
     const saved = b.unpushed > 0 ? await saveBranchPatch(cfg, project.path, b.name, s2.base).catch(() => null) : null;
     const sha = saved?.sha || (await git(project.path, ['rev-parse', b.name])).stdout.trim();
     const r = await git(project.path, ['branch', '-D', b.name]);
-    if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: null, kind: 'branch', target: b.name, by, discarded: b.verdict === 'ask', patch_path: saved?.path || null, patch_files: saved?.files ?? 0, note: `${b.why} · 되살리기: git branch ${b.name} ${sha.slice(0, 12)}` });
-    out.push(r.code === 0 ? `지움 브랜치 ${b.name}` : `실패 ${b.name}: ${r.stderr.trim()}`);
+    if (r.code === 0) store.addCleanupLog({ project_id: project.id, team_id: null, kind: 'branch', target: b.name, by, discarded: b.verdict === 'ask', patch_path: saved?.path || null, patch_files: saved?.files ?? 0, note: `${b.why} · ${st('되살리기: {cmd}', { cmd: `git branch ${b.name} ${sha.slice(0, 12)}` })}` });
+    out.push(r.code === 0 ? st('지움 브랜치 {target}', { target: b.name }) : st('실패 {target}: {err}', { target: b.name, err: r.stderr.trim() }));
   }
   const unknown = [...want].filter((i) => !s.worktrees.some((w) => w.id === i) && !s2.branches.some((b) => b.id === i) && !s.branches.some((b) => b.id === i));
-  if (unknown.length) out.push(`못 찾음: ${unknown.join(', ')}`);
+  if (unknown.length) out.push(st('못 찾음: {ids}', { ids: unknown.join(', ') }));
   return out;
 }
+
+/** applyCleanup 결과 중 지운 줄 수(「지움 …」 · 영어면 「Removed …」) */
+export const countRemoved = (lines: string[]): number => lines.filter((l) => l.startsWith('지움') || l.startsWith(st('지움'))).length;

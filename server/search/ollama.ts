@@ -3,6 +3,7 @@ import { createWriteStream, existsSync, mkdirSync, type WriteStream } from 'node
 import { join } from 'node:path';
 import type { OllamaView } from '../../shared/types.ts';
 import { logger } from '../log.ts';
+import { st } from '../i18n.ts';
 import type { Store } from '../store.ts';
 
 const log = logger('ollama');
@@ -56,12 +57,12 @@ export class OllamaManager {
   }
 
   async start(): Promise<string> {
-    if (await this.api('/api/version')) return '이미 돌고 있습니다';
-    if (this.child) return '켜는 중입니다';
+    if (await this.api('/api/version')) return st('이미 돌고 있습니다');
+    if (this.child) return st('켜는 중입니다');
     const hp = localHostPort(this.url());
-    if (!hp) throw new Error('주소가 이 맥(127.0.0.1)이 아니라서 Hivelane 이 켤 수 없습니다');
+    if (!hp) throw new Error(st('주소가 이 맥(127.0.0.1)이 아니라서 Hivelane 이 켤 수 없습니다'));
     const bin = first(OLLAMA);
-    if (!bin) throw new Error('ollama 가 설치돼 있지 않습니다');
+    if (!bin) throw new Error(st('ollama 가 설치돼 있지 않습니다'));
     mkdirSync(this.deps.logsDir, { recursive: true });
     const out = createWriteStream(join(this.deps.logsDir, 'ollama.log'), { flags: 'a' });
     const child = spawn(bin, ['serve'], { env: { ...process.env, OLLAMA_HOST: hp }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -71,7 +72,7 @@ export class OllamaManager {
     child.on('error', (e) => { log.warn('ollama serve 실행 실패', e.message); });
     for (let i = 0; i < 40 && !(await this.api('/api/version', undefined, 1000)); i++) await new Promise((r) => setTimeout(r, 250));
     this.deps.onChange();
-    return (await this.api('/api/version')) ? '켰습니다' : '켜는 중입니다(로그: logs/ollama.log)';
+    return (await this.api('/api/version')) ? st('켰습니다') : st('켜는 중입니다(로그: logs/ollama.log)');
   }
 
   /** 우리가 띄운 ollama serve 만 끈다 */
@@ -83,7 +84,7 @@ export class OllamaManager {
   }
 
   private begin(kind: 'install' | 'pull', model?: string) {
-    if (this.job && !this.job.done) throw new Error('다른 작업이 진행 중입니다');
+    if (this.job && !this.job.done) throw new Error(st('다른 작업이 진행 중입니다'));
     this.job = { kind, model, pct: null, line: '', error: null, done: false };
     mkdirSync(this.deps.logsDir, { recursive: true });
     this.logFile = createWriteStream(join(this.deps.logsDir, 'ollama-setup.log'), { flags: 'a' });
@@ -99,24 +100,24 @@ export class OllamaManager {
   /** brew install ollama (Homebrew 는 관리자 비밀번호가 필요해 사람이 직접 설치) */
   install(): void {
     const brew = first(BREW);
-    if (!brew) throw new Error('Homebrew 가 없습니다. 먼저 Homebrew 를 설치하세요');
-    if (first(OLLAMA)) throw new Error('이미 설치돼 있습니다');
+    if (!brew) throw new Error(st('Homebrew 가 없습니다. 먼저 Homebrew 를 설치하세요'));
+    if (first(OLLAMA)) throw new Error(st('이미 설치돼 있습니다'));
     this.begin('install');
     const p = spawn(brew, ['install', 'ollama'], { env: { ...process.env, HOMEBREW_NO_ENV_HINTS: '1', NONINTERACTIVE: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
     const add = (b: Buffer) => { const s = b.toString(); this.logFile?.write(s); const last = s.trim().split('\n').pop(); if (last && this.job) { this.job.line = last.slice(0, 200); this.deps.onChange(); } };
     p.stdout?.on('data', add); p.stderr?.on('data', add);
     p.on('error', (e) => this.end(e.message));
-    p.on('exit', (code) => { this.end(code === 0 ? null : `brew install 실패(종료 코드 ${code}) · logs/ollama-setup.log`); if (code === 0) void this.ensure(); });
+    p.on('exit', (code) => { this.end(code === 0 ? null : st('brew install 실패(종료 코드 {code}) · logs/ollama-setup.log', { code: String(code) })); if (code === 0) void this.ensure(); });
   }
 
   /** 모델 받기(ollama pull) — 진행률을 보여 준다 */
   pull(model: string): void {
-    if (!/^[\w.:/-]{1,100}$/.test(model)) throw new Error('모델 이름이 이상합니다');
+    if (!/^[\w.:/-]{1,100}$/.test(model)) throw new Error(st('모델 이름이 이상합니다'));
     this.begin('pull', model);
     void (async () => {
       try {
         const r = await fetch(`${this.url().replace(/\/$/, '')}/api/pull`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, stream: true }) });
-        if (!r.ok || !r.body) throw new Error(`받기 실패(${r.status})`);
+        if (!r.ok || !r.body) throw new Error(st('받기 실패({status})', { status: r.status }));
         const dec = new TextDecoder(); let buf = ''; let last = 0;
         for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {
           buf += dec.decode(chunk, { stream: true });

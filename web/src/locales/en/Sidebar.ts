@@ -132,4 +132,5 @@ export default {
   '한 번 더 로그인': 'Log in again',
   '확인 중…': 'Checking…',
   '확인?': 'Confirm?',
+  '업무 팀@목록': 'Task teams',
 } as Record<string, string>;

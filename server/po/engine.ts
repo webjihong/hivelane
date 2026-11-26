@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { cpus } from 'node:os';
 import { bus, type ResourceSnapshot } from '../bus.ts';
 import { logger } from '../log.ts';
@@ -84,15 +85,15 @@ export class Engine {
       else if (a.type === 'pause') { this.lastPauseAt = now; await orch.pause(team.id, 'engine-soft', a.reason); }
       else if (a.type === 'resume') {
         this.lastResumeAt = now;
-        if (orch.isHardPaused(team.id)) { signalTree(descendants(procs, orch.rootPids(team.id)), 'SIGCONT'); orch.markHardPaused(team.id, false, '강한 멈춤 해제'); }
+        if (orch.isHardPaused(team.id)) { signalTree(descendants(procs, orch.rootPids(team.id)), 'SIGCONT'); orch.markHardPaused(team.id, false, st('강한 멈춤 해제')); }
         await orch.resume(team.id, 'engine', a.reason);
       } else if (a.type === 'hardPause' && !orch.isHardPaused(team.id)) {
         const n = signalTree(descendants(procs, orch.rootPids(team.id)), 'SIGSTOP');
-        orch.markHardPaused(team.id, true, `${a.reason} · 프로세스 ${n}개 정지`);
+        orch.markHardPaused(team.id, true, st('{reason} · 프로세스 {n}개 정지', { reason: a.reason, n }));
       }
     }
     // 강한 멈춤 상태인데 멈춤 요청이 풀린 팀(사용자 재개 등)은 깨운다
-    for (const t of teams) if (orch.isHardPaused(t.id) && !orch.isPausePending(t.id)) { signalTree(descendants(procs, orch.rootPids(t.id)), 'SIGCONT'); orch.markHardPaused(t.id, false, '재개'); }
+    for (const t of teams) if (orch.isHardPaused(t.id) && !orch.isPausePending(t.id)) { signalTree(descendants(procs, orch.rootPids(t.id)), 'SIGCONT'); orch.markHardPaused(t.id, false, st('재개')); }
 
     this.watchStalls(teams, s.stallMin, now);
     this.heartbeat(teams, s.beatSec, now);
@@ -100,8 +101,8 @@ export class Engine {
     this.runChecks(teams, now);
     this.remindUnread(now);
 
-    const st = slots.stats;
-    this.last = { cpu: Math.round(cpu), mem: Math.round(mem), zone: z.zone, heavyRunning: st.running, heavyWaiting: st.waiting, takenAt: nowIso() };
+    const ss = slots.stats;
+    this.last = { cpu: Math.round(cpu), mem: Math.round(mem), zone: z.zone, heavyRunning: ss.running, heavyWaiting: ss.waiting, takenAt: nowIso() };
     bus.emitEvent({ type: 'resource', sample: this.last });
     if (now - this.lastSamplePersist >= 60_000) {
       this.lastSamplePersist = now;
@@ -126,7 +127,7 @@ export class Engine {
         if (!this.stalled.has(t.id)) {
           this.stalled.add(t.id);
           this.deps.store.addPoEvent('stall', t.id, { minutes: Math.round((now - last) / 60_000) });
-          this.deps.store.addDecision(t.id, 'engine', 'stall', `${Math.round((now - last) / 60_000)}분 동안 진행 없음`);
+          this.deps.store.addDecision(t.id, 'engine', 'stall', st('{min}분 동안 진행 없음', { min: Math.round((now - last) / 60_000) }));
         }
       } else this.stalled.delete(t.id);
     }
@@ -146,7 +147,7 @@ export class Engine {
       if (now < r.next || this.deps.orch.isRunning(t.id)) continue;
       r.attempts++;
       r.next = now + Engine.DOWN_BACKOFF_MS[Math.min(r.attempts, Engine.DOWN_BACKOFF_MS.length - 1)]!;
-      this.deps.store.addDecision(t.id, 'engine', 'revive', `장애 상태 자동 복구 시도 ${r.attempts}회째`);
+      this.deps.store.addDecision(t.id, 'engine', 'revive', st('장애 상태 자동 복구 시도 {n}회째', { n: r.attempts }));
       this.deps.orch.wake(t.id, '장애로 멈췄다가 자동으로 다시 시작되었다. 하던 일이 있으면 이어서 진행하고, 없으면 짧게 대기 상태라고 답해라.');
     }
     for (const id of [...this.downRetry.keys()]) if (!down.has(id)) this.downRetry.delete(id);
@@ -164,8 +165,8 @@ export class Engine {
     const total = due.reduce((a, i) => a + i.count, 0);
     const first = due[0]!;
     void this.deps.notifier?.send({
-      title: `읽지 않은 답변 ${total}건`,
-      body: due.slice(0, 5).map((i) => `· ${i.name} ${i.count}건`).join('\n') + (due.length > 5 ? `\n· 외 ${due.length - 5}곳` : ''),
+      title: st('읽지 않은 답변 {n}건', { n: total }),
+      body: due.slice(0, 5).map((i) => st('· {name} {n}건', { name: i.name, n: i.count })).join('\n') + (due.length > 5 ? `\n· ${st('외 {n}곳', { n: due.length - 5 })}` : ''),
       level: 'warn', tag: 'unread-remind', url: first.kind === 'po' ? '/#po' : `/#team-${first.id}`,
     });
   }
@@ -178,7 +179,7 @@ export class Engine {
       const alive = t.state !== 'running' || this.deps.orch.isRunning(t.id);
       if (alive && now - last >= beatSec * 1000) this.deps.store.db.prepare('UPDATE teams SET last_heartbeat_at = ? WHERE id = ?').run(nowIso(), t.id);
       if (!alive) {
-        this.deps.store.addDecision(t.id, 'engine', 'heartbeat', '실행 중인데 루프가 없음 → 다시 깨움');
+        this.deps.store.addDecision(t.id, 'engine', 'heartbeat', st('실행 중인데 루프가 없음 → 다시 깨움'));
         this.deps.orch.wake(t.id, '연결이 끊겼다가 다시 이어졌다. 하던 일이 있으면 이어서 진행해라.');
       }
     }
@@ -196,12 +197,12 @@ export class Engine {
         this.deps.store.updateTeam(t.id, { last_check_at: nowIso(), last_check_ok: ok ? 1 : 0 });
         const out = truncate((r.stdout + '\n' + r.stderr).trim(), 3000);
         if (!ok) {
-          this.deps.store.addMessage({ team_id: t.id, from_label: 'PO 엔진', kind: 'engine', body: `점검 이상(종료 코드 ${r.code})\n${out}` });
-          this.deps.store.addDecision(t.id, 'engine', 'check', `점검 실패(코드 ${r.code}) → 팀 깨움`);
+          this.deps.store.addMessage({ team_id: t.id, from_label: 'PO 엔진', kind: 'engine', body: `${st('점검 이상(종료 코드 {code})', { code: String(r.code) })}\n${out}` });
+          this.deps.store.addDecision(t.id, 'engine', 'check', st('점검 실패(코드 {code}) → 팀 깨움', { code: String(r.code) }));
           // 같은 이상으로 계속 깨우지 않도록 직전 결과가 실패면 알림만
           if (t.last_check_ok !== 0) this.deps.orch.wake(t.id, `[점검 이상] 명령: ${t.check_command}\n종료 코드: ${r.code}\n출력:\n${out}\n\n원인을 확인하고 보고해라. 고쳐야 하면 무엇을 할지 ask_human 으로 물어라.`);
         } else if (t.last_check_ok === 0) {
-          this.deps.store.addMessage({ team_id: t.id, from_label: 'PO 엔진', kind: 'engine', body: '점검 정상으로 돌아옴' });
+          this.deps.store.addMessage({ team_id: t.id, from_label: 'PO 엔진', kind: 'engine', body: st('점검 정상으로 돌아옴') });
         }
       }).finally(() => this.checking.delete(t.id));
     }

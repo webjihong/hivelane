@@ -25,3 +25,9 @@ const fill = (s: string, vars?: Record<string, string | number>) => (vars ? s.re
 export function st(ko: string, vars?: Record<string, string | number>): string {
   return fill(serverLang() === 'en' ? EN?.[ko] ?? ko : ko, vars);
 }
+
+/** 서버가 만든 선택지(st 로 번역된 것)와 사람이 보낸 답 비교 — 한국어 원문이든 영어 번역이든 같은 선택지로 본다 */
+export function isOpt(answer: string, ko: string): boolean {
+  const a = answer.trim();
+  return a === ko || (!!EN?.[ko] && a.toLowerCase() === EN[ko]!.toLowerCase());
+}

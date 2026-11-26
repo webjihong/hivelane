@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NewBelow, useStickToBottom } from './stick.tsx';
 import type { StateSnapshot, TeamDetail, TeamView } from '../../shared/types.ts';
 import { ChatInput } from './ChatInput.tsx';
-import { DOT_LABEL, dotOf, sideNote } from './chan.ts';
+import { DOT_LABEL, dotOf, isApproval, sideNote } from './chan.ts';
 import { act, api, clock, go, refreshState, toast, useBox } from './store.ts';
 import { Team, useTeamDetail } from './Team.tsx';
 import { WorktreeCleanButton } from './GitClean.tsx';
@@ -102,7 +102,7 @@ export function TeamChannel({ id, snap, detail }: { id: string; snap: StateSnaps
   const finished = ['done', 'archived'].includes(tm.state);
   // 직속 팀은 질문을 걸어 두고도 상태가 「대기」라 상태 대신 질문 유무로 본다
   const asking = !!tm.question && ['waiting_human', 'idle', 'down', 'paused'].includes(tm.state);
-  const approval = !!asking && tm.question!.options.includes('승인') && tm.question!.options.includes('거절');
+  const approval = !!asking && isApproval(tm.question!.options);
   const send = async (text: string) => {
     if (asking) { const r = await act(() => api(`/api/teams/${encodeURIComponent(tm.id)}/answer`, 'POST', { text })); if (r === undefined) return false; await refreshState(); reload(); return true; }
     const r = await act(() => api<{ result: 'delivered' | 'queued' }>(`/api/teams/${encodeURIComponent(tm.id)}/message`, 'POST', { text }));

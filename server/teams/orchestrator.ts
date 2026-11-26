@@ -1,4 +1,5 @@
 import { forAgent } from '../uploads.ts';
+import { isOpt, st } from '../i18n.ts';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
@@ -75,13 +76,13 @@ export class Orchestrator {
   createFromProposal(proposalId: string, override: { roles?: TemplateRole[]; priority?: Priority; project_id?: string | null; budget_usd?: number | null } = {}): TeamRow {
     const { store } = this.deps;
     const p = store.getProposal(proposalId);
-    if (!p) throw new Error('제안을 찾을 수 없습니다');
-    if (p.status !== 'pending') throw new Error('이미 처리된 제안입니다');
+    if (!p) throw new Error(st('제안을 찾을 수 없습니다'));
+    if (p.status !== 'pending') throw new Error(st('이미 처리된 제안입니다'));
     const roles = normalizeRoles(override.roles ?? p.roles);
     const projectId = override.project_id !== undefined ? override.project_id : p.project_id;
     const priority = override.priority ?? p.priority;
     const budget = override.budget_usd !== undefined ? override.budget_usd : p.budget_usd ?? store.getSettings().defaultBudgetUsd;
-    if (projectId && !store.getProject(projectId)) throw new ConflictError('제안의 프로젝트가 등록되어 있지 않습니다. 카드에서 프로젝트를 고르세요.');
+    if (projectId && !store.getProject(projectId)) throw new ConflictError(st('제안의 프로젝트가 등록되어 있지 않습니다. 카드에서 프로젝트를 고르세요.'));
     return store.db.transaction(() => this.createFromProposalTx(proposalId, p, roles, projectId, priority, budget))();
   }
 
@@ -92,8 +93,8 @@ export class Orchestrator {
     this.createAgents(team, roles, store.getProject(projectId), false, '');
     store.updateProposal(proposalId, { status: 'approved', task_id: task.id, roles, priority, project_id: projectId, budget_usd: budget });
     store.addMessage({ team_id: team.id, from_label: 'PO', to_label: 'PM', kind: 'instruction', body: p.brief });
-    store.addDecision(team.id, 'user', 'approve', `팀 구성 승인 · ${roles.map((r) => `${r.name}(${r.model}${r.mode === 'session' && r.key !== 'pm' ? '·독립' : ''})`).join(', ')}`);
-    store.addChat({ role: 'event', body: `「${p.title}」 팀 생성 · ${store.getProject(projectId)?.name ?? '프로젝트 없음'} · 대기열에 들어감`, team_id: team.id });
+    store.addDecision(team.id, 'user', 'approve', st('팀 구성 승인 · {roles}', { roles: roles.map((r) => `${r.name}(${r.model}${r.mode === 'session' && r.key !== 'pm' ? st('·독립') : ''})`).join(', ') }));
+    store.addChat({ role: 'event', body: st('「{title}」 팀 생성 · {project} · 대기열에 들어감', { title: p.title, project: store.getProject(projectId)?.name ?? st('프로젝트 없음') }), team_id: team.id });
     return team;
   }
 
@@ -108,7 +109,7 @@ export class Orchestrator {
     this.createAgents(team, roles, store.getProject(input.project_id), true, input.brief);
     store.setKv(`standing_tpl:${team.id}`, tplId);
     store.updateTeam(team.id, { last_heartbeat_at: nowIso() });
-    store.addDecision(team.id, 'user', 'create', '직속 팀 생성');
+    store.addDecision(team.id, 'user', 'create', st('직속 팀 생성'));
     return store.getTeam(team.id)!;
   }
 
@@ -116,7 +117,7 @@ export class Orchestrator {
   async updateStanding(teamId: string, patch: { name?: string; brief?: string; check_command?: string | null; check_interval_sec?: number | null; readable_team_ids?: string[]; project_id?: string | null; template_id?: string }, by = '사용자'): Promise<void> {
     const { store, cfg } = this.deps;
     const t = store.getTeam(teamId);
-    if (!t || t.lifetime !== 'standing') throw new Error('직속 팀이 아닙니다');
+    if (!t || t.lifetime !== 'standing') throw new Error(st('직속 팀이 아닙니다'));
     const curTpl = store.getKv<string | null>(`standing_tpl:${teamId}`, null);
     const projectChanged = patch.project_id !== undefined && (patch.project_id || null) !== t.project_id;
     const templateChanged = !!patch.template_id && patch.template_id !== curTpl;
@@ -124,9 +125,9 @@ export class Orchestrator {
     const tpl = templateChanged ? store.getTemplate(patch.template_id!) : null;
     const actor = by === '총괄' ? 'agent' as const : 'user' as const;
     if (projectChanged || templateChanged) {
-      if (this.isRunning(teamId) || t.state === 'running') throw new ConflictError('일하는 중에는 프로젝트·템플릿을 바꿀 수 없습니다. 멈추거나 끝난 뒤 바꾸세요.');
-      if (projectChanged && newProjectId && !store.getProject(newProjectId)) throw new ConflictError('프로젝트를 찾을 수 없습니다');
-      if (templateChanged && !tpl) throw new ConflictError('템플릿을 찾을 수 없습니다');
+      if (this.isRunning(teamId) || t.state === 'running') throw new ConflictError(st('일하는 중에는 프로젝트·템플릿을 바꿀 수 없습니다. 멈추거나 끝난 뒤 바꾸세요.'));
+      if (projectChanged && newProjectId && !store.getProject(newProjectId)) throw new ConflictError(st('프로젝트를 찾을 수 없습니다'));
+      if (templateChanged && !tpl) throw new ConflictError(st('템플릿을 찾을 수 없습니다'));
     }
     store.updateTeam(teamId, {
       ...(patch.name ? { name: patch.name } : {}), ...(patch.brief !== undefined ? { standing_brief: patch.brief } : {}),
@@ -140,16 +141,16 @@ export class Orchestrator {
       if (oldP && t.worktree_path) {
         const patchFile = await saveWorktreePatch(cfg, t.worktree_path, t.base_sha, t.id).catch((e) => { log.warn(`패치 저장 실패 ${teamId}`, e); return null; });
         await removeWorktree(oldP.path, t.worktree_path);
-        store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: false, patch_path: patchFile?.path ?? null, patch_files: patchFile?.files ?? 0, note: `프로젝트 변경으로 정리 · ${patchFile ? `변경 ${patchFile.files}개 파일을 패치로 보관` : '변경 없음'}` });
+        store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: false, patch_path: patchFile?.path ?? null, patch_files: patchFile?.files ?? 0, note: st('프로젝트 변경으로 정리 · {what}', { what: patchFile ? st('변경 {n}개 파일을 패치로 보관', { n: patchFile.files }) : st('변경 없음') }) });
       }
       store.updateTeam(teamId, { project_id: newProjectId, worktree_path: null, branch: null, base_sha: null });
-      store.addDecision(teamId, actor, 'project', `프로젝트 변경: ${oldP?.name ?? '없음'} → ${store.getProject(newProjectId)?.name ?? '없음'}`);
+      store.addDecision(teamId, actor, 'project', st('프로젝트 변경: {from} → {to}', { from: oldP?.name ?? st('없음'), to: store.getProject(newProjectId)?.name ?? st('없음') }));
     }
     if (templateChanged && tpl) {
       const fresh = store.getTeam(teamId)!;
       this.rebuildAgents(fresh, normalizeRoles(tpl.roles));
       store.setKv(`standing_tpl:${teamId}`, tpl.id);
-      store.addDecision(teamId, actor, 'template', `템플릿 변경: ${store.getTemplate(curTpl)?.name ?? curTpl ?? '알 수 없음'} → ${tpl.name}`);
+      store.addDecision(teamId, actor, 'template', st('템플릿 변경: {from} → {to}', { from: store.getTemplate(curTpl)?.name ?? curTpl ?? st('알 수 없음'), to: tpl.name }));
     }
     if (projectChanged || templateChanged) {
       for (const a of store.teamAgents(teamId)) store.updateAgent(a.id, { session_id: null });
@@ -225,7 +226,7 @@ export class Orchestrator {
     const g = this.grants(teamId);
     if (!g.length) return;
     this.deps.store.setKv(`grant:${teamId}`, []);
-    this.deps.store.addDecision(teamId, 'engine', 'revoke', `임시 권한 회수: ${g.join(', ')}`);
+    this.deps.store.addDecision(teamId, 'engine', 'revoke', st('임시 권한 회수: {tools}', { tools: g.join(', ') }));
   }
 
   rolesOf(teamId: string): TemplateRole[] {
@@ -249,9 +250,9 @@ export class Orchestrator {
     } catch (e) {
       l.starting = false;
       const msg = e instanceof Error ? e.message : String(e);
-      store.updateTeam(teamId, { state: 'failed', error: `작업 공간 준비 실패: ${msg}`, finished_at: nowIso() });
-      store.addDecision(teamId, 'engine', 'fail', `작업 공간 준비 실패: ${msg}`);
-      this.deps.notifier.send({ title: '팀 시작 실패', body: `${team.name}: ${msg}`, level: 'crit', url: `/#team-${teamId}` });
+      store.updateTeam(teamId, { state: 'failed', error: st('작업 공간 준비 실패: {msg}', { msg }), finished_at: nowIso() });
+      store.addDecision(teamId, 'engine', 'fail', st('작업 공간 준비 실패: {msg}', { msg }));
+      this.deps.notifier.send({ title: st('팀 시작 실패'), body: `${team.name}: ${msg}`, level: 'crit', url: `/#team-${teamId}` });
       return;
     }
     l.starting = false;
@@ -277,16 +278,16 @@ export class Orchestrator {
       store.updateTeam(teamId, { worktree_path: dir });
       return;
     }
-    store.updateAgent(pm.id, { state: 'busy', current_step: 'worktree 준비 중' });
+    store.updateAgent(pm.id, { state: 'busy', current_step: st('worktree 준비 중') });
     const key = team.task_id ?? team.id;
     const wt = await addWorktree(project.path, project.base_ref, join(cfg.worktreesDir, slug(project.name), key), `hivelane/${key}`);
     store.updateTeam(teamId, { worktree_path: wt.path, branch: wt.branch, base_sha: wt.baseSha });
     store.addDecision(teamId, 'engine', 'worktree', `${wt.branch} ← ${project.base_ref} (${wt.baseSha.slice(0, 8)})`);
-    store.updateAgent(pm.id, { current_step: '의존성 준비 중' });
+    store.updateAgent(pm.id, { current_step: st('의존성 준비 중') });
     const deps = await prepareDeps(project.path, wt.path, project.deps_strategy);
-    const parts = [deps.linked.length && `링크 ${deps.linked.length}`, deps.installed.length && `설치 ${deps.installed.length}`, deps.failed.length && `실패 ${deps.failed.map((f) => f.dir).join(', ')}`].filter(Boolean);
+    const parts = [deps.linked.length && st('링크 {n}', { n: deps.linked.length }), deps.installed.length && st('설치 {n}', { n: deps.installed.length }), deps.failed.length && st('실패 {dirs}', { dirs: deps.failed.map((f) => f.dir).join(', ') })].filter(Boolean);
     if (parts.length) store.addDecision(teamId, 'engine', 'deps', `node_modules ${parts.join(' · ')}`);
-    store.updateAgent(pm.id, { state: 'idle', current_step: '시작 준비 완료' });
+    store.updateAgent(pm.id, { state: 'idle', current_step: st('시작 준비 완료') });
   }
 
   /** PM 턴 루프를 띄운다(이미 돌고 있으면 메시지로 쌓는다). */
@@ -299,7 +300,7 @@ export class Orchestrator {
       const t = this.deps.store.getTeam(teamId);
       if (t && t.state === 'running') {
         const msg = e instanceof Error ? e.message : String(e);
-        this.deps.store.updateTeam(teamId, { state: t.lifetime === 'standing' ? 'down' : 'waiting_human', error: msg, question: JSON.stringify({ text: `내부 오류로 멈췄습니다: ${truncate(msg, 300)}`, options: ['다시 시도', '여기서 마무리'], asked_at: nowIso() }) });
+        this.deps.store.updateTeam(teamId, { state: t.lifetime === 'standing' ? 'down' : 'waiting_human', error: msg, question: JSON.stringify({ text: st('내부 오류로 멈췄습니다: {msg}', { msg: truncate(msg, 300) }), options: [st('다시 시도'), st('여기서 마무리')], asked_at: nowIso() }) });
       }
     }).finally(() => { l.loop = null; l.handle = null; bus.changed('team'); });
   }
@@ -314,8 +315,8 @@ export class Orchestrator {
       let pm = store.agentByRole(teamId, 'pm')!;
       // 역할에 고른 AI 계정 — 바뀌었으면 세션을 끊고 요약으로 새로 시작
       const bound = this.deps.accounts?.bind(pm.id, this.rolesOf(teamId).find((r) => r.key === 'pm')?.account);
-      if (bound?.reset) { pm = store.agentByRole(teamId, 'pm')!; store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 대화 기록을 찾지 못해 요약으로 새 세션`); }
-      else if (bound?.changed) store.addDecision(teamId, 'engine', 'account', `PM 계정 → ${bound.account.name} · 같은 대화로 이어감`);
+      if (bound?.reset) { pm = store.agentByRole(teamId, 'pm')!; store.addDecision(teamId, 'engine', 'account', st('PM 계정 → {name} · 대화 기록을 찾지 못해 요약으로 새 세션', { name: bound.account.name })); }
+      else if (bound?.changed) store.addDecision(teamId, 'engine', 'account', st('PM 계정 → {name} · 같은 대화로 이어감', { name: bound.account.name }));
       const handle = new TurnHandle();
       l.handle = handle;
       const resume = pm.session_id;
@@ -325,23 +326,23 @@ export class Orchestrator {
       if (res.sessionId) store.updateAgent(pm.id, { session_id: res.sessionId });
       if (res.contextTokens > store.getSettings().contextLimitTokens) {
         store.updateAgent(pm.id, { session_id: null });
-        store.addDecision(teamId, 'engine', 'rotate', `PM 맥락 ${Math.round(res.contextTokens / 1000)}k 토큰 → 다음 턴은 새 세션`);
+        store.addDecision(teamId, 'engine', 'rotate', st('PM 맥락 {k}k 토큰 → 다음 턴은 새 세션', { k: Math.round(res.contextTokens / 1000) }));
       }
       await this.collect(teamId);
       const after = store.getTeam(teamId)!;
 
       if (l.cancelled) {
         l.cancelled = false; l.reported = null; l.asked = null; l.pausePending = false;
-        store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: '사용자가 진행 중이던 지시를 취소함' });
+        store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: st('사용자가 진행 중이던 지시를 취소함') });
         if (after.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.revokeGrants(teamId); }
-        else store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify({ text: '진행 중이던 지시를 취소했습니다. 새로 지시하거나 이어서 진행할지 골라 주세요.', options: ['계속 진행', '여기서 마무리'], asked_at: nowIso() }) });
+        else store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify({ text: st('진행 중이던 지시를 취소했습니다. 새로 지시하거나 이어서 진행할지 골라 주세요.'), options: [st('계속 진행'), st('여기서 마무리')], asked_at: nowIso() }) });
         return;
       }
 
       if (handle.pauseRequested || l.pausePending) {
         l.pausePending = false;
         store.updateTeam(teamId, { state: 'paused' });
-        store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: `일시정지됨 · ${after.paused_reason ?? ''}` });
+        store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: st('일시정지됨 · {reason}', { reason: after.paused_reason ?? '' }) });
         return;
       }
       if (l.reported) {
@@ -351,22 +352,22 @@ export class Orchestrator {
       if (l.asked) {
         const q = { text: l.asked.question, options: l.asked.options, asked_at: nowIso(), ...(l.asked.kind ? { kind: l.asked.kind, command: l.asked.command, tools: l.asked.tools } : {}) };
         store.updateTeam(teamId, { state: after.lifetime === 'standing' ? 'idle' : 'waiting_human', question: JSON.stringify(q) });
-        store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'question', body: l.asked.question + (l.asked.options.length ? `\n선택지: ${l.asked.options.join(' / ')}` : '') });
+        store.addMessage({ team_id: teamId, from_label: 'PM', to_label: '사용자', kind: 'question', body: l.asked.question + (l.asked.options.length ? `\n${st('선택지: {options}', { options: l.asked.options.join(' / ') })}` : '') });
         store.addPoEvent('ask_human', teamId, { question: l.asked.question });
-        this.deps.notifier.send({ title: '사람 확인 필요', body: `${after.name}: ${l.asked.question}`, level: 'crit', url: `/#team-${teamId}`, tag: `ask-${teamId}`, scope: `team:${teamId}` });
+        this.deps.notifier.send({ title: st('사람 확인 필요'), body: `${after.name}: ${l.asked.question}`, level: 'crit', url: `/#team-${teamId}`, tag: `ask-${teamId}`, scope: `team:${teamId}` });
         return;
       }
       if (res.subtype === 'error_max_budget_usd') {
-        const q = { text: `예산 $${after.budget_usd ?? '-'} 에 도달했습니다. 계속할까요?`, options: ['예산 +50% 하고 계속', '여기서 마무리'], asked_at: nowIso(), kind: 'budget' };
+        const q = { text: st('예산 {budget} 에 도달했습니다. 계속할까요?', { budget: `$${after.budget_usd ?? '-'}` }), options: [st('예산 +50% 하고 계속'), st('여기서 마무리')], asked_at: nowIso(), kind: 'budget' };
         store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify(q) });
         store.addPoEvent('budget', teamId, { budget: after.budget_usd });
-        this.deps.notifier.send({ title: '예산 상한 도달', body: `${after.name} · $${after.cost_usd.toFixed(2)}`, level: 'warn', url: `/#team-${teamId}` });
+        this.deps.notifier.send({ title: st('예산 상한 도달'), body: `${after.name} · $${after.cost_usd.toFixed(2)}`, level: 'warn', url: `/#team-${teamId}` });
         return;
       }
       if (!res.ok && !res.interrupted) {
         l.errors++;
         const err = res.error ?? res.subtype;
-        store.addDecision(teamId, 'engine', 'error', `PM 턴 오류(${l.errors}회): ${truncate(err, 200)}`);
+        store.addDecision(teamId, 'engine', 'error', st('PM 턴 오류({n}회): {err}', { n: l.errors, err: truncate(err, 200) }));
         if (after.lifetime === 'standing') {
           const revived = await this.revive(teamId, err);
           if (!revived) return;
@@ -374,10 +375,10 @@ export class Orchestrator {
           continue;
         }
         if (l.errors <= MAX_ERROR_RETRY) { prompt = '직전 턴이 오류로 끊겼다. 할 일 목록을 확인하고 이어서 진행해라.'; continue; }
-        const q = { text: `PM 실행이 계속 실패합니다: ${truncate(err, 300)}`, options: ['다시 시도', '여기서 마무리'], asked_at: nowIso() };
+        const q = { text: st('PM 실행이 계속 실패합니다: {err}', { err: truncate(err, 300) }), options: [st('다시 시도'), st('여기서 마무리')], asked_at: nowIso() };
         store.updateTeam(teamId, { state: 'waiting_human', error: err, question: JSON.stringify(q) });
         store.addPoEvent('error', teamId, { error: err });
-        this.deps.notifier.send({ title: '팀 오류', body: `${after.name}: ${truncate(err, 200)}`, level: 'crit', url: `/#team-${teamId}` });
+        this.deps.notifier.send({ title: st('팀 오류'), body: `${after.name}: ${truncate(err, 200)}`, level: 'crit', url: `/#team-${teamId}` });
         return;
       }
       l.errors = 0;
@@ -389,9 +390,9 @@ export class Orchestrator {
           const asker = this.askerOf(teamId);
           store.addMessage({ team_id: teamId, from_label: 'PM', to_label: asker.from === 'PO' ? 'PO' : '사용자', kind: 'report', body: res.text.trim() });
           if (asker.from === 'PO') store.addPoEvent('team_reply', teamId, { status: 'done', asked: truncate(asker.body, 300), answer: truncate(res.text.trim(), 2500) });
-          this.deps.notifier.send({ title: `${after.name} 답변`, body: truncate(res.text.trim(), 300), level: 'good', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
+          this.deps.notifier.send({ title: st('{name} 답변', { name: after.name }), body: truncate(res.text.trim(), 300), level: 'good', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
         }
-        store.addSummary({ team_id: teamId, agent_id: pm.id, stage: '보고', body: truncate(res.text.trim() || '(내용 없음)', 4000) });
+        store.addSummary({ team_id: teamId, agent_id: pm.id, stage: '보고', body: truncate(res.text.trim() || st('(내용 없음)'), 4000) });
         return;
       }
       if (after.nudges < MAX_NUDGES) {
@@ -399,7 +400,7 @@ export class Orchestrator {
         prompt = '아직 report 를 호출하지 않았다. 남은 일을 계속하거나, 끝났으면 report 를 호출해라. 사람의 결정이 필요하면 ask_human 을 호출해라.';
         continue;
       }
-      const q = { text: `PM이 report 없이 멈췄습니다. 마지막 말: ${truncate(res.text, 300)}`, options: ['계속 진행', '여기서 마무리'], asked_at: nowIso() };
+      const q = { text: st('PM이 report 없이 멈췄습니다. 마지막 말: {text}', { text: truncate(res.text, 300) }), options: [st('계속 진행'), st('여기서 마무리')], asked_at: nowIso() };
       store.updateTeam(teamId, { state: 'waiting_human', question: JSON.stringify(q), nudges: 0 });
       store.addPoEvent('stall', teamId, { reason: 'no_report' });
       return;
@@ -478,7 +479,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       setStage: (stage) => { store.updateTeam(teamId, { stage }); return `단계를 ${['기획', '구현', '검사', '보고'][stage]}(으)로 바꿨다.`; },
       askHuman: (question, options) => { l.asked = { question, options }; return '질문을 올렸다. 지금 턴을 끝내라. 답은 다음 메시지로 온다.'; },
       requestApproval: (command, reason) => {
-        l.asked = { question: `이 명령을 실행해도 될까요?\n\n\`${command.trim()}\`\n\n이유: ${reason}`, options: ['승인', '거절'], kind: 'approval', command: command.trim() };
+        l.asked = { question: st('이 명령을 실행해도 될까요?\n\n`{command}`\n\n이유: {reason}', { command: command.trim(), reason }), options: [st('승인'), st('거절')], kind: 'approval', command: command.trim() };
         return '승인을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지로 알려 주니 같은 명령을 그대로 실행해라.';
       },
       requestTools: (tools, reason) => {
@@ -486,8 +487,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
         if (!want.length) return '요청할 수 있는 도구가 없다(Bash·Edit·Write·NotebookEdit·WebFetch·WebSearch 중에서 고른다).';
         const standing = store.getTeam(teamId)?.lifetime === 'standing';
         l.asked = {
-          question: `이 팀에 임시 권한을 줄까요?\n\n요청 도구: ${want.join(', ')}\n\n이유: ${reason}\n\n승인하면 ${standing ? '이번 지시가 끝날 때까지' : '이 업무가 끝날 때까지'} 팀 전체(PM·팀원)가 이 도구를 씁니다. 막힌 명령·운영 명령 승인 규칙과 쓰기 가능한 폴더는 그대로입니다.`,
-          options: ['승인', '거절'], kind: 'tools', tools: want,
+          question: st('이 팀에 임시 권한을 줄까요?\n\n요청 도구: {tools}\n\n이유: {reason}\n\n승인하면 {until} 팀 전체(PM·팀원)가 이 도구를 씁니다. 막힌 명령·운영 명령 승인 규칙과 쓰기 가능한 폴더는 그대로입니다.', { tools: want.join(', '), reason, until: standing ? st('이번 지시가 끝날 때까지') : st('이 업무가 끝날 때까지') }),
+          options: [st('승인'), st('거절')], kind: 'tools', tools: want,
         };
         return '임시 권한을 요청했다. 지금 턴을 끝내라. 승인되면 다음 메시지부터 그 도구를 쓸 수 있다.';
       },
@@ -509,7 +510,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const wt = team.worktree_path ?? cfg.home;
     // 독립 세션 팀원은 Codex 계정도 쓸 수 있다
     const bound = this.deps.accounts?.bind(agent.id, role.account, true);
-    if (bound?.changed) store.addDecision(teamId, 'engine', 'account', `${role.name} 계정 → ${bound.account.name}${bound.reset ? ' · 대화 기록을 못 찾아 새 세션' : ' · 같은 대화로 이어감'}`);
+    if (bound?.changed) store.addDecision(teamId, 'engine', 'account', (bound.reset ? st('{role} 계정 → {name} · 대화 기록을 못 찾아 새 세션', { role: role.name, name: bound.account.name }) : st('{role} 계정 → {name} · 같은 대화로 이어감', { role: role.name, name: bound.account.name })));
     const provider = bound?.account.provider ?? 'claude';
     let sessionId = bound?.reset ? null : store.getAgent(agent.id)?.session_id ?? null;
     store.addMessage({ team_id: teamId, from_label: 'PM', to_label: role.name, kind: 'handoff', body: instruction });
@@ -528,7 +529,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       let res = await turn(sessionId, handle);
       // Codex 는 이어 쓸 대화를 못 찾으면 실패한다 → 한 번만 새 대화로 다시
       if (provider === 'codex' && sessionId && !res.ok && !res.interrupted && !handle.pauseRequested) {
-        store.addDecision(teamId, 'engine', 'account', `${role.name}(Codex) 이전 대화를 이어 쓰지 못해 새 대화로 다시 실행: ${truncate(res.error ?? '', 120)}`);
+        store.addDecision(teamId, 'engine', 'account', st('{role}(Codex) 이전 대화를 이어 쓰지 못해 새 대화로 다시 실행: {err}', { role: role.name, err: truncate(res.error ?? '', 120) }));
         store.updateAgent(agent.id, { session_id: null });
         sessionId = null;
         const h2 = new TurnHandle();
@@ -576,14 +577,14 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       store.updateTeam(teamId, { state: 'idle' });
       // 총괄이 맡긴 일의 답은 총괄에게 사건으로 넘겨 사용자에게 전하게 한다
       if (asker.from === 'PO') store.addPoEvent('team_reply', teamId, { status: r.status, asked: truncate(asker.body, 300), answer: truncate(r.summary, 2500) });
-      this.deps.notifier.send({ title: `${team.name} 답변`, body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
+      this.deps.notifier.send({ title: st('{name} 답변', { name: team.name }), body: truncate(r.summary, 300), level: r.status === 'done' ? 'good' : 'warn', url: `/#team-${teamId}`, tag: `ans-${teamId}`, scope: `team:${teamId}` });
       return;
     }
     store.updateTeam(teamId, { state: r.status, stage: r.status === 'done' ? 4 : team.stage, finished_at: nowIso(), question: null });
     store.updateTask(team.task_id!, { status: r.status, finished_at: nowIso() });
-    store.addDecision(teamId, 'agent', r.status, r.status === 'done' ? '업무 완료 보고' : '실패 보고');
+    store.addDecision(teamId, 'agent', r.status, r.status === 'done' ? st('업무 완료 보고') : st('실패 보고'));
     store.addPoEvent('report', teamId, { status: r.status, asked_by: asker.from, answer: truncate(r.summary, 2500) });
-    this.deps.notifier.send({ title: r.status === 'done' ? '업무 완료' : '업무 실패', body: `${team.name}\n${truncate(r.summary, 300)}`, level: r.status === 'done' ? 'good' : 'crit', url: `/#team-${teamId}`, scope: `team:${teamId}` });
+    this.deps.notifier.send({ title: r.status === 'done' ? st('업무 완료') : st('업무 실패'), body: `${team.name}\n${truncate(r.summary, 300)}`, level: r.status === 'done' ? 'good' : 'crit', url: `/#team-${teamId}`, scope: `team:${teamId}` });
   }
 
   /** 턴이 끝날 때마다 변경 파일 수집 + 같은 프로젝트 팀과 겹침 확인. */
@@ -603,7 +604,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
         if (shared.length && !l.overlapsSent.has(key)) {
           l.overlapsSent.add(key);
           store.addPoEvent('overlap', teamId, { other: o.id, files: shared.slice(0, 20) });
-          store.addDecision(teamId, 'engine', 'overlap', `「${o.name}」 팀과 같은 파일 ${shared.length}개: ${shared.slice(0, 3).join(', ')}`);
+          store.addDecision(teamId, 'engine', 'overlap', st('「{name}」 팀과 같은 파일 {n}개: {files}', { name: o.name, n: shared.length, files: shared.slice(0, 3).join(', ') }));
         }
       }
     } catch (e) { log.warn(`변경 수집 실패 ${teamId}`, e); }
@@ -615,11 +616,11 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const team = store.getTeam(teamId);
     if (!team) return;
-    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀은 멈출 수 없습니다');
+    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError(st('끝난 팀은 멈출 수 없습니다'));
     store.addDecision(teamId, kind === 'user' ? 'user' : 'engine', 'pause', reason);
     store.updateTeam(teamId, { paused_reason: reason, pause_kind: kind });
     const l = this.live.get(teamId);
-    if (l?.hardPaused) await this.continueTree(teamId, '멈춤 요청 처리를 위해 강한 멈춤 해제');
+    if (l?.hardPaused) await this.continueTree(teamId, st('멈춤 요청 처리를 위해 강한 멈춤 해제'));
     if (l?.loop) {
       l.pausePending = true;
       this.deps.slots.cancelTeam(teamId);
@@ -628,7 +629,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
       store.updateTeam(teamId, { state: 'paused' });
     }
     // 엔진 멈춤은 총괄을 깨우지 않는다(빨강 구간에 총괄 턴까지 돌면 부하만 늘어난다)
-    if (kind !== 'user') this.deps.notifier.send({ title: '팀 일시정지', body: `${team.name}: ${reason}`, level: 'warn', url: `/#team-${teamId}`, tag: `pause-${teamId}` });
+    if (kind !== 'user') this.deps.notifier.send({ title: st('팀 일시정지'), body: `${team.name}: ${reason}`, level: 'warn', url: `/#team-${teamId}`, tag: `pause-${teamId}` });
   }
 
   /** 강한 멈춤: 프로세스 트리 SIGSTOP. 엔진이 pids 를 넘긴다. */
@@ -658,7 +659,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (!team) return;
     if (by === 'user') this.grace.set(teamId, Date.now() + Orchestrator.RESUME_GRACE_MS);
     const l = this.L(teamId);
-    store.addDecision(teamId, by, 'resume', reason || '재개');
+    store.addDecision(teamId, by, 'resume', reason || st('재개'));
     store.updateTeam(teamId, { paused_reason: null, pause_kind: null });
     if (l.loop) { l.pausePending = false; if (l.handle) l.handle.pauseRequested = false; return; }
     if (team.state !== 'paused') return;
@@ -677,30 +678,30 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   answer(teamId: string, text: string): void {
     const { store } = this.deps;
     const team = store.getTeam(teamId);
-    if (!team) throw new Error('팀이 없습니다');
-    if (!team.question || !['waiting_human', 'paused', 'idle', 'down'].includes(team.state) || this.isRunning(teamId)) throw new ConflictError('지금은 답할 질문이 없습니다');
+    if (!team) throw new Error(st('팀이 없습니다'));
+    if (!team.question || !['waiting_human', 'paused', 'idle', 'down'].includes(team.state) || this.isRunning(teamId)) throw new ConflictError(st('지금은 답할 질문이 없습니다'));
     const q = parseJson<{ kind?: string; command?: string; tools?: string[] } | null>(team.question, null);
     this.L(teamId).errors = 0;
     store.addMessage({ team_id: teamId, from_label: '사용자', to_label: 'PM', kind: 'reply', body: text });
     store.addDecision(teamId, 'user', 'answer', truncate(text, 200));
     if (q?.kind === 'budget') {
-      if (text.includes('마무리')) { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'failed', summary: `예산 상한에서 사용자가 마무리를 선택했다. 지금까지 사용 $${team.cost_usd.toFixed(2)}` }); return; }
+      if (text.includes('마무리') || isOpt(text, '여기서 마무리')) { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'failed', summary: st('예산 상한에서 사용자가 마무리를 선택했다. 지금까지 사용 {cost}', { cost: `$${team.cost_usd.toFixed(2)}` }) }); return; }
       store.updateTeam(teamId, { budget_usd: Math.round((team.budget_usd ?? Math.max(1, team.cost_usd)) * 1.5 * 100) / 100 });
     }
     if (q?.kind === 'approval' && q.command) {
-      const ok = /승인|허용|yes|ok|진행/i.test(text) && !/거절|안\s*돼|no\b|취소/i.test(text);
+      const ok = /승인|허용|approve|allow|yes|ok|진행/i.test(text) && !/거절|안\s*돼|reject|deny|no\b|취소|cancel/i.test(text);
       if (ok) this.L(teamId).approved.add(q.command);
-      store.addDecision(teamId, 'user', ok ? 'approve' : 'reject', `${ok ? '명령 승인' : '명령 거절'}: ${truncate(q.command, 200)}`);
+      store.addDecision(teamId, 'user', ok ? 'approve' : 'reject', (ok ? st('명령 승인: {command}', { command: truncate(q.command, 200) }) : st('명령 거절: {command}', { command: truncate(q.command, 200) })));
       text = ok ? `승인됨. 이 명령을 그대로(한 글자도 바꾸지 말고) 한 번 실행해라: ${q.command}` : `거절됨: ${text}. 그 명령은 실행하지 말고 다른 방법을 찾거나 report 해라.`;
     }
     if (q?.kind === 'tools' && q.tools?.length) {
-      const ok = /승인|허용|yes|ok|진행/i.test(text) && !/거절|안\s*돼|no\b|취소/i.test(text);
+      const ok = /승인|허용|approve|allow|yes|ok|진행/i.test(text) && !/거절|안\s*돼|reject|deny|no\b|취소|cancel/i.test(text);
       const tools = expandGrant(q.tools);
       if (ok) store.setKv(`grant:${teamId}`, [...new Set([...this.grants(teamId), ...tools])]);
-      store.addDecision(teamId, 'user', ok ? 'grant' : 'reject', `${ok ? '임시 권한 승인' : '임시 권한 거절'}: ${q.tools.join(', ')}`);
+      store.addDecision(teamId, 'user', ok ? 'grant' : 'reject', (ok ? st('임시 권한 승인: {tools}', { tools: q.tools.join(', ') }) : st('임시 권한 거절: {tools}', { tools: q.tools.join(', ') })));
       text = ok ? `승인됨. 임시 권한(${q.tools.join(', ')})을 받았다. 이제 그 도구로 하던 일을 이어서 해라.` : `거절됨: ${text}. 그 도구 없이 할 수 있는 방법을 찾거나 report 해라.`;
     }
-    if (text === '여기서 마무리') { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `사용자가 여기서 마무리를 선택했다.\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
+    if (isOpt(text, '여기서 마무리')) { store.updateTeam(teamId, { question: null }); this.finish(teamId, { status: 'done', summary: `${st('사용자가 여기서 마무리를 선택했다.')}\n${store.summaries(teamId, 1)[0]?.body ?? ''}` }); return; }
     store.updateTeam(teamId, { question: null, state: 'running', nudges: 0, paused_reason: null, pause_kind: null });
     const said = forAgent(this.deps.cfg, text);
     if (team.lifetime === 'standing') { store.updateTeam(teamId, { state: 'idle' }); this.wake(teamId, `사용자 답변: ${said}`); return; }
@@ -711,8 +712,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
   message(teamId: string, text: string, actor: 'user' | 'po' = 'user'): 'delivered' | 'queued' {
     const { store } = this.deps;
     const team = store.getTeam(teamId);
-    if (!team) throw new Error('팀이 없습니다');
-    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError('끝난 팀에는 지시할 수 없습니다. 다시 시작하거나 새 업무로 맡기세요.');
+    if (!team) throw new Error(st('팀이 없습니다'));
+    if (['done', 'failed', 'archived'].includes(team.state)) throw new ConflictError(st('끝난 팀에는 지시할 수 없습니다. 다시 시작하거나 새 업무로 맡기세요.'));
     const who = actor === 'user' ? '사용자' : '총괄';
     const fromLabel = actor === 'user' ? '사용자' : 'PO'; // 기록값은 예전 그대로('PO') — 화면이 「총괄」로 보여 준다
     const l = this.L(teamId);
@@ -723,7 +724,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     if (l.loop) { l.pending.push(`${who} 직접 지시: ${text}`); return 'delivered'; }
     if (team.lifetime === 'standing') { this.wake(teamId, `${who} 지시: ${text}`); return team.state === 'paused' ? 'queued' : 'delivered'; }
     l.pending.push(`${who} 직접 지시: ${text}`);
-    store.addChecklistItem(teamId, `(${who} 지시) ${truncate(text, 200)}`);
+    store.addChecklistItem(teamId, actor === 'user' ? st('(사용자 지시) {text}', { text: truncate(text, 200) }) : st('(총괄 지시) {text}', { text: truncate(text, 200) }));
     return 'queued';
   }
 
@@ -745,7 +746,7 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     }).catch((e) => {
       l.starting = false;
       store.updateTeam(teamId, { state: 'down', error: String(e) });
-      this.deps.notifier.send({ title: '직속 팀 시작 실패', body: `${team.name}: ${e}`, level: 'crit' });
+      this.deps.notifier.send({ title: st('직속 팀 시작 실패'), body: `${team.name}: ${e}`, level: 'crit' });
     });
   }
 
@@ -755,21 +756,21 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const team = store.getTeam(teamId)!;
     const l = this.L(teamId);
     store.updateTeam(teamId, { state: 'down', error: truncate(err, 500) });
-    notifier.send({ title: '직속 팀 장애', body: `${team.name}: ${truncate(err, 200)} · 되살리는 중`, level: 'crit', url: `/#team-${teamId}` });
+    notifier.send({ title: st('직속 팀 장애'), body: st('{name}: {err} · 되살리는 중', { name: team.name, err: truncate(err, 200) }), level: 'crit', url: `/#team-${teamId}` });
     store.addPoEvent('standing_down', teamId, { error: err });
     store.updateTeam(teamId, { state: 'reviving' });
     if (l.errors > 3) {
       store.updateTeam(teamId, { state: 'down' });
-      notifier.send({ title: '직속 팀 복구 실패', body: `${team.name}: 3번 연속 실패. 확인이 필요합니다.`, level: 'crit', url: `/#team-${teamId}` });
+      notifier.send({ title: st('직속 팀 복구 실패'), body: st('{name}: 3번 연속 실패. 확인이 필요합니다.', { name: team.name }), level: 'crit', url: `/#team-${teamId}` });
       return false;
     }
     if (l.errors >= 2) {
       const pm = store.agentByRole(teamId, 'pm')!;
       store.updateAgent(pm.id, { session_id: null });
-      store.addDecision(teamId, 'engine', 'revive', '이어가기 실패 반복 → 새 세션(지시서 + 최근 요약)');
-    } else store.addDecision(teamId, 'engine', 'revive', '세션 이어가기로 재시도');
+      store.addDecision(teamId, 'engine', 'revive', st('이어가기 실패 반복 → 새 세션(지시서 + 최근 요약)'));
+    } else store.addDecision(teamId, 'engine', 'revive', st('세션 이어가기로 재시도'));
     store.updateTeam(teamId, { state: 'running', revived_count: team.revived_count + 1, last_heartbeat_at: nowIso() });
-    notifier.send({ title: '직속 팀 복구', body: `${team.name} 다시 가동`, level: 'good', url: `/#team-${teamId}` });
+    notifier.send({ title: st('직속 팀 복구'), body: st('{name} 다시 가동', { name: team.name }), level: 'good', url: `/#team-${teamId}` });
     return true;
   }
 
@@ -777,20 +778,20 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const t = store.updateTeam(teamId, { priority: p });
     if (t?.task_id) store.updateTask(t.task_id, { priority: p });
-    store.addDecision(teamId, actor, 'priority', `우선순위 ${p}`);
+    store.addDecision(teamId, actor, 'priority', st('우선순위 {p}', { p }));
   }
   pin(teamId: string, on: boolean, actor: 'user' | 'agent' = 'user'): void {
     this.deps.store.updateTeam(teamId, { pinned: on ? 1 : 0 });
-    this.deps.store.addDecision(teamId, actor, 'pin', on ? '멈추지 않음' : '멈추지 않음 해제');
+    this.deps.store.addDecision(teamId, actor, 'pin', on ? st('멈추지 않음') : st('멈추지 않음 해제'));
   }
 
   /** 직속 팀 종료: 사용자가 직접 또는 총괄에게 시켰을 때만 호출된다. */
   async endStanding(teamId: string, actor: 'user' | 'agent', reason: string): Promise<void> {
     const t = this.deps.store.getTeam(teamId);
-    if (!t || t.lifetime !== 'standing') throw new ConflictError('직속 팀이 아닙니다');
+    if (!t || t.lifetime !== 'standing') throw new ConflictError(st('직속 팀이 아닙니다'));
     if (t.state === 'archived') return;
     await this.cancel(teamId);
-    this.deps.store.addDecision(teamId, actor, 'end', `직속 팀 종료: ${truncate(reason, 200)}`);
+    this.deps.store.addDecision(teamId, actor, 'end', st('직속 팀 종료: {reason}', { reason: truncate(reason, 200) }));
   }
 
   /** 진행 중인 턴만 멈추고 쌓인 지시를 버린다(팀은 유지). 돌고 있지 않으면 false. */
@@ -800,8 +801,8 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     l.cancelled = true;
     l.pending = [];
     this.deps.slots.cancelTeam(teamId);
-    if (l.hardPaused) await this.continueTree(teamId, '취소를 위해 강한 멈춤 해제');
-    this.deps.store.addDecision(teamId, 'user', 'cancel_turn', '진행 중인 지시 취소');
+    if (l.hardPaused) await this.continueTree(teamId, st('취소를 위해 강한 멈춤 해제'));
+    this.deps.store.addDecision(teamId, 'user', 'cancel_turn', st('진행 중인 지시 취소'));
     await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]);
     return true;
   }
@@ -810,14 +811,14 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store } = this.deps;
     const l = this.live.get(teamId);
     this.deps.slots.cancelTeam(teamId);
-    if (l?.hardPaused) await this.continueTree(teamId, '중단을 위해 강한 멈춤 해제');
+    if (l?.hardPaused) await this.continueTree(teamId, st('중단을 위해 강한 멈춤 해제'));
     if (l?.loop) { l.pausePending = true; await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]); await l.loop; }
     const t = store.getTeam(teamId);
     if (!t) return;
     if (t.lifetime === 'standing') { store.updateTeam(teamId, { state: 'archived', finished_at: nowIso() }); return; }
-    store.updateTeam(teamId, { state: 'failed', finished_at: nowIso(), error: '사용자가 중단', paused_reason: null, question: null });
+    store.updateTeam(teamId, { state: 'failed', finished_at: nowIso(), error: st('사용자가 중단'), paused_reason: null, question: null });
     if (t.task_id) store.updateTask(t.task_id, { status: 'failed', finished_at: nowIso() });
-    store.addDecision(teamId, 'user', 'cancel', '사용자가 중단');
+    store.addDecision(teamId, 'user', 'cancel', st('사용자가 중단'));
   }
 
   /** worktree 정리(브랜치는 남긴다) 후 보관. */
@@ -825,17 +826,17 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     const { store, cfg } = this.deps;
     const t = store.getTeam(teamId);
     if (!t) return;
-    if (this.isRunning(teamId)) throw new Error('돌고 있는 팀은 정리할 수 없습니다. 먼저 중단하세요.');
+    if (this.isRunning(teamId)) throw new Error(st('돌고 있는 팀은 정리할 수 없습니다. 먼저 중단하세요.'));
     const p = store.getProject(t.project_id);
     let patch: { path: string; files: number } | null = null;
     if (p && t.worktree_path) {
       // 지우기 전에 변경을 패치로 남긴다(지운 뒤에도 팀 상세·총괄이 볼 수 있게)
       patch = await saveWorktreePatch(cfg, t.worktree_path, t.base_sha, t.id).catch((e) => { log.warn(`패치 저장 실패 ${teamId}`, e); return null; });
       await removeWorktree(p.path, t.worktree_path);
-      store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: !!o.discarded, patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? `변경 ${patch.files}개 파일을 패치로 보관` : '변경 없음' });
+      store.addCleanupLog({ project_id: t.project_id, team_id: teamId, kind: 'worktree', target: t.worktree_path, branch: t.branch, by, discarded: !!o.discarded, patch_path: patch?.path ?? null, patch_files: patch?.files ?? 0, note: patch ? st('변경 {n}개 파일을 패치로 보관', { n: patch.files }) : st('변경 없음') });
     }
     store.updateTeam(teamId, { state: 'archived', worktree_path: null });
-    store.addDecision(teamId, 'user', 'archive', `worktree 정리(${by}) · 브랜치 ${t.branch ?? '-'} 는 남김${patch ? ` · 변경 ${patch.files}개 파일 패치 보관` : ''}`);
+    store.addDecision(teamId, 'user', 'archive', st('worktree 정리({by}) · 브랜치 {branch} 는 남김', { by, branch: t.branch ?? '-' }) + (patch ? st(' · 변경 {n}개 파일 패치 보관', { n: patch.files }) : ''));
   }
 
   /** 서버 시작 시: 돌던 팀은 이어가기 대기열로, 직속 팀은 이어서 깨운다. */
@@ -844,10 +845,10 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     for (const t of store.listTeams("state IN ('running','reviving','down')")) {
       if (t.lifetime === 'standing') { store.updateTeam(t.id, { state: 'idle' }); this.wake(t.id, '서버가 다시 시작되었다. 끊기기 전 하던 일이 있으면 이어서 진행하고, 없으면 짧게 대기 상태라고 답해라.'); }
       else store.updateTeam(t.id, { state: 'queued' });
-      store.addDecision(t.id, 'engine', 'recover', '서버 재시작 후 이어가기');
+      store.addDecision(t.id, 'engine', 'recover', st('서버 재시작 후 이어가기'));
     }
     for (const t of store.listTeams("state = 'paused' AND pause_kind = 'engine-hard'")) store.updateTeam(t.id, { pause_kind: 'engine-soft' });
-    store.db.prepare("UPDATE agents SET state = 'idle', current_step = '대기' WHERE state = 'busy'").run();
+    store.db.prepare("UPDATE agents SET state = 'idle', current_step = ? WHERE state = 'busy'").run(st('대기'));
     store.db.prepare("UPDATE runs SET status = 'error', ended_at = ? WHERE status = 'running'").run(nowIso());
   }
 }

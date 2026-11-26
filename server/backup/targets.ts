@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { BackupItem, BackupTarget } from '../../shared/types.ts';
+import { st } from '../i18n.ts';
 
 export interface TargetIO {
   put(name: string, file: string): Promise<void>;
@@ -16,14 +17,14 @@ export interface TargetIO {
 }
 
 export const BACKUP_RE = /^hivelane-backup-\d{8}-\d{6}(-[\w-]+)?\.tar\.gz$/;
-const safeName = (n: string) => { if (!BACKUP_RE.test(n)) throw new Error('백업 파일 이름이 올바르지 않습니다'); return n; };
+const safeName = (n: string) => { if (!BACKUP_RE.test(n)) throw new Error(st('백업 파일 이름이 올바르지 않습니다')); return n; };
 
 /* ---------- 이 맥 폴더 ---------- */
 export class LocalTarget implements TargetIO {
   private dir: string;
   constructor(dir: string) { this.dir = dir.replace(/^~(?=\/|$)/, homedir()); }
   private ensure(): void {
-    if (this.dir.startsWith('/Volumes/') && !existsSync(this.dir.split('/').slice(0, 3).join('/'))) throw new Error(`NAS 폴더가 연결돼 있지 않습니다(${this.dir}). Finder 에서 NAS 에 연결하세요`);
+    if (this.dir.startsWith('/Volumes/') && !existsSync(this.dir.split('/').slice(0, 3).join('/'))) throw new Error(st('NAS 폴더가 연결돼 있지 않습니다({dir}). Finder 에서 NAS 에 연결하세요', { dir: this.dir }));
     mkdirSync(this.dir, { recursive: true });
   }
   async put(name: string, file: string): Promise<void> { this.ensure(); copyFileSync(file, join(this.dir, safeName(name))); }
@@ -44,28 +45,28 @@ export class WebDavTarget implements TargetIO {
   }
   private async req(method: string, url: string, init: { body?: Buffer | string; headers?: Record<string, string> } = {}): Promise<Response> {
     const r = await this.fetchFn(url, { method, headers: this.h(init.headers), body: init.body as BodyInit | undefined });
-    if (r.status === 401) throw new Error('WebDAV 로그인 실패(사용자·비밀번호 확인)');
+    if (r.status === 401) throw new Error(st('WebDAV 로그인 실패(사용자·비밀번호 확인)'));
     return r;
   }
   async put(name: string, file: string): Promise<void> {
     await this.req('MKCOL', this.base).catch(() => undefined); // 폴더가 없으면 만든다(있으면 405, 무시)
     const r = await this.req('PUT', this.base + encodeURIComponent(safeName(name)), { body: readFileSync(file), headers: { 'Content-Type': 'application/gzip' } });
-    if (!r.ok) throw new Error(`WebDAV 올리기 실패(HTTP ${r.status})`);
+    if (!r.ok) throw new Error(st('WebDAV 올리기 실패(HTTP {status})', { status: r.status }));
   }
   async list(): Promise<Omit<BackupItem, 'target'>[]> {
     const r = await this.req('PROPFIND', this.base, { headers: { Depth: '1', 'Content-Type': 'application/xml' }, body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>' });
     if (r.status === 404) return [];
-    if (!r.ok && r.status !== 207) throw new Error(`WebDAV 목록 실패(HTTP ${r.status})`);
+    if (!r.ok && r.status !== 207) throw new Error(st('WebDAV 목록 실패(HTTP {status})', { status: r.status }));
     return parseDavList(await r.text());
   }
   async get(name: string, dest: string): Promise<void> {
     const r = await this.req('GET', this.base + encodeURIComponent(safeName(name)));
-    if (!r.ok) throw new Error(`WebDAV 받기 실패(HTTP ${r.status})`);
+    if (!r.ok) throw new Error(st('WebDAV 받기 실패(HTTP {status})', { status: r.status }));
     writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
   }
   async del(name: string): Promise<void> {
     const r = await this.req('DELETE', this.base + encodeURIComponent(safeName(name)));
-    if (!r.ok && r.status !== 404) throw new Error(`WebDAV 지우기 실패(HTTP ${r.status})`);
+    if (!r.ok && r.status !== 404) throw new Error(st('WebDAV 지우기 실패(HTTP {status})', { status: r.status }));
   }
 }
 
@@ -120,26 +121,26 @@ export class S3Target implements TargetIO {
     const headers = signS3({ method, url: u, region: this.t.region || 'us-east-1', accessKeyId: this.t.accessKeyId, secret: this.t.secret, payloadHash });
     delete (headers as Record<string, string | undefined>).host;
     const r = await this.fetchFn(u, { method, headers, body: body as BodyInit | undefined });
-    if (r.status === 403) { const t = await r.text(); throw new Error(`S3 권한 오류: ${t.match(/<Message>([^<]+)/)?.[1] ?? 'Access Denied'}`); }
+    if (r.status === 403) { const t = await r.text(); throw new Error(st('S3 권한 오류: {msg}', { msg: t.match(/<Message>([^<]+)/)?.[1] ?? 'Access Denied' })); }
     return r;
   }
   async put(name: string, file: string): Promise<void> {
     const r = await this.req('PUT', this.url(this.prefix() + safeName(name)), readFileSync(file));
-    if (!r.ok) throw new Error(`S3 올리기 실패(HTTP ${r.status}) ${(await r.text()).match(/<Message>([^<]+)/)?.[1] ?? ''}`);
+    if (!r.ok) throw new Error(st('S3 올리기 실패(HTTP {status}) {msg}', { status: r.status, msg: (await r.text()).match(/<Message>([^<]+)/)?.[1] ?? '' }));
   }
   async list(): Promise<Omit<BackupItem, 'target'>[]> {
     const r = await this.req('GET', this.url('', { 'list-type': '2', prefix: this.prefix() + 'hivelane-backup-' }));
-    if (!r.ok) throw new Error(`S3 목록 실패(HTTP ${r.status}) ${(await r.text()).match(/<Message>([^<]+)/)?.[1] ?? ''}`);
+    if (!r.ok) throw new Error(st('S3 목록 실패(HTTP {status}) {msg}', { status: r.status, msg: (await r.text()).match(/<Message>([^<]+)/)?.[1] ?? '' }));
     return parseS3List(await r.text(), this.prefix());
   }
   async get(name: string, dest: string): Promise<void> {
     const r = await this.req('GET', this.url(this.prefix() + safeName(name)));
-    if (!r.ok) throw new Error(`S3 받기 실패(HTTP ${r.status})`);
+    if (!r.ok) throw new Error(st('S3 받기 실패(HTTP {status})', { status: r.status }));
     writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
   }
   async del(name: string): Promise<void> {
     const r = await this.req('DELETE', this.url(this.prefix() + safeName(name)));
-    if (!r.ok && r.status !== 404) throw new Error(`S3 지우기 실패(HTTP ${r.status})`);
+    if (!r.ok && r.status !== 404) throw new Error(st('S3 지우기 실패(HTTP {status})', { status: r.status }));
   }
 }
 
@@ -156,8 +157,8 @@ export function parseS3List(xml: string, prefix: string): Omit<BackupItem, 'targ
 
 /** 설정 + 비밀값 → 저장소 */
 export function makeTarget(t: BackupTarget, secret: string | null, fetchFn?: typeof fetch): TargetIO {
-  if (t.type === 'local') { if (!t.path) throw new Error('폴더 경로가 없습니다'); return new LocalTarget(t.path); }
-  if (t.type === 'webdav') { if (!t.url) throw new Error('WebDAV 주소가 없습니다'); return new WebDavTarget(t.url, t.username ?? '', secret ?? '', fetchFn); }
-  if (!t.bucket || !t.accessKeyId || !secret) throw new Error('S3 버킷·접근 키·비밀 키가 필요합니다');
+  if (t.type === 'local') { if (!t.path) throw new Error(st('폴더 경로가 없습니다')); return new LocalTarget(t.path); }
+  if (t.type === 'webdav') { if (!t.url) throw new Error(st('WebDAV 주소가 없습니다')); return new WebDavTarget(t.url, t.username ?? '', secret ?? '', fetchFn); }
+  if (!t.bucket || !t.accessKeyId || !secret) throw new Error(st('S3 버킷·접근 키·비밀 키가 필요합니다'));
   return new S3Target({ bucket: t.bucket, region: t.region || 'us-east-1', endpoint: t.endpoint || undefined, prefix: t.prefix, accessKeyId: t.accessKeyId, secret }, fetchFn);
 }

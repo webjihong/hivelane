@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -38,7 +39,7 @@ export async function loginInfo(bin = claudeBin(), env?: Record<string, string>)
         const d = JSON.parse(stdout) as { loggedIn?: boolean; authMethod?: string; loginExpiresAt?: string; email?: string; subscriptionType?: string };
         resolve({ loggedIn: !!d.loggedIn, method: d.authMethod ?? null, expiresAt: d.loginExpiresAt ?? null, email: d.email ?? null });
       } catch {
-        resolve({ loggedIn: false, method: null, expiresAt: null, email: null, error: err?.message ?? '상태를 읽지 못했습니다' });
+        resolve({ loggedIn: false, method: null, expiresAt: null, email: null, error: err?.message ?? st('상태를 읽지 못했습니다') });
       }
     });
   });
@@ -64,19 +65,19 @@ export class AuthLogin {
     child.stdout?.on('data', add);
     child.stderr?.on('data', add);
     child.on('error', (e) => { this.finish('failed', e.message); });
-    child.on('exit', (code) => { this.finish(code === 0 ? 'done' : 'failed', code === 0 ? null : `로그인이 끝나지 않았습니다(종료 코드 ${code ?? '신호'})`); });
-    this.timer = setTimeout(() => { this.cancel('10분 안에 끝나지 않아 멈췄습니다'); }, 600_000);
+    child.on('exit', (code) => { this.finish(code === 0 ? 'done' : 'failed', code === 0 ? null : st('로그인이 끝나지 않았습니다(종료 코드 {code})', { code: code ?? st('신호') })); });
+    this.timer = setTimeout(() => { this.cancel(st('10분 안에 끝나지 않아 멈췄습니다')); }, 600_000);
     return this.view;
   }
 
   /** 브라우저가 보여 준 인증 코드를 붙여 넣기 */
   code(code: string): AuthLoginView {
-    if (!this.child?.stdin?.writable) throw new Error('진행 중인 로그인이 없습니다');
+    if (!this.child?.stdin?.writable) throw new Error(st('진행 중인 로그인이 없습니다'));
     this.child.stdin.write(`${code.trim()}\n`);
     return this.view;
   }
 
-  cancel(reason = '취소했습니다'): AuthLoginView {
+  cancel(reason = st('취소했습니다')): AuthLoginView {
     if (this.child) { this.child.kill('SIGTERM'); this.finish('failed', reason); }
     return this.view;
   }

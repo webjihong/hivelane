@@ -101,4 +101,9 @@ export default {
   '팀에 직접 지시': 'Direct instruction to team',
   '팀을 찾을 수 없습니다.': 'Team not found.',
   '할 일 · 완료 기준': 'To-dos · done criteria',
+  '기획': 'Plan',
+  '구현': 'Build',
+  '검사': 'Check',
+  '보고': 'Report',
+  '최종': 'Final',
 } as Record<string, string>;

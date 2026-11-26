@@ -1,5 +1,5 @@
 import type { StateSnapshot, TeamView } from '../../shared/types.ts';
-import { asks, dotOf, nowCount } from './chan.ts';
+import { asks, dotOf, isApproval, nowCount } from './chan.ts';
 import { PrRow } from './Prs.tsx';
 import { t } from './i18n.ts';
 import { act, api, chat, clock, go, refreshState, useBox } from './store.ts';
@@ -25,7 +25,7 @@ function preview(s: string): string {
 function Need({ tm, snap }: { tm: TeamView; snap: StateSnapshot }) {
   const now = useBox(clock);
   const answer = (text: string) => act(async () => { await api(`/api/teams/${encodeURIComponent(tm.id)}/answer`, 'POST', { text }); await refreshState(); }, t('답을 보냈습니다'));
-  const approval = tm.question?.options.includes('승인') && tm.question.options.includes('거절');
+  const approval = isApproval(tm.question?.options);
   if (tm.state === 'failed') return (
     <article className="nw-card crit">
       <div className="nw-meta"><b>{tm.title || tm.name}</b> · {t('실패')} · {ago(tm.finished_at, now)}</div>

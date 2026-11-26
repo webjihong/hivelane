@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { tmpdir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { LoginInfo, UsageView, UsageWindow } from '../../shared/types.ts';
@@ -29,7 +30,7 @@ export function toView(r: RawUsage, now = new Date()): UsageView {
     const w = rl[key] as Win;
     if (!w || typeof w.utilization !== 'number') continue;
     if (key !== 'five_hour' && key !== 'seven_day' && w.utilization <= 0) continue;
-    windows.push({ key, label, pct: Math.max(0, Math.min(100, w.utilization)), resets_at: w.resets_at });
+    windows.push({ key, label: st(label), pct: Math.max(0, Math.min(100, w.utilization)), resets_at: w.resets_at });
   }
   return { available: r.rate_limits_available && windows.length > 0, plan: r.subscription_type, windows, takenAt: now.toISOString(), error: null };
 }

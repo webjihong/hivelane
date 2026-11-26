@@ -14,13 +14,14 @@ import { CodexLogin, CodexUsage } from './agents/codex.ts';
 import { PlanUsage } from './po/usage.ts';
 import type { Store } from './store.ts';
 import { newId, nowIso } from './util.ts';
+import { st } from './i18n.ts';
 
 const KEY = 'ai_accounts';
 const OVERRIDE_KEY = 'acct_override';
 type Override = { to: string; at: string; auto: boolean };
-export const DEFAULT_ACCOUNT: AiAccount = { id: 'default', provider: 'claude', name: '이 맥 기본 계정', configDir: null, created_at: '1970-01-01T00:00:00.000Z' };
+export const DEFAULT_ACCOUNT: AiAccount = { id: 'default', provider: 'claude', get name() { return st('이 맥 기본 계정'); }, configDir: null, created_at: '1970-01-01T00:00:00.000Z' };
 /** 이 맥의 기본 Codex 로그인(~/.codex) */
-export const DEFAULT_CODEX: AiAccount = { id: 'codex', provider: 'codex', name: '이 맥 Codex', configDir: null, created_at: '1970-01-01T00:00:00.000Z' };
+export const DEFAULT_CODEX: AiAccount = { id: 'codex', provider: 'codex', get name() { return st('이 맥 Codex'); }, configDir: null, created_at: '1970-01-01T00:00:00.000Z' };
 const BUILTIN = new Set(['default', 'codex']);
 /** 사용량을 읽는 쪽(Claude 는 PlanUsage, Codex 는 CodexUsage) */
 type UsageSource = { last: UsageView; refresh(): Promise<void> };
@@ -77,17 +78,17 @@ export class AccountManager {
     const id = newId('acc');
     const configDir = join(this.deps.cfg.home, 'accounts', id, provider);
     mkdirSync(configDir, { recursive: true });
-    const acc: AiAccount = { id, provider, name: name.trim() || '새 계정', configDir, created_at: nowIso() };
+    const acc: AiAccount = { id, provider, name: name.trim() || st('새 계정'), configDir, created_at: nowIso() };
     this.save([...this.saved(), acc]);
     this.deps.onChange();
     return acc;
   }
 
   rename(id: string, name: string): AiAccount {
-    if (BUILTIN.has(id)) throw new Error('이 맥 기본 계정은 이름을 바꿀 수 없습니다');
+    if (BUILTIN.has(id)) throw new Error(st('이 맥 기본 계정은 이름을 바꿀 수 없습니다'));
     const list = this.saved();
     const acc = list.find((a) => a.id === id);
-    if (!acc) throw new Error('없는 계정입니다');
+    if (!acc) throw new Error(st('없는 계정입니다'));
     acc.name = name.trim() || acc.name;
     this.save(list);
     this.deps.onChange();
@@ -96,10 +97,10 @@ export class AccountManager {
 
   /** 지운 계정을 쓰던 역할·총괄은 기본 계정으로 돌아간다(resolve). 로그인 폴더도 지운다. */
   remove(id: string): void {
-    if (BUILTIN.has(id)) throw new Error('이 맥 기본 계정은 지울 수 없습니다');
+    if (BUILTIN.has(id)) throw new Error(st('이 맥 기본 계정은 지울 수 없습니다'));
     const acc = this.get(id);
     if (!acc) return;
-    this.logins.get(id)?.cancel('계정을 지웠습니다');
+    this.logins.get(id)?.cancel(st('계정을 지웠습니다'));
     this.logins.delete(id);
     this.usages.delete(id);
     this.save(this.saved().filter((a) => a.id !== id));
@@ -126,7 +127,7 @@ export class AccountManager {
     let l = this.logins.get(id);
     if (!l) {
       const acc = this.get(id);
-      if (!acc) throw new Error('없는 계정입니다');
+      if (!acc) throw new Error(st('없는 계정입니다'));
       const onDone = () => { void this.usage(id).refresh(); this.deps.onChange(); };
       l = acc.provider === 'codex' ? new CodexLogin({ env: this.env(acc), onDone }) : new AuthLogin({ env: this.env(acc), onDone });
       this.logins.set(id, l);
@@ -269,7 +270,7 @@ export class AccountManager {
     if (cur) {
       if (sw.mode === 'off' || (p !== null && p < sw.thresholdPct)) {
         delete o[acc.id]; this.setOverrides(o);
-        this.deps.notify?.('AI 계정 원래대로', `${acc.name} 사용량이 기준 아래로 내려와 다시 씁니다.`);
+        this.deps.notify?.(st('AI 계정 원래대로'), st('{name} 사용량이 기준 아래로 내려와 다시 씁니다.', { name: acc.name }));
         this.deps.onChange();
         return acc;
       }
@@ -285,7 +286,7 @@ export class AccountManager {
     if (!to) return acc;
     if (sw.mode === 'auto') {
       o[acc.id] = { to: to.id, at: nowIso(), auto: true }; this.setOverrides(o);
-      this.deps.notify?.('AI 계정 자동 전환', `${acc.name} 사용량 ${Math.round(p)}% → ${to.name} 으로 바꿔 씁니다. 한도가 초기화되면 저절로 돌아옵니다.`);
+      this.deps.notify?.(st('AI 계정 자동 전환'), st('{name} 사용량 {pct}% → {to} 으로 바꿔 씁니다. 한도가 초기화되면 저절로 돌아옵니다.', { name: acc.name, pct: Math.round(p), to: to.name }));
       this.deps.onChange();
       return to;
     }
@@ -293,7 +294,7 @@ export class AccountManager {
     const asked = this.deps.store.getKv<Record<string, string>>('acct_asked', {});
     if (!asked[acc.id]) {
       asked[acc.id] = nowIso(); this.deps.store.setKv('acct_asked', asked);
-      this.deps.notify?.('AI 계정 전환을 권합니다', `${acc.name} 사용량 ${Math.round(p)}% — 설정 › AI 계정에서 「${to.name} 으로 전환」을 누르면 바꿔 씁니다.`);
+      this.deps.notify?.(st('AI 계정 전환을 권합니다'), st('{name} 사용량 {pct}% — 설정 › AI 계정에서 「{to} 으로 전환」을 누르면 바꿔 씁니다.', { name: acc.name, pct: Math.round(p), to: to.name }));
       this.deps.onChange();
     }
     return acc;
@@ -302,8 +303,8 @@ export class AccountManager {
   /** 사람이 「전환」을 눌렀을 때 · to 를 비우면 다음 계정 */
   switchNow(from: string, to?: string): AiAccount {
     const target = to ? this.get(to) : this.next(from);
-    if (!target || target.id === from) throw new Error('바꿔 쓸 계정이 없습니다(로그인돼 있고 사용량이 기준 아래인 계정)');
-    if (target.provider !== (this.get(from)?.provider ?? 'claude')) throw new Error('Claude 와 Codex 계정끼리는 바꿔 쓸 수 없습니다');
+    if (!target || target.id === from) throw new Error(st('바꿔 쓸 계정이 없습니다(로그인돼 있고 사용량이 기준 아래인 계정)'));
+    if (target.provider !== (this.get(from)?.provider ?? 'claude')) throw new Error(st('Claude 와 Codex 계정끼리는 바꿔 쓸 수 없습니다'));
     const o = this.overrides(); o[from] = { to: target.id, at: nowIso(), auto: false }; this.setOverrides(o);
     const asked = this.deps.store.getKv<Record<string, string>>('acct_asked', {}); delete asked[from]; this.deps.store.setKv('acct_asked', asked);
     this.deps.onChange();

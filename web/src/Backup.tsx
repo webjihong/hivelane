@@ -269,7 +269,7 @@ function BackupViewer({ id, title, onClose }: { id: string; title: string; onClo
             <div className="bk-msgs">
               {rows.map((m) => (
                 <div key={m.id} className="bk-msg">
-                  <div className="small muted">{fmtAt(m.created_at)} · {m.role ? (m.role === 'user' ? t('사용자') : t('총괄')) : m.stage ? `[${m.stage}]` : m.from_label ? `${m.from_label}${m.to_label ? ` → ${m.to_label}` : ''}${m.kind ? ` (${m.kind})` : ''}` : `${m.role_name ?? ''} · ${m.kind}${m.name ? ` ${m.name}` : ''}`}</div>
+                  <div className="small muted">{fmtAt(m.created_at)} · {m.role ? (m.role === 'user' ? t('사용자') : t('총괄')) : m.stage ? `[${t(m.stage)}]` : m.from_label ? `${m.from_label}${m.to_label ? ` → ${m.to_label}` : ''}${m.kind ? ` (${m.kind})` : ''}` : `${m.role_name ?? ''} · ${m.kind}${m.name ? ` ${m.name}` : ''}`}</div>
                   <div className="bk-body">{m.body}</div>
                 </div>
               ))}

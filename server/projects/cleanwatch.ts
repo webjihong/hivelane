@@ -3,7 +3,8 @@ import type { CleanItem, CleanScanView, GitCleanSummary } from '../../shared/typ
 import { logger } from '../log.ts';
 import type { Store } from '../store.ts';
 import type { Orchestrator } from '../teams/orchestrator.ts';
-import { applyCleanup, scanGit, type Scan } from './gitclean.ts';
+import { applyCleanup, countRemoved, scanGit, type Scan } from './gitclean.ts';
+import { st } from '../i18n.ts';
 
 const log = logger('gitclean');
 
@@ -70,7 +71,7 @@ export class GitCleanWatcher {
       const r = await this.cleanTeam(t.id, true, '자동').catch((e) => ({ result: 'blocked' as const, message: e instanceof Error ? e.message : String(e) }));
       if (r.result === 'done') done.push(t.name);
     }
-    if (done.length) store.addChat({ role: 'event', body: `자동 정리 · 끝난 지 ${days}일 지난 팀 worktree ${done.length}개 (${done.slice(0, 8).join(', ')}${done.length > 8 ? ' …' : ''}) · 변경은 패치로 보관, 브랜치는 남김`, tone: 'info' });
+    if (done.length) store.addChat({ role: 'event', body: st('자동 정리 · 끝난 지 {days}일 지난 팀 worktree {n}개 ({names}) · 변경은 패치로 보관, 브랜치는 남김', { days, n: done.length, names: `${done.slice(0, 8).join(', ')}${done.length > 8 ? ' …' : ''}` }), tone: 'info' });
     return done;
   }
 
@@ -81,14 +82,14 @@ export class GitCleanWatcher {
   async cleanTeam(teamId: string, discard: boolean, by = '팀 버튼'): Promise<{ result: 'done' | 'dirty' | 'blocked'; message: string; dirty?: string[] }> {
     const { cfg, store, orch } = this.deps;
     const t = store.getTeam(teamId);
-    if (!t) return { result: 'blocked', message: '팀이 없습니다' };
-    if (t.lifetime !== 'task' || orch.isRunning(teamId) || !['done', 'failed'].includes(t.state)) return { result: 'blocked', message: '끝난 업무 팀만 정리할 수 있습니다' };
+    if (!t) return { result: 'blocked', message: st('팀이 없습니다') };
+    if (t.lifetime !== 'task' || orch.isRunning(teamId) || !['done', 'failed'].includes(t.state)) return { result: 'blocked', message: st('끝난 업무 팀만 정리할 수 있습니다') };
     const p = store.getProject(t.project_id);
     const item = p && t.worktree_path ? (await scanGit(cfg, store, p)).worktrees.find((w) => w.team_id === teamId) : undefined;
-    if (item && item.verdict === 'keep' && !item.why.startsWith('최근')) return { result: 'blocked', message: `지우지 않음: ${item.why}` };
-    if (item && item.dirty.length && !discard) return { result: 'dirty', message: `커밋 안 한 변경 ${item.dirty.length}개가 있습니다`, dirty: item.dirty.slice(0, 20) };
+    if (item && item.verdict === 'keep' && !item.recent) return { result: 'blocked', message: st('지우지 않음: {why}', { why: item.why }) };
+    if (item && item.dirty.length && !discard) return { result: 'dirty', message: st('커밋 안 한 변경 {n}개가 있습니다', { n: item.dirty.length }), dirty: item.dirty.slice(0, 20) };
     await orch.archive(teamId, by, { discarded: !!item?.dirty.length });
-    const msg = `worktree 정리(${by}) · 「${t.name}」 · 브랜치 ${t.branch ?? '-'} 는 남김${item?.dirty.length ? ` · 커밋 안 한 변경 ${item.dirty.length}개는 패치로 보관` : ''}`;
+    const msg = st('worktree 정리({by}) · 「{name}」 · 브랜치 {branch} 는 남김', { by, name: t.name, branch: t.branch ?? '-' }) + (item?.dirty.length ? ` · ${st('커밋 안 한 변경 {n}개는 패치로 보관', { n: item.dirty.length })}` : '');
     if (by !== '자동') store.addChat({ role: 'event', body: msg, team_id: teamId, tone: 'info' });
     if (p) { try { this.scans.set(p.id, toView(await scanGit(cfg, store, p))); } catch { /* 다음 주기에 */ } }
     this.deps.onChange();
@@ -99,10 +100,10 @@ export class GitCleanWatcher {
   async apply(projectId: string, ids: string[], discard: boolean): Promise<string[]> {
     const { cfg, store, orch } = this.deps;
     const p = store.getProject(projectId);
-    if (!p) throw new Error('프로젝트가 없습니다');
+    if (!p) throw new Error(st('프로젝트가 없습니다'));
     const lines = await applyCleanup(cfg, store, p, ids, discard, archiveForCleanup(store, orch, '화면'), '화면');
-    const done = lines.filter((l) => l.startsWith('지움')).length;
-    store.addChat({ role: 'event', body: `git 정리(화면) · ${p.name} · ${done}개 지움${discard ? ' (변경 버림 동의)' : ''}\n${lines.join('\n')}`, tone: 'info' });
+    const done = countRemoved(lines);
+    store.addChat({ role: 'event', body: `${st('git 정리(화면) · {name} · {n}개 지움', { name: p.name, n: done })}${discard ? ` ${st('(변경 버림 동의)')}` : ''}\n${lines.join('\n')}`, tone: 'info' });
     try { this.scans.set(p.id, toView(await scanGit(cfg, store, p))); } catch { /* 다음 주기에 */ }
     this.deps.onChange();
     return lines;

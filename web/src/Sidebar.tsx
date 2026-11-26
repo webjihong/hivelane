@@ -259,7 +259,7 @@ export function Sidebar({ snap }: { snap: StateSnapshot }) {
         <div className="sb-h">{t('직속 팀@목록')}<a href="#settings/standing" className="sb-add" aria-label={t('직속 팀 추가')} title={t('직속 팀 추가(설정 › 직속 팀)')}>＋</a></div>
         {standing.length ? standing.map((tm) => <TeamItem key={tm.id} tm={tm} r={r} now={now} />) : <div className="sb-empty">{t('없음 · 총괄에게 「직속팀 만들어줘」')}</div>}
 
-        <div className="sb-h">{t('업무 팀')}</div>
+        <div className="sb-h">{t('업무 팀@목록')}</div>
         {tasks.length ? tasks.map((tm) => <TeamItem key={tm.id} tm={tm} r={r} now={now} />) : <div className="sb-empty">{t('진행 중인 업무 없음')}</div>}
         {(done.length > 0 || gcN > 0 || finTotal > 0) && (
           <div className="sb-fin">

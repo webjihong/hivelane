@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import type { Priority } from '../../shared/types.ts';
 
 interface Waiter {
@@ -42,7 +43,7 @@ export class HeavySlots {
       if (signal) {
         const onAbort = () => {
           const i = this.waiters.indexOf(w);
-          if (i >= 0) { this.waiters.splice(i, 1); this.onChange(); reject(new Error('대기 취소')); }
+          if (i >= 0) { this.waiters.splice(i, 1); this.onChange(); reject(new Error(st('대기 취소'))); }
         };
         if (signal.aborted) return onAbort();
         signal.addEventListener('abort', onAbort, { once: true });
@@ -56,7 +57,7 @@ export class HeavySlots {
   cancelTeam(teamId: string): void {
     const gone = this.waiters.filter((w) => w.teamId === teamId);
     this.waiters = this.waiters.filter((w) => w.teamId !== teamId);
-    for (const w of gone) w.reject(new Error('팀이 멈춰 대기를 취소했습니다'));
+    for (const w of gone) w.reject(new Error(st('팀이 멈춰 대기를 취소했습니다')));
     if (gone.length) this.onChange();
   }
 

@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { cpus, loadavg, totalmem } from 'node:os';
 import { run } from '../util.ts';
 
@@ -202,7 +203,7 @@ const KNOWN = ['vitest', 'jest', 'tsc', 'next', 'nest', 'ts-node', 'tsx', 'vite'
 /** 프로세스 이름을 사람이 알아보게: 앱 이름, node 면 무엇을 돌리는지 */
 export function friendlyName(command: string): string {
   const app = command.match(/\/([^/]+)\.app\//);
-  if (app) return /Helper[^/]*\.app\//.test(command) ? `${app[1]} (보조 프로세스)` : app[1]!;
+  if (app) return /Helper[^/]*\.app\//.test(command) ? st('{app} (보조 프로세스)', { app: app[1]! }) : app[1]!;
   const exe = (command.split(/\s+/)[0] ?? '').split('/').pop() ?? '';
   if (/^(node|bun|deno|npm|npx|pnpm|yarn)$/.test(exe)) {
     const words = command.split(/\s+/).slice(1);
@@ -217,12 +218,12 @@ export function friendlyName(command: string): string {
 }
 
 function groupLabel(o: ProcDetail, team: string | undefined, cwd: string | undefined): { label: string; detail: string; kind: DiagGroup['kind'] } {
-  if (team) return { label: team, detail: cwd ? shortPath(cwd) : '', kind: team === 'Hivelane 서버' ? 'hivelane' : 'team' };
+  if (team) return { label: team === 'Hivelane 서버' ? st('Hivelane 서버') : team, detail: cwd ? shortPath(cwd) : '', kind: team === 'Hivelane 서버' ? 'hivelane' : 'team' };
   const exe = (o.command.split(/\s+/)[0] ?? '').split('/').pop() ?? '';
-  if (exe === 'claude') return { label: `Claude Code 세션`, detail: cwd ? shortPath(cwd) : `pid ${o.pid}`, kind: 'claude' };
+  if (exe === 'claude') return { label: st('Claude Code 세션'), detail: cwd ? shortPath(cwd) : `pid ${o.pid}`, kind: 'claude' };
   const app = o.command.match(/\/([^/]+)\.app\//);
-  if (app) return { label: app[1]!, detail: '앱', kind: 'app' };
-  if (o.command.startsWith('/System/') || o.command.startsWith('/usr/')) return { label: friendlyName(o.command), detail: 'macOS 시스템', kind: 'system' };
+  if (app) return { label: app[1]!, detail: st('앱'), kind: 'app' };
+  if (o.command.startsWith('/System/') || o.command.startsWith('/usr/')) return { label: friendlyName(o.command), detail: st('macOS 시스템'), kind: 'system' };
   return { label: friendlyName(o.command), detail: cwd ? shortPath(cwd) : '', kind: 'other' };
 }
 

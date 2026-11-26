@@ -1,3 +1,4 @@
+import { VERSION } from '../version.ts';
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 
@@ -56,7 +57,7 @@ export function teamMcpServer(impl: TeamTools, opts: { sessionRoles: { key: stri
   if (opts.readableTeams) {
     tools.push(T('read_team_records', '허용된 다른 팀의 최근 기록(요약·바뀐 파일·대화)을 읽는다.', { team_id: z.string(), query: z.string().default('') }, async (a) => text(impl.readTeamRecords(a.team_id, a.query))));
   }
-  return createSdkMcpServer({ name: 'hivelane', version: '0.1.0', tools });
+  return createSdkMcpServer({ name: 'hivelane', version: VERSION, tools });
 }
 
 export function teamToolNames(sessionRoles: boolean, readable: boolean, approval = false): string[] {

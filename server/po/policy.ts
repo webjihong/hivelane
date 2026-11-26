@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import type { EngineSettings, Priority, Zone } from '../../shared/types.ts';
 
 /** 구간 판정: 원시 구간이 sustainSec 동안 이어져야 올라간다. 내려갈 때는 바로. */
@@ -83,25 +84,25 @@ export function decide(i: PolicyInput): Action[] {
       const own = running.reduce((a, t) => a + t.cpu, 0) / i.cores;
       if (own < i.cpu * OWN_SHARE_MIN) {
         const out: Action[] = [];
-        if (running.length) out.push({ type: 'hold', reason: `CPU ${Math.round(i.cpu)}% 중 Hivelane 팀 몫 ${Math.round(own)}% · 외부 부하라 멈추지 않음(새 팀만 대기)` });
+        if (running.length) out.push({ type: 'hold', reason: st('CPU {cpu}% 중 Hivelane 팀 몫 {own}% · 외부 부하라 멈추지 않음(새 팀만 대기)', { cpu: Math.round(i.cpu), own: Math.round(own) }) });
         // 외부 부하 때문에 멈춰 둔 팀도 하나씩 되돌린다(멈춰 봐야 CPU 가 안 내려간다)
         if (enginePaused.length && now - i.lastResumeAt >= s.resumeSec * 1000 && running.length < s.cap) {
           const t = [...enginePaused].sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.createdAt - b.createdAt)[0]!;
-          out.push({ type: 'resume', teamId: t.id, reason: `외부 부하(Hivelane 팀 몫 ${Math.round(own)}%) · 멈춰도 CPU 가 안 내려가 재개` });
+          out.push({ type: 'resume', teamId: t.id, reason: st('외부 부하(Hivelane 팀 몫 {own}%) · 멈춰도 CPU 가 안 내려가 재개', { own: Math.round(own) }) });
         }
         return out;
       }
     }
     // 1) 강한 멈춤: 빨강이 hardPauseSec 이상 이어졌는데 멈춤 요청 뒤에도 아직 도는 팀
     if (i.redFor >= s.hardPauseSec * 1000) {
-      for (const t of running.filter((t) => t.pausePending)) actions.push({ type: 'hardPause', teamId: t.id, reason: `빨강 ${Math.round(i.redFor / 1000)}초 지속 · 부드러운 멈춤이 안 끝남` });
+      for (const t of running.filter((t) => t.pausePending)) actions.push({ type: 'hardPause', teamId: t.id, reason: st('빨강 {sec}초 지속 · 부드러운 멈춤이 안 끝남', { sec: Math.round(i.redFor / 1000) }) });
     }
     // 2) 부드러운 멈춤: pauseEverySec 마다 하나
     if (now - i.lastPauseAt >= s.pauseEverySec * 1000) {
       const cand = running
         .filter((t) => !t.pausePending && (!t.pinned || memHard))
         .sort((a, b) => RANK[b.priority] - RANK[a.priority] || b.cpu + b.rss / 100 - (a.cpu + a.rss / 100) || b.createdAt - a.createdAt)[0];
-      if (cand) actions.push({ type: 'pause', teamId: cand.id, reason: `CPU ${Math.round(i.cpu)}% · 메모리 ${Math.round(i.mem)}% · 우선순위 ${cand.priority}${cand.pinned ? ' · 메모리 한계로 고정 무시' : ''}` });
+      if (cand) actions.push({ type: 'pause', teamId: cand.id, reason: st('CPU {cpu}% · 메모리 {mem}% · 우선순위 {priority}', { cpu: Math.round(i.cpu), mem: Math.round(i.mem), priority: cand.priority }) + (cand.pinned ? ` · ${st('메모리 한계로 고정 무시')}` : '') });
     }
     return actions;
   }
@@ -111,7 +112,7 @@ export function decide(i: PolicyInput): Action[] {
     if (enginePaused.length) {
       if (i.greenFor >= s.resumeSec * 1000 && now - i.lastResumeAt >= s.resumeSec * 1000 && running.length < s.cap) {
         const t = [...enginePaused].sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.createdAt - b.createdAt)[0]!;
-        actions.push({ type: 'resume', teamId: t.id, reason: `초록 ${Math.round(i.greenFor / 1000)}초 유지` });
+        actions.push({ type: 'resume', teamId: t.id, reason: st('초록 {sec}초 유지', { sec: Math.round(i.greenFor / 1000) }) });
       }
       return actions;
     }
@@ -119,7 +120,7 @@ export function decide(i: PolicyInput): Action[] {
     const queued = po.filter((t) => t.state === 'queued').sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.createdAt - b.createdAt);
     for (const t of queued) {
       if (slots <= 0) break;
-      actions.push({ type: 'start', teamId: t.id, reason: '초록 구간 · 자리 있음' });
+      actions.push({ type: 'start', teamId: t.id, reason: st('초록 구간 · 자리 있음') });
       slots--;
     }
   }

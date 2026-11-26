@@ -5,6 +5,8 @@
  * - 사용량: `codex app-server` 의 account/rateLimits/read(5시간·주간 %).
  * - 실행: @openai/codex-sdk 로 한 턴. 역할 도구에 따라 샌드박스(read-only / workspace-write)·작업 폴더를 제한하고 네트워크는 끈다.
  */
+import { VERSION } from '../version.ts';
+import { st } from '../i18n.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -32,7 +34,7 @@ function cliEnv(env?: Record<string, string>): NodeJS.ProcessEnv {
 
 function spawnCodex(args: string[], env?: Record<string, string>): ChildProcess {
   const js = codexJs();
-  if (!js) throw new Error('Codex 가 설치돼 있지 않습니다(npm install 로 @openai/codex-sdk 설치)');
+  if (!js) throw new Error(st('Codex 가 설치돼 있지 않습니다(npm install 로 @openai/codex-sdk 설치)'));
   return spawn(process.execPath, [js, ...args], { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], env: cliEnv(env) });
 }
 
@@ -43,7 +45,7 @@ async function appServer(env: Record<string, string> | undefined, calls: { metho
   return new Promise((resolve, reject) => {
     let buf = '';
     const done = () => { clearTimeout(t); p.kill(); resolve(out); };
-    const t = setTimeout(() => { p.kill(); Object.keys(out).length ? resolve(out) : reject(new Error('Codex 응답이 없습니다')); }, timeoutMs);
+    const t = setTimeout(() => { p.kill(); Object.keys(out).length ? resolve(out) : reject(new Error(st('Codex 응답이 없습니다'))); }, timeoutMs);
     p.on('error', (e) => { clearTimeout(t); reject(e); });
     p.stdout!.on('data', (d: Buffer) => {
       buf += d.toString();
@@ -61,7 +63,7 @@ async function appServer(env: Record<string, string> | undefined, calls: { metho
         }
       }
     });
-    p.stdin!.write(JSON.stringify({ id: 0, method: 'initialize', params: { clientInfo: { name: 'hivelane', version: '0.1.0' } } }) + '\n');
+    p.stdin!.write(JSON.stringify({ id: 0, method: 'initialize', params: { clientInfo: { name: 'hivelane', version: VERSION } } }) + '\n');
   });
 }
 
@@ -70,16 +72,16 @@ type RlRead = { rateLimits?: { primary?: RlWindow; secondary?: RlWindow; planTyp
 type AcctRead = { account?: { type?: string; email?: string | null; planType?: string | null } | null };
 
 function windowLabel(mins: number | undefined, fallback: string): string {
-  if (!mins) return fallback;
-  if (mins <= 360) return `${Math.round(mins / 60)}시간`;
-  if (mins >= 10_000) return '주간';
-  return `${Math.round(mins / 1440)}일`;
+  if (!mins) return st(fallback);
+  if (mins <= 360) return st('{n}시간', { n: Math.round(mins / 60) });
+  if (mins >= 10_000) return st('주간');
+  return st('{n}일', { n: Math.round(mins / 1440) });
 }
 
 /** app-server 답 → 화면 사용량(테스트용으로 따로 둔다) */
 export function codexUsageView(rl: RlRead | undefined, acct: AcctRead | undefined, error: string | null): UsageView {
   const a = acct?.account ?? null;
-  const login: LoginInfo = { loggedIn: !!a, method: a?.type === 'apiKey' ? 'API 키' : a?.type ?? null, expiresAt: null, email: a?.email ?? null };
+  const login: LoginInfo = { loggedIn: !!a, method: a?.type === 'apiKey' ? st('API 키') : a?.type ?? null, expiresAt: null, email: a?.email ?? null };
   const windows: UsageWindow[] = [];
   const add = (key: string, w: RlWindow, fb: string) => {
     if (w && typeof w.usedPercent === 'number') windows.push({ key, label: windowLabel(w.windowDurationMins, fb), pct: w.usedPercent, resets_at: w.resetsAt ? new Date(w.resetsAt * 1000).toISOString() : null });
@@ -139,28 +141,28 @@ export class CodexLogin {
     child.stdout?.on('data', add);
     child.stderr?.on('data', add);
     child.on('error', (e) => this.finish('failed', e.message));
-    child.on('exit', (code) => this.finish(code === 0 ? 'done' : 'failed', code === 0 ? null : `로그인이 끝나지 않았습니다(종료 코드 ${code ?? '신호'})`));
-    this.timer = setTimeout(() => this.cancel('15분 안에 끝나지 않아 멈췄습니다'), 900_000);
+    child.on('exit', (code) => this.finish(code === 0 ? 'done' : 'failed', code === 0 ? null : st('로그인이 끝나지 않았습니다(종료 코드 {code})', { code: code ?? st('신호') })));
+    this.timer = setTimeout(() => this.cancel(st('15분 안에 끝나지 않아 멈췄습니다')), 900_000);
     return this.view;
   }
 
   /** Codex 는 코드를 붙여 넣지 않는다(브라우저에 일회용 코드를 넣음). API 키 로그인은 apiKey() */
-  code(): AuthLoginView { throw new Error('Codex 로그인은 브라우저에 일회용 코드를 넣습니다. API 키는 「API 키로 로그인」을 쓰세요'); }
+  code(): AuthLoginView { throw new Error(st('Codex 로그인은 브라우저에 일회용 코드를 넣습니다. API 키는 「API 키로 로그인」을 쓰세요')); }
 
   async apiKey(key: string): Promise<AuthLoginView> {
-    this.cancel('API 키로 로그인합니다');
+    this.cancel(st('API 키로 로그인합니다'));
     const p = spawnCodex(['login', '--with-api-key'], this.opts.env);
     const out: string[] = [];
     p.stdout?.on('data', (b: Buffer) => out.push(b.toString()));
     p.stderr?.on('data', (b: Buffer) => out.push(b.toString()));
     p.stdin!.end(`${key.trim()}\n`);
     const code = await new Promise<number | null>((r) => { p.on('exit', r); p.on('error', () => r(-1)); });
-    this.view = { phase: code === 0 ? 'done' : 'failed', url: null, output: truncate(stripAnsi(out.join('')), 2000), startedAt: new Date().toISOString(), error: code === 0 ? null : 'API 키 로그인에 실패했습니다' };
+    this.view = { phase: code === 0 ? 'done' : 'failed', url: null, output: truncate(stripAnsi(out.join('')), 2000), startedAt: new Date().toISOString(), error: code === 0 ? null : st('API 키 로그인에 실패했습니다') };
     this.opts.onDone();
     return this.view;
   }
 
-  cancel(reason = '취소했습니다'): AuthLoginView {
+  cancel(reason = st('취소했습니다')): AuthLoginView {
     if (this.child) { this.child.kill('SIGTERM'); this.finish('failed', reason); }
     return this.view;
   }
@@ -195,7 +197,7 @@ export async function runCodexTurn(store: Store, spec: CodexTurnSpec, handle: Tu
   const sandbox = codexSandbox(spec.toolPreset);
   const verifyNote = spec.toolPreset === 'verify' ? '\n검증 역할이다. 테스트·검사를 돌리고 결과를 보고하되 소스 파일은 고치지 않는다.' : '';
   const prompt = spec.resume ? spec.prompt : `${spec.systemAppend}\n\n${SANDBOX_NOTE[sandbox]}${verifyNote}\n\n---\n\n${spec.prompt}`;
-  store.updateAgent(agentId, { state: 'busy', current_step: 'Codex 생각 중' });
+  store.updateAgent(agentId, { state: 'busy', current_step: st('Codex 생각 중') });
   handle.codex = true;
   try {
     const { Codex } = await import('@openai/codex-sdk');
@@ -224,15 +226,15 @@ export async function runCodexTurn(store: Store, spec: CodexTurnSpec, handle: Tu
       if (it.type === 'command_execution') {
         if (ev.type === 'item.started') {
           store.startRun({ agent_id: agentId, team_id: teamId, tool_use_id: it.id, tool: 'Bash', command: truncate(it.command, 2000) });
-          store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: 'tool_use', name: 'Bash', body: `명령 실행\n$ ${truncate(it.command, 1500)}` });
-          store.updateAgent(agentId, { current_step: `명령: ${truncate(it.command, 60)}` });
+          store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: 'tool_use', name: 'Bash', body: `${st('명령 실행')}\n$ ${truncate(it.command, 1500)}` });
+          store.updateAgent(agentId, { current_step: st('명령: {cmd}', { cmd: truncate(it.command, 60) }) });
         } else {
           const bad = it.status === 'failed' || (it.exit_code ?? 0) !== 0;
           store.endRun(it.id, bad ? 'error' : 'ok');
-          store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: bad ? 'tool_error' : 'tool_result', body: truncate(it.aggregated_output || `(종료 코드 ${it.exit_code ?? '-'})`, 2000) });
+          store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: bad ? 'tool_error' : 'tool_result', body: truncate(it.aggregated_output || st('(종료 코드 {code})', { code: String(it.exit_code ?? '-') }), 2000) });
         }
       } else if (it.type === 'file_change' && ev.type === 'item.completed') {
-        store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: it.status === 'failed' ? 'tool_error' : 'tool_use', name: 'Edit', body: `파일 ${it.status === 'failed' ? '변경 실패' : '변경'}: ${it.changes.map((c) => `${c.kind} ${c.path}`).join(', ')}` });
+        store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: it.status === 'failed' ? 'tool_error' : 'tool_use', name: 'Edit', body: ((v) => (it.status === 'failed' ? st('파일 변경 실패: {files}', v) : st('파일 변경: {files}', v)))({ files: it.changes.map((c) => `${c.kind} ${c.path}`).join(', ') }) });
       } else if (it.type === 'agent_message' && ev.type === 'item.completed' && it.text.trim()) {
         store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: 'text', body: it.text });
         result.text = it.text;
@@ -251,8 +253,8 @@ export async function runCodexTurn(store: Store, spec: CodexTurnSpec, handle: Tu
     handle.releaseAll();
   }
   result.interrupted = handle.interrupted;
-  store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: 'result', body: `${result.ok ? '턴 완료' : result.error ?? result.subtype} · Codex` });
-  store.updateAgent(agentId, { state: handle.pauseRequested ? 'stop' : 'idle', current_step: handle.pauseRequested ? '일시정지' : result.ok ? '턴 완료' : '대기' });
+  store.addAgentEvent({ agent_id: agentId, team_id: teamId, kind: 'result', body: `${result.ok ? st('턴 완료') : result.error ?? result.subtype} · Codex` });
+  store.updateAgent(agentId, { state: handle.pauseRequested ? 'stop' : 'idle', current_step: handle.pauseRequested ? st('일시정지') : result.ok ? st('턴 완료') : st('대기') });
   if (result.sessionId) store.updateAgent(agentId, { session_id: result.sessionId });
   return result;
 }

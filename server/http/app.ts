@@ -1,3 +1,4 @@
+import { VERSION } from '../version.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { readUpload, saveUpload } from '../uploads.ts';
 import type { PrWatcher } from '../projects/prs.ts';
@@ -23,6 +24,7 @@ import { z } from 'zod';
 import { bus, type BusEvent } from '../bus.ts';
 import type { AppConfig } from '../config.ts';
 import { logger } from '../log.ts';
+import { st } from '../i18n.ts';
 import type { Notifier } from '../notify/index.ts';
 import type { Engine } from '../po/engine.ts';
 import type { PoAgent } from '../po/agent.ts';
@@ -33,7 +35,6 @@ import { ConflictError, type Orchestrator } from '../teams/orchestrator.ts';
 import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.ts';
 
 const log = logger('http');
-const VERSION = '0.1.0';
 
 export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager; backups?: BackupManager }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
@@ -87,43 +88,43 @@ export function createApp(d: AppDeps): Hono<Env> {
     const localPort = c.env?.incoming?.socket?.localPort;
     const remote = localPort === cfg.remotePort;
     const host = c.req.header('host') ?? '';
-    if (c.env?.incoming && !hostOk(host, remote)) return c.json({ error: `허용되지 않은 Host: ${host}` }, 403);
+    if (c.env?.incoming && !hostOk(host, remote)) return c.json({ error: st('허용되지 않은 Host: {host}', { host }) }, 403);
     const method = c.req.method;
     if (method !== 'GET' && method !== 'HEAD') {
       if (!(c.req.header('content-type') ?? '').toLowerCase().startsWith('application/json') || c.req.header('x-hivelane') !== '1') {
-        return c.json({ error: '변경 요청은 Hivelane 화면에서만 보낼 수 있습니다' }, 403);
+        return c.json({ error: st('변경 요청은 Hivelane 화면에서만 보낼 수 있습니다') }, 403);
       }
       const origin = c.req.header('origin');
       if (origin) {
         let oh = '';
         try { oh = new URL(origin).host; } catch { /* 잘못된 Origin */ }
-        if (!oh || oh.toLowerCase() !== host.toLowerCase()) return c.json({ error: `허용되지 않은 출처: ${origin}` }, 403);
+        if (!oh || oh.toLowerCase() !== host.toLowerCase()) return c.json({ error: st('허용되지 않은 출처: {origin}', { origin }) }, 403);
       }
     }
     const login = c.req.header('tailscale-user-login') ?? null;
     if (remote) {
-      if (!login) return c.json({ error: '원격 접속은 Tailscale 사용자 기기에서만 할 수 있습니다' }, 403);
+      if (!login) return c.json({ error: st('원격 접속은 Tailscale 사용자 기기에서만 할 수 있습니다') }, 403);
       const owner = store.getSettings().ownerLogin;
       store.setKv('last_remote_login', { login, at: new Date().toISOString() });
       if (/\.ts\.net$/i.test(host) && store.getKv<string | null>('public_url', null) !== `https://${host}`) store.setKv('public_url', `https://${host}`);
-      if (!owner) return c.json({ error: `원격 접속 주인이 아직 등록되지 않았습니다. 맥에서 설정 › 원격 접속에서 ${login} 을(를) 주인으로 등록하세요.` }, 403);
-      if (owner.toLowerCase() !== login.toLowerCase()) return c.json({ error: `허용되지 않은 계정입니다: ${login}` }, 403);
+      if (!owner) return c.json({ error: st('원격 접속 주인이 아직 등록되지 않았습니다. 맥에서 설정 › 원격 접속에서 {login} 을(를) 주인으로 등록하세요.', { login }) }, 403);
+      if (owner.toLowerCase() !== login.toLowerCase()) return c.json({ error: st('허용되지 않은 계정입니다: {login}', { login }) }, 403);
       c.set('access', 'remote');
     } else c.set('access', 'local');
     c.set('login', login);
     await next();
   };
-  const localOnly = (c: Context<Env>) => { if (c.get('access') !== 'local') throw new HttpError(403, '이 작업은 맥에서만 할 수 있습니다(원격은 보기만)'); };
+  const localOnly = (c: Context<Env>) => { if (c.get('access') !== 'local') throw new HttpError(403, st('이 작업은 맥에서만 할 수 있습니다(원격은 보기만)')); };
 
   app.onError((e, c) => {
     if (e instanceof HttpError) return c.json({ error: e.message }, e.status);
     if (e instanceof ConflictError) return c.json({ error: e.message }, 409);
-    if (e instanceof z.ZodError) return c.json({ error: '입력값이 올바르지 않습니다', detail: e.issues.map((i) => `${i.path.join('.')}: ${i.message}`) }, 400);
+    if (e instanceof z.ZodError) return c.json({ error: st('입력값이 올바르지 않습니다'), detail: e.issues.map((i) => `${i.path.join('.')}: ${i.message}`) }, 400);
     log.error(`${c.req.method} ${c.req.path}`, e);
-    return c.json({ error: e instanceof Error ? e.message : '서버 오류' }, 500);
+    return c.json({ error: e instanceof Error ? e.message : st('서버 오류') }, 500);
   });
   const body = async <T extends z.ZodTypeAny>(c: Context<Env>, schema: T): Promise<z.infer<T>> => schema.parse(await c.req.json().catch(() => ({})));
-  const team = (id: string) => { const t = store.getTeam(id); if (!t) throw new HttpError(404, '팀이 없습니다'); return t; };
+  const team = (id: string) => { const t = store.getTeam(id); if (!t) throw new HttpError(404, st('팀이 없습니다')); return t; };
 
   /* ---------- 상태·스트림 ---------- */
   app.get('/api/state', (c) => {
@@ -172,8 +173,8 @@ export function createApp(d: AppDeps): Hono<Env> {
     if (stateTimer) clearTimeout(stateTimer);
   }));
 
-  app.get('/api/teams/:id', (c) => { const dt = store.teamDetail(c.req.param('id')); if (!dt) throw new HttpError(404, '팀이 없습니다'); return c.json(dt); });
-  app.get('/api/agents/:id', (c) => { const dt = store.agentDetail(c.req.param('id')); if (!dt) throw new HttpError(404, '에이전트가 없습니다'); return c.json(dt); });
+  app.get('/api/teams/:id', (c) => { const dt = store.teamDetail(c.req.param('id')); if (!dt) throw new HttpError(404, st('팀이 없습니다')); return c.json(dt); });
+  app.get('/api/agents/:id', (c) => { const dt = store.agentDetail(c.req.param('id')); if (!dt) throw new HttpError(404, st('에이전트가 없습니다')); return c.json(dt); });
   app.get('/api/teams/:id/diff', async (c) => {
     const t = team(c.req.param('id'));
     if (!t.worktree_path || !t.base_sha) {
@@ -194,13 +195,13 @@ export function createApp(d: AppDeps): Hono<Env> {
     const cpu = meter.sample();
     const [procs, mem] = await Promise.all([listProcDetails(), memPercent()]);
     const teamRoots = new Map<number, string>();
-    for (const t of store.listTeams("state IN ('running','paused','reviving','idle','waiting_human')")) for (const pid of orch.rootPids(t.id)) teamRoots.set(pid, `Hivelane 팀 「${t.name}」`);
+    for (const t of store.listTeams("state IN ('running','paused','reviving','idle','waiting_human')")) for (const pid of orch.rootPids(t.id)) teamRoots.set(pid, st('Hivelane 팀 「{name}」', { name: t.name }));
     const input = { procs, cpu, mem, load: loadavg()[0] ?? 0, cores: cpus().length, teamRoots, hivelanePid: process.pid };
     const first = diagnoseData(input);
     return c.json(diagnoseData({ ...input, cwdOf: await cwdsOf(first.origins) }).data);
   });
   /* ---------- 스크립트 버튼 (등록·수정은 맥에서만, 실행은 원격도) ---------- */
-  const scripts = () => { if (!d.scripts) throw new HttpError(409, '스크립트 기능이 꺼져 있습니다'); return d.scripts; };
+  const scripts = () => { if (!d.scripts) throw new HttpError(409, st('스크립트 기능이 꺼져 있습니다')); return d.scripts; };
   const scriptZ = z.object({ project_id: z.string().nullable(), name: z.string().trim().min(1).max(60), command: z.string().trim().min(1).max(4000), cwd: z.string().max(500).default(''), confirm: z.boolean().default(false) });
   /* ---------- 끝난 팀 전체·정리 기록 ---------- */
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : d; };
@@ -208,11 +209,11 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/cleanup-log', (c) => c.json(store.cleanupLog({ projectId: c.req.query('project') || null, teamId: c.req.query('team') || null, offset: num(c.req.query('offset'), 0), limit: num(c.req.query('limit'), 50) })));
   app.get('/api/cleanup-log/:id/patch', (c) => {
     const row = store.cleanupLogRow(Number(c.req.param('id')));
-    if (!row?.patch_path) throw new HttpError(404, '남겨 둔 패치가 없습니다');
+    if (!row?.patch_path) throw new HttpError(404, st('남겨 둔 패치가 없습니다'));
     return c.json({ patch: readPatch(row.patch_path, c.req.query('path') || undefined), path: row.patch_path });
   });
   /* ---------- worktree·로컬 브랜치 정리(화면) ---------- */
-  const gc = () => { if (!d.gitClean) throw new HttpError(404, '정리 기능을 쓸 수 없습니다'); return d.gitClean; };
+  const gc = () => { if (!d.gitClean) throw new HttpError(404, st('정리 기능을 쓸 수 없습니다')); return d.gitClean; };
   app.get('/api/git-clean', async (c) => { if (c.req.query('refresh')) await gc().refresh(); return c.json({ summary: gc().summary, scans: gc().views }); });
   app.post('/api/teams/:id/clean-worktree', async (c) => {
     localOnly(c);
@@ -227,7 +228,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json({ lines, summary: gc().summary, scans: gc().views });
   });
   /* ---------- 백업(저장소: 이 맥 폴더·NAS·S3) · 열어 보기 · 복구 ---------- */
-  const bk = () => { if (!d.backups) throw new HttpError(404, '백업 기능을 쓸 수 없습니다'); return d.backups; };
+  const bk = () => { if (!d.backups) throw new HttpError(404, st('백업 기능을 쓸 수 없습니다')); return d.backups; };
   const bkErr = async <T>(f: () => Promise<T> | T): Promise<T> => { try { return await f(); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } };
   const targetZ = z.object({
     id: z.string().max(40).default(''), type: z.enum(['local', 'webdav', 's3']), name: z.string().min(1).max(40), enabled: z.boolean().default(true),
@@ -256,13 +257,13 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.delete('/api/backups/view/:id', (c) => { bk().close(c.req.param('id')); return c.json({ ok: true }); });
 
   /* ---------- AI 계정 여러 개(계정별 로그인·사용량, 역할·총괄이 고름) ---------- */
-  const accts = () => { if (!d.accounts) throw new HttpError(404, '계정 기능을 쓸 수 없습니다'); return d.accounts; };
+  const accts = () => { if (!d.accounts) throw new HttpError(404, st('계정 기능을 쓸 수 없습니다')); return d.accounts; };
   /** 계정을 쓰는 곳: 템플릿 역할·직속/업무 팀 역할·총괄 */
   const usedBy = (id: string): string[] => {
     const s = store.getSettings();
     const pick = (a: string | null | undefined, allowCodex = false) => accts().resolve(a, allowCodex).id;
     const out: string[] = [];
-    if (pick(s.poAccount) === id) out.push('총괄');
+    if (pick(s.poAccount) === id) out.push(st('총괄'));
     // Agent 도구로 부르는 팀원(subagent)은 PM 계정을 쓰므로 PM·독립 세션 역할만 센다 · 템플릿 이름으로 묶는다
     for (const t of store.listTemplates()) {
       const roles = t.roles.filter((r) => (r.key === 'pm' || r.mode === 'session') && pick(r.account, r.key !== 'pm') === id).map((r) => r.name);
@@ -281,7 +282,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     localOnly(c);
     const b = await body(c, z.object({ key: z.string().min(10).max(500) }));
     const l = accts().login(c.req.param('id'));
-    if (!('apiKey' in l)) throw new HttpError(409, 'API 키 로그인은 Codex 계정만 됩니다');
+    if (!('apiKey' in l)) throw new HttpError(409, st('API 키 로그인은 Codex 계정만 됩니다'));
     return c.json(await l.apiKey(b.key));
   });
   app.patch('/api/accounts/:id', async (c) => { localOnly(c); const b = await body(c, z.object({ name: z.string().min(1).max(40) })); try { return c.json({ account: accts().rename(c.req.param('id'), b.name) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
@@ -292,31 +293,31 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.post('/api/accounts/:id/login/cancel', (c) => { localOnly(c); return c.json(accts().login(c.req.param('id')).cancel()); });
 
   /* ---------- Claude 재로그인(claude auth login 대행: 링크 보여 주고 코드 받기) ---------- */
-  const auth = () => { if (!d.auth) throw new HttpError(404, '재로그인을 쓸 수 없습니다'); return d.auth; };
+  const auth = () => { if (!d.auth) throw new HttpError(404, st('재로그인을 쓸 수 없습니다')); return d.auth; };
   app.get('/api/auth/login', (c) => c.json(auth().view));
   app.post('/api/auth/login', (c) => c.json(auth().start()));
   app.post('/api/auth/login/code', async (c) => { const b = await body(c, z.object({ code: z.string().min(4).max(2000) })); try { return c.json(auth().code(b.code)); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/auth/login/cancel', (c) => c.json(auth().cancel()));
   app.post('/api/scripts', async (c) => { localOnly(c); const b = await body(c, scriptZ); return c.json(scripts().save(b)); });
-  app.patch('/api/scripts/:id', async (c) => { localOnly(c); const b = await body(c, scriptZ); if (!scripts().get(c.req.param('id'))) throw new HttpError(404, '없는 스크립트입니다'); return c.json(scripts().save({ ...b, id: c.req.param('id') })); });
+  app.patch('/api/scripts/:id', async (c) => { localOnly(c); const b = await body(c, scriptZ); if (!scripts().get(c.req.param('id'))) throw new HttpError(404, st('없는 스크립트입니다')); return c.json(scripts().save({ ...b, id: c.req.param('id') })); });
   app.delete('/api/scripts/:id', (c) => { localOnly(c); try { return c.json({ ok: scripts().remove(c.req.param('id')) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/scripts/:id/run', (c) => { try { return c.json({ run_id: scripts().run(c.req.param('id'), c.get('access')) }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.get('/api/scripts/:id/runs', (c) => c.json(scripts().runs(c.req.param('id'))));
-  app.get('/api/script-runs/:id', (c) => { const r = scripts().getRun(Number(c.req.param('id'))); if (!r) throw new HttpError(404, '없는 실행입니다'); return c.json(r); });
+  app.get('/api/script-runs/:id', (c) => { const r = scripts().getRun(Number(c.req.param('id'))); if (!r) throw new HttpError(404, st('없는 실행입니다')); return c.json(r); });
   app.post('/api/script-runs/:id/stop', (c) => c.json({ ok: scripts().stop(Number(c.req.param('id'))) }));
-  app.get('/api/projects/:id/npm-scripts', (c) => { const p = store.getProject(c.req.param('id')); if (!p) throw new HttpError(404, '프로젝트가 없습니다'); return c.json(scripts().npmScripts(p.path)); });
+  app.get('/api/projects/:id/npm-scripts', (c) => { const p = store.getProject(c.req.param('id')); if (!p) throw new HttpError(404, st('프로젝트가 없습니다')); return c.json(scripts().npmScripts(p.path)); });
   app.post('/api/repos/refresh', async (c) => { await d.repos?.refresh(true); return c.json({ ok: true }); });
   app.post('/api/repos/:id/pull', async (c) => {
-    if (!d.repos) throw new HttpError(409, '저장소 감시가 꺼져 있습니다');
+    if (!d.repos) throw new HttpError(409, st('저장소 감시가 꺼져 있습니다'));
     const r = await d.repos.pull(c.req.param('id'));
-    if (!r.ok) throw new HttpError(409, `받지 못했습니다: ${r.message}`);
+    if (!r.ok) throw new HttpError(409, st('받지 못했습니다: {msg}', { msg: r.message }));
     return c.json(r);
   });
   app.post('/api/prs/merge', async (c) => {
     const b = await body(c, z.object({ project_id: z.string(), number: z.number().int().positive(), method: z.enum(['merge', 'squash', 'rebase']) }));
-    if (!d.prs) throw new HttpError(409, 'PR 감시가 꺼져 있습니다');
+    if (!d.prs) throw new HttpError(409, st('PR 감시가 꺼져 있습니다'));
     const r = await d.prs.merge(b.project_id, b.number, b.method);
-    if (!r.ok) throw new HttpError(409, `병합하지 못했습니다: ${r.message}`);
+    if (!r.ok) throw new HttpError(409, st('병합하지 못했습니다: {msg}', { msg: r.message }));
     return c.json(r);
   });
   app.post('/api/prs/refresh', async (c) => { await d.prs?.refresh(); return c.json({ ok: true, at: d.prs?.lastAt ?? null }); });
@@ -340,7 +341,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   });
   app.get('/api/uploads/:id', (c) => {
     const f = readUpload(cfg, c.req.param('id'));
-    if (!f) throw new HttpError(404, '없는 파일입니다');
+    if (!f) throw new HttpError(404, st('없는 파일입니다'));
     return c.body(new Uint8Array(f.buf), 200, { 'content-type': f.type, 'cache-control': 'private, max-age=31536000, immutable' });
   });
   app.post('/api/chat', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); po.say(b.text); return c.json({ ok: true }); });
@@ -349,22 +350,22 @@ export function createApp(d: AppDeps): Hono<Env> {
   app.get('/api/knowledge', (c) => c.json(store.listKnowledge()));
   app.patch('/api/knowledge/:id', async (c) => {
     const b = await body(c, z.object({ kind: z.enum(['skill', 'note']).optional(), name: z.string().trim().min(1).max(80).optional(), when_to_use: z.string().max(500).optional(), body: z.string().min(1).max(20000).optional() }));
-    try { const k = store.updateKnowledge(c.req.param('id'), b); if (!k) throw new HttpError(404, '없는 항목입니다'); return c.json(k); }
-    catch (e) { if (e instanceof Error && /UNIQUE/.test(e.message)) throw new HttpError(409, '같은 이름이 이미 있습니다'); throw e; }
+    try { const k = store.updateKnowledge(c.req.param('id'), b); if (!k) throw new HttpError(404, st('없는 항목입니다')); return c.json(k); }
+    catch (e) { if (e instanceof Error && /UNIQUE/.test(e.message)) throw new HttpError(409, st('같은 이름이 이미 있습니다')); throw e; }
   });
-  app.delete('/api/knowledge/:id', (c) => { if (!store.deleteKnowledge(c.req.param('id'))) throw new HttpError(404, '없는 항목입니다'); return c.json({ ok: true }); });
+  app.delete('/api/knowledge/:id', (c) => { if (!store.deleteKnowledge(c.req.param('id'))) throw new HttpError(404, st('없는 항목입니다')); return c.json({ ok: true }); });
 
   app.post('/api/proposals/:id/approve', async (c) => {
     const b = await body(c, z.object({ roles: z.array(roleZ).optional(), priority: priorityZ.optional(), project_id: z.string().nullable().optional(), budget_usd: z.number().positive().nullable().optional(), confirm: z.boolean().optional() }));
-    if (c.get('access') === 'remote' && !b.confirm) throw new HttpError(409, '원격에서는 한 번 더 확인이 필요합니다');
+    if (c.get('access') === 'remote' && !b.confirm) throw new HttpError(409, st('원격에서는 한 번 더 확인이 필요합니다'));
     const t = orch.createFromProposal(c.req.param('id'), { roles: b.roles as TemplateRole[] | undefined, priority: b.priority, project_id: b.project_id, budget_usd: b.budget_usd });
     return c.json({ team: store.teamView(t) });
   });
-  app.post('/api/proposals/:id/reject', (c) => { store.updateProposal(c.req.param('id'), { status: 'rejected' }); store.addChat({ role: 'event', body: '제안을 거절했습니다' }); return c.json({ ok: true }); });
+  app.post('/api/proposals/:id/reject', (c) => { store.updateProposal(c.req.param('id'), { status: 'rejected' }); store.addChat({ role: 'event', body: st('제안을 거절했습니다') }); return c.json({ ok: true }); });
 
   /* ---------- 팀 조작 ---------- */
-  app.post('/api/teams/:id/pause', async (c) => { team(c.req.param('id')); await orch.pause(c.req.param('id'), 'user', '사용자가 멈춤'); return c.json({ ok: true }); });
-  app.post('/api/teams/:id/resume', async (c) => { team(c.req.param('id')); await orch.resume(c.req.param('id'), 'user', '사용자가 재개'); return c.json({ ok: true }); });
+  app.post('/api/teams/:id/pause', async (c) => { team(c.req.param('id')); await orch.pause(c.req.param('id'), 'user', st('사용자가 멈춤')); return c.json({ ok: true }); });
+  app.post('/api/teams/:id/resume', async (c) => { team(c.req.param('id')); await orch.resume(c.req.param('id'), 'user', st('사용자가 재개')); return c.json({ ok: true }); });
   app.post('/api/teams/:id/pin', async (c) => { const b = await body(c, z.object({ on: z.boolean() })); team(c.req.param('id')); orch.pin(c.req.param('id'), b.on); return c.json({ ok: true }); });
   app.post('/api/teams/:id/priority', async (c) => { const b = await body(c, z.object({ priority: priorityZ })); team(c.req.param('id')); orch.setPriority(c.req.param('id'), b.priority as Priority); return c.json({ ok: true }); });
   app.post('/api/teams/:id/answer', async (c) => { const b = await body(c, z.object({ text: z.string().min(1).max(8000) })); team(c.req.param('id')); orch.answer(c.req.param('id'), b.text); return c.json({ ok: true }); });
@@ -374,18 +375,18 @@ export function createApp(d: AppDeps): Hono<Env> {
     const t = team(c.req.param('id'));
     const b = await body(c, z.object({ env_mode: z.enum(['isolated', 'mine']) }));
     store.updateTeam(t.id, { env_mode: b.env_mode });
-    store.addDecision(t.id, 'user', 'env', b.env_mode === 'mine' ? '작업 환경: 내 Claude Code 와 동일' : '작업 환경: 격리');
+    store.addDecision(t.id, 'user', 'env', b.env_mode === 'mine' ? st('작업 환경: 내 Claude Code 와 동일') : st('작업 환경: 격리'));
     return c.json({ ok: true });
   });
   app.post('/api/teams/:id/interrupt', async (c) => { team(c.req.param('id')); return c.json({ ok: await orch.cancelTurn(c.req.param('id')) }); });
-  app.post('/api/teams/:id/cancel', async (c) => { const t = team(c.req.param('id')); if (t.lifetime === 'standing') await orch.endStanding(t.id, 'user', '사용자가 화면에서 종료'); else await orch.cancel(t.id); return c.json({ ok: true }); });
+  app.post('/api/teams/:id/cancel', async (c) => { const t = team(c.req.param('id')); if (t.lifetime === 'standing') await orch.endStanding(t.id, 'user', st('사용자가 화면에서 종료')); else await orch.cancel(t.id); return c.json({ ok: true }); });
   app.post('/api/teams/:id/archive', async (c) => { localOnly(c); team(c.req.param('id')); await orch.archive(c.req.param('id')); return c.json({ ok: true }); });
   app.post('/api/teams/:id/retry', async (c) => {
     const t = team(c.req.param('id'));
-    if (t.state !== 'failed') throw new HttpError(409, '실패한 팀만 다시 시작할 수 있습니다');
+    if (t.state !== 'failed') throw new HttpError(409, st('실패한 팀만 다시 시작할 수 있습니다'));
     store.updateTeam(t.id, { state: 'queued', error: null, finished_at: null, nudges: 0, question: null });
     if (t.task_id) store.updateTask(t.task_id, { status: 'open', finished_at: null });
-    store.addDecision(t.id, 'user', 'retry', '다시 시작');
+    store.addDecision(t.id, 'user', 'retry', st('다시 시작'));
     return c.json({ ok: true });
   });
 
@@ -408,11 +409,11 @@ export function createApp(d: AppDeps): Hono<Env> {
   /** 맥에서 Finder 폴더 고르기 창을 띄운다(맥 화면에서만 · 취소하면 path null) */
   app.post('/api/pick-folder', async (c) => {
     localOnly(c);
-    const b = await body(c, z.object({ prompt: z.string().max(100).default('폴더 고르기') }));
+    const b = await body(c, z.object({ prompt: z.string().max(100).default(st('폴더 고르기')) }));
     // activate: 창이 다른 앱 뒤에 숨지 않게 앞으로(권한 필요 없음)
     const script = `activate\ntry\n  set f to choose folder with prompt ${JSON.stringify(b.prompt)} default location (path to home folder)\n  return POSIX path of f\non error number -128\n  return ""\nend try`;
     const out = await run('osascript', ['-e', script], { timeoutMs: 300_000 });
-    if (out.code !== 0) throw new HttpError(409, `폴더 창을 띄우지 못했습니다: ${out.stderr.trim().slice(0, 200)}`);
+    if (out.code !== 0) throw new HttpError(409, st('폴더 창을 띄우지 못했습니다: {err}', { err: out.stderr.trim().slice(0, 200) }));
     const path = out.stdout.trim().replace(/\/$/, '');
     return c.json({ path: path || null });
   });
@@ -424,14 +425,14 @@ export function createApp(d: AppDeps): Hono<Env> {
     const pre = c.req.param('id') === 'path';
     const raw = pre ? ((await c.req.raw.clone().json().catch(() => ({}))) as { path?: string }).path : null;
     const p = pre ? (raw ? { name: raw.split('/').pop() ?? raw, path: (await inspectRepo(raw)).root } : null) : store.getProject(c.req.param('id'));
-    if (!p) throw new HttpError(404, '프로젝트가 없습니다');
+    if (!p) throw new HttpError(404, st('프로젝트가 없습니다'));
     const b = await body(c, z.discriminatedUnion('mode', [
       z.object({ mode: z.literal('url'), url: z.string().min(5).max(500), push: z.boolean().default(true), path: z.string().optional() }),
       z.object({ mode: z.literal('github'), path: z.string().optional(), account: z.string().max(60).optional(), owner: z.string().max(60).optional(), name: z.string().min(1).max(100), visibility: z.enum(['private', 'public']).default('private'), description: z.string().max(200).optional() }),
     ]));
     try {
       const r = b.mode === 'url' ? await linkRemoteUrl(p.path, b.url, b.push) : await createGithubRepo(p.path, b);
-      store.addChat({ role: 'event', body: `원격 저장소 연결 · ${p.name} → ${r.remote.label}\n${r.log.join('\n')}`, tone: 'good' });
+      store.addChat({ role: 'event', body: st('원격 저장소 연결 · {name} → {remote}', { name: p.name, remote: r.remote.label }) + `\n${r.log.join('\n')}`, tone: 'good' });
       void d.repos?.refresh(true);
       return c.json(r);
     } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); }
@@ -441,7 +442,8 @@ export function createApp(d: AppDeps): Hono<Env> {
     const b = await body(c, z.object({ path: z.string().min(1) }));
     try { return c.json(await inspectRepo(b.path)); } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.startsWith('git 저장소가 아닙니다')) return c.json({ notGit: true, path: msg.replace(/^git 저장소가 아닙니다:\s*/, '') });
+      const notGit = /^(?:git 저장소가 아닙니다|Not a git repository):\s*/.exec(msg); // projects/git.ts 오류(한국어·영어)
+      if (notGit) return c.json({ notGit: true, path: msg.slice(notGit[0].length) });
       throw new HttpError(400, msg);
     }
   });
@@ -459,7 +461,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     localOnly(c);
     const b = await body(c, projectZ);
     const info = await inspectRepo(b.path);
-    if (store.listProjects().some((p) => p.path === info.root)) throw new HttpError(409, '이미 등록된 경로입니다');
+    if (store.listProjects().some((p) => p.path === info.root)) throw new HttpError(409, st('이미 등록된 경로입니다'));
     const p = store.insertProject({
       name: b.name ?? info.name, path: info.root, base_ref: b.base_ref ?? info.baseRef, deps_strategy: b.deps_strategy, heavy_patterns: b.heavy_patterns ?? DEFAULT_HEAVY,
       blocked_patterns: b.blocked_patterns ?? DEFAULT_BLOCKED, memory_paths: b.memory_paths ?? info.memoryPaths, default_template_id: b.default_template_id ?? 'tpl-dev',
@@ -467,8 +469,8 @@ export function createApp(d: AppDeps): Hono<Env> {
     });
     return c.json(p);
   });
-  app.patch('/api/projects/:id', async (c) => { localOnly(c); const b = await body(c, projectZ.omit({ path: true }).partial()); const p = store.updateProject(c.req.param('id'), b); if (!p) throw new HttpError(404, '프로젝트가 없습니다'); return c.json(p); });
-  app.delete('/api/projects/:id', (c) => { localOnly(c); if (!store.deleteProject(c.req.param('id'))) throw new HttpError(409, '진행 중인 팀이 있는 프로젝트는 지울 수 없습니다'); return c.json({ ok: true }); });
+  app.patch('/api/projects/:id', async (c) => { localOnly(c); const b = await body(c, projectZ.omit({ path: true }).partial()); const p = store.updateProject(c.req.param('id'), b); if (!p) throw new HttpError(404, st('프로젝트가 없습니다')); return c.json(p); });
+  app.delete('/api/projects/:id', (c) => { localOnly(c); if (!store.deleteProject(c.req.param('id'))) throw new HttpError(409, st('진행 중인 팀이 있는 프로젝트는 지울 수 없습니다')); return c.json({ ok: true }); });
 
   /* ---------- 템플릿·설정 ---------- */
   app.put('/api/templates/:id', async (c) => {
@@ -503,7 +505,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json(saved);
   });
   /* ---------- 벡터 검색용 Ollama(설치·켜기·모델 받기) ---------- */
-  const ol = () => { if (!d.ollama) throw new HttpError(404, 'Ollama 관리를 쓸 수 없습니다'); return d.ollama; };
+  const ol = () => { if (!d.ollama) throw new HttpError(404, st('Ollama 관리를 쓸 수 없습니다')); return d.ollama; };
   const olDo = (f: () => unknown) => { try { f(); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } };
   app.get('/api/ollama', async (c) => c.json(await ol().status()));
   app.post('/api/ollama/install', async (c) => { localOnly(c); olDo(() => ol().install()); return c.json(await ol().status()); });
@@ -526,8 +528,8 @@ export function createApp(d: AppDeps): Hono<Env> {
   });
   app.post('/api/push/test', async (c) => {
     const b = await body(c, z.object({ endpoint: z.string().url().optional() }));
-    if (b.endpoint && notifier.sendTo) return c.json(await notifier.sendTo(b.endpoint, { title: '기기 점검', body: '이 알림이 보이면 이 기기 푸시가 정상입니다.', level: 'info', tag: 'push-check' }));
-    await notifier.send({ title: '알림 시험', body: '이 알림이 보이면 설정이 끝났습니다.', level: 'info' });
+    if (b.endpoint && notifier.sendTo) return c.json(await notifier.sendTo(b.endpoint, { title: st('기기 점검'), body: st('이 알림이 보이면 이 기기 푸시가 정상입니다.'), level: 'info', tag: 'push-check' }));
+    await notifier.send({ title: st('알림 시험'), body: st('이 알림이 보이면 설정이 끝났습니다.'), level: 'info' });
     return c.json({ ok: true });
   });
   app.post('/api/push/report', async (c) => {
@@ -561,7 +563,7 @@ export function createApp(d: AppDeps): Hono<Env> {
     const index = join(cfg.webDist, 'index.html');
     app.get('*', (c) => c.html(readFileSync(index, 'utf8')));
   } else {
-    app.get('/', (c) => c.text('화면이 빌드되지 않았습니다. `npm run build` 후 다시 열거나, 개발 중이면 http://127.0.0.1:4311 을 여세요.'));
+    app.get('/', (c) => c.text(st('화면이 빌드되지 않았습니다. `npm run build` 후 다시 열거나, 개발 중이면 http://127.0.0.1:4311 을 여세요.')));
   }
   return app;
 }

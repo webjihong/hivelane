@@ -1,3 +1,4 @@
+import { VERSION } from '../version.ts';
 import { mkdirSync } from 'node:fs';
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
@@ -15,7 +16,8 @@ import { TurnHandle } from '../agents/runner.ts';
 import type { Priority, TemplateRole } from '../../shared/types.ts';
 import { cpus, loadavg } from 'node:os';
 import { CpuMeter, cwdsOf, diagnose, listProcDetails, memPercent } from './resources.ts';
-import { applyCleanup, formatScan, scanGit } from '../projects/gitclean.ts';
+import { applyCleanup, countRemoved, formatScan, scanGit } from '../projects/gitclean.ts';
+import { st } from '../i18n.ts';
 import { archiveForCleanup } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { DEFAULT_BLOCKED, DEFAULT_HEAVY } from '../store.ts';
@@ -140,7 +142,7 @@ export class PoAgent {
       }, handle);
       if (this.cancelled) {
         this.cancelled = false;
-        store.addChat({ role: 'event', body: '사용자가 총괄 응답을 취소함', tone: 'info' });
+        store.addChat({ role: 'event', body: st('사용자가 총괄 응답을 취소함'), tone: 'info' });
         return;
       }
       if (res.ok) store.markPoEventsHandled(events.map((e) => e.id));
@@ -153,19 +155,19 @@ export class PoAgent {
       // 사용자가 팀 채널에서 직접 시킨 일의 완료 보고는 사용자가 이미 받았으니 제외
       const replies = events.filter((e) => e.type === 'team_reply' || (e.type === 'report' && parseJson<Record<string, unknown>>(e.payload, {}).asked_by !== '사용자'));
       const spoke = res.ok && !!say && say !== '-';
-      if (!res.ok) store.addChat({ role: 'event', body: `총괄 응답 실패: ${res.error ?? res.subtype}`, tone: 'warn' });
+      if (!res.ok) store.addChat({ role: 'event', body: st('총괄 응답 실패: {err}', { err: res.error ?? res.subtype }), tone: 'warn' });
       if (spoke) {
-        const links = replies.filter((e) => e.team_id).map((e) => ({ label: `${store.getTeam(e.team_id)?.name ?? '팀'} 채널`, href: `#team-${e.team_id}` }));
+        const links = replies.filter((e) => e.team_id).map((e) => ({ label: st('{name} 채널', { name: store.getTeam(e.team_id)?.name ?? st('팀') }), href: `#team-${e.team_id}` }));
         store.addChat({ role: 'po', body: say, links: links.length ? links : undefined });
-        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? '총괄 · 팀 답변 전달' : '총괄 답변', body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
+        if (userTexts.length || replies.length) void this.deps.notifier.send({ title: replies.length && !userTexts.length ? st('총괄 · 팀 답변 전달') : st('총괄 답변'), body: truncate(say, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
       } else {
         // 총괄이 말하지 않았거나 실패했어도 팀 답은 그대로 전한다
         for (const e of replies) {
           const p = parseJson<Record<string, unknown>>(e.payload, {});
           if (typeof p.answer !== 'string') continue;
           const t = store.getTeam(e.team_id);
-          store.addChat({ role: 'po', body: `**「${t?.name ?? '팀'}」 답변이 왔습니다**\n\n${truncate(p.answer, 1500)}`, links: e.team_id ? [{ label: '팀 채널 열기', href: `#team-${e.team_id}` }] : undefined, team_id: e.team_id });
-          void this.deps.notifier.send({ title: `총괄 · ${t?.name ?? '팀'} 답변 전달`, body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
+          store.addChat({ role: 'po', body: `**${st('「{name}」 답변이 왔습니다', { name: t?.name ?? st('팀') })}**\n\n${truncate(p.answer, 1500)}`, links: e.team_id ? [{ label: st('팀 채널 열기'), href: `#team-${e.team_id}` }] : undefined, team_id: e.team_id });
+          void this.deps.notifier.send({ title: st('총괄 · {name} 답변 전달', { name: t?.name ?? st('팀') }), body: truncate(p.answer, 300), level: 'info', url: '/#po', tag: 'po-answer', scope: 'po' });
         }
         // 이미 전했으니 다시 처리하지 않는다(실패로 남은 다른 사건은 다음 턴에)
         store.markPoEventsHandled(replies.map((e) => e.id));
@@ -173,7 +175,7 @@ export class PoAgent {
       if (!res.ok && agent.session_id && /session|resume/i.test(res.error ?? '')) store.updateAgent(agent.id, { session_id: null });
     } catch (e) {
       log.error('PO 턴 실패', e);
-      store.addChat({ role: 'event', body: `총괄 오류: ${e instanceof Error ? e.message : e}`, tone: 'warn' });
+      store.addChat({ role: 'event', body: st('총괄 오류: {err}', { err: e instanceof Error ? e.message : String(e) }), tone: 'warn' });
     } finally {
       this.busy = false;
       this.userTurn = false;
@@ -253,10 +255,10 @@ ${chat}
         const tpl = store.getTemplate(p.template_id) ?? store.listTemplates()[0]!;
         const pid = projectId(p.project) ?? (store.listProjects().length === 1 ? store.listProjects()[0]!.id : null);
         const prop = store.insertProposal({ project_id: pid, title: p.title, instruction: p.instruction, brief: p.brief, template_id: tpl.id, roles: p.roles?.length ? p.roles : tpl.roles, priority: p.priority, budget_usd: p.budget_usd ?? s.defaultBudgetUsd, note: p.note ?? '' });
-        store.addChat({ role: 'po', body: p.note?.trim() || `「${p.title}」 팀 구성을 제안합니다.`, proposal_id: prop.id });
+        store.addChat({ role: 'po', body: p.note?.trim() || st('「{title}」 팀 구성을 제안합니다.', { title: p.title }), proposal_id: prop.id });
         if (s.autoApprove) {
           const team = orch.createFromProposal(prop.id);
-          store.addChat({ role: 'event', body: `자동 승인 · 「${p.title}」 팀 생성`, team_id: team.id, tone: 'good' });
+          store.addChat({ role: 'event', body: st('자동 승인 · 「{title}」 팀 생성', { title: p.title }), team_id: team.id, tone: 'good' });
           return `제안 ${prop.id} 를 만들었고 자동 승인 설정이라 팀 ${team.id} 가 생성됐다.`;
         }
         return `제안 ${prop.id} 를 만들었다. 사용자가 화면에서 승인하면 팀이 생긴다.`;
@@ -275,7 +277,7 @@ ${chat}
       },
       learn: (k) => {
         const { row, created } = store.saveKnowledge(k);
-        store.addChat({ role: 'event', body: `총괄이 ${created ? '배움' : '고쳐 배움'} · ${row.kind === 'skill' ? '스킬' : '메모'} 「${row.name}」`, tone: 'good' });
+        store.addChat({ role: 'event', body: (() => { const v = { kind: row.kind === 'skill' ? st('스킬') : st('메모'), name: row.name }; return created ? st('총괄이 배움 · {kind} 「{name}」', v) : st('총괄이 고쳐 배움 · {kind} 「{name}」', v); })(), tone: 'good' });
         return `${created ? '저장' : '갱신'}했다: ${row.kind} 「${row.name}」 (${row.id})`;
       },
       recall: (name) => {
@@ -287,7 +289,7 @@ ${chat}
       forget: (name) => {
         const k = store.getKnowledge(name);
         if (!k || !store.deleteKnowledge(k.id)) return `「${name}」 없음.`;
-        store.addChat({ role: 'event', body: `총괄이 잊음 · 「${k.name}」`, tone: 'info' });
+        store.addChat({ role: 'event', body: st('총괄이 잊음 · 「{name}」', { name: k.name }), tone: 'info' });
         return `지웠다: 「${k.name}」`;
       },
       createStanding: (p) => {
@@ -296,7 +298,7 @@ ${chat}
         if (p.project && !pid) return `거절: 프로젝트 「${p.project}」 없음. list_projects 로 확인해라.`;
         if (!store.getTemplate(p.template_id)) return `거절: 템플릿 ${p.template_id} 없음.`;
         const t = orch.createStanding({ name: p.name, project_id: pid, template_id: p.template_id, roles: p.roles, brief: p.brief, check_command: p.check_command ?? null, check_interval_sec: p.check_command ? (p.check_interval_sec ?? 300) : null });
-        store.addChat({ role: 'event', body: `직속 팀 생성 · 「${t.name}」 (총괄이 사용자 지시로 만듦)`, team_id: t.id, tone: 'good' });
+        store.addChat({ role: 'event', body: st('직속 팀 생성 · 「{name}」 (총괄이 사용자 지시로 만듦)', { name: t.name }), team_id: t.id, tone: 'good' });
         return `직속 팀 ${t.id} 「${t.name}」 를 만들었다. 평소 대기하다가 지시·점검 이상 때 깨어나고, 사용자가 끝내라고 할 때까지 유지된다.`;
       },
       updateStanding: async (teamId, p) => {
@@ -318,8 +320,8 @@ ${chat}
         if (!this.userTurn) return '거절: 직속 팀 종료는 사용자가 이번 대화에서 끝내라고 했을 때만 한다.';
         const t = store.getTeam(teamId);
         if (!t || t.lifetime !== 'standing') return '직속 팀이 아니다.';
-        await orch.endStanding(teamId, 'agent', `총괄(사용자 지시): ${reason}`);
-        store.addChat({ role: 'event', body: `직속 팀 종료 · 「${t.name}」 (사용자 지시로 총괄이 종료)`, team_id: teamId, tone: 'info' });
+        await orch.endStanding(teamId, 'agent', st('총괄(사용자 지시): {reason}', { reason }));
+        store.addChat({ role: 'event', body: st('직속 팀 종료 · 「{name}」 (사용자 지시로 총괄이 종료)', { name: t.name }), team_id: teamId, tone: 'info' });
         return `직속 팀 「${t.name}」 를 종료했다.`;
       },
       scanGitCleanup: async (project) => {
@@ -333,14 +335,14 @@ ${chat}
         if (!p) return `프로젝트를 찾을 수 없다: ${a.project}`;
         const lines = await applyCleanup(cfg, store, p, a.ids, !!a.discard_changes, archiveForCleanup(store, orch, '총괄'), '총괄');
         this.deps.onGitCleaned?.();
-        const done = lines.filter((l) => l.startsWith('지움')).length;
-        store.addChat({ role: 'event', body: `git 정리 · ${p.name} · ${done}개 지움${a.discard_changes ? ' (변경 버림 동의)' : ''} · ${a.reason}\n${lines.join('\n')}`, tone: 'info' });
+        const done = countRemoved(lines);
+        store.addChat({ role: 'event', body: `${st('git 정리 · {name} · {n}개 지움', { name: p.name, n: done })}${a.discard_changes ? ` ${st('(변경 버림 동의)')}` : ''} · ${a.reason}\n${lines.join('\n')}`, tone: 'info' });
         return lines.join('\n');
       },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
-      pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', `총괄: ${reason}`); return '멈췄다.'; },
-      resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', '총괄 재개'); return '재개했다.'; },
+      pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', st('총괄: {reason}', { reason })); return '멈췄다.'; },
+      resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', st('총괄 재개')); return '재개했다.'; },
       pinTeam: (teamId, on) => { orch.pin(teamId, on, 'agent'); return on ? '멈추지 않음으로 설정했다.' : '해제했다.'; },
     };
   }
@@ -398,5 +400,5 @@ function poMcpServer(impl: PoTools) {
     T('resume_team', '멈춘 팀을 재개', { team_id: z.string() }, async (a) => text(await impl.resumeTeam(a.team_id))),
     T('pin_team', '「멈추지 않음」 설정/해제', { team_id: z.string(), on: z.boolean() }, async (a) => text(impl.pinTeam(a.team_id, a.on))),
   ];
-  return createSdkMcpServer({ name: 'hivelane', version: '0.1.0', tools });
+  return createSdkMcpServer({ name: 'hivelane', version: VERSION, tools });
 }

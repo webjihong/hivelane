@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
 import { bus } from './bus.ts';
 import { logger } from './log.ts';
+import { st } from './i18n.ts';
 import type { Store } from './store.ts';
 import { newId, nowIso } from './util.ts';
 import type { ScriptRunView, ScriptView } from '../shared/types.ts';
@@ -24,7 +25,7 @@ export class ScriptRunner {
 
   constructor(private store: Store) {
     // 서버가 꺼질 때 돌던 실행은 중단으로 마감
-    store.db.prepare("UPDATE script_runs SET finished_at = ?, exit_code = -1, output = output || '\n[서버 재시작으로 중단됨]' WHERE finished_at IS NULL").run(nowIso());
+    store.db.prepare("UPDATE script_runs SET finished_at = ?, exit_code = -1, output = output || ? WHERE finished_at IS NULL").run(nowIso(), `\n${st('[서버 재시작으로 중단됨]')}`);
   }
 
   private get db() { return this.store.db; }
@@ -52,7 +53,7 @@ export class ScriptRunner {
     return this.view(this.get(s.id)!);
   }
   remove(id: string): boolean {
-    if ([...this.live.values()].some((v) => v.scriptId === id)) throw new Error('돌고 있는 스크립트는 지울 수 없습니다');
+    if ([...this.live.values()].some((v) => v.scriptId === id)) throw new Error(st('돌고 있는 스크립트는 지울 수 없습니다'));
     const r = this.db.prepare('DELETE FROM scripts WHERE id = ?').run(id);
     this.db.prepare('DELETE FROM script_runs WHERE script_id = ?').run(id);
     bus.changed('scripts');
@@ -65,53 +66,53 @@ export class ScriptRunner {
     if (!r.cwd) return base;
     const expanded = r.cwd.replace(/^~(?=\/|$)/, homedir());
     const abs = isAbsolute(expanded) ? expanded : join(base, expanded);
-    if (r.project_id && relative(base, abs).startsWith('..')) throw new Error('실행 폴더가 프로젝트 밖입니다');
+    if (r.project_id && relative(base, abs).startsWith('..')) throw new Error(st('실행 폴더가 프로젝트 밖입니다'));
     return abs;
   }
 
   run(id: string, by: 'local' | 'remote'): number {
     const r = this.get(id);
-    if (!r) throw new Error('없는 스크립트입니다');
-    if ([...this.live.values()].some((v) => v.scriptId === id)) throw new Error('이미 돌고 있습니다');
+    if (!r) throw new Error(st('없는 스크립트입니다'));
+    if ([...this.live.values()].some((v) => v.scriptId === id)) throw new Error(st('이미 돌고 있습니다'));
     const bad = HARD_BLOCK.find((re) => re.test(r.command));
-    if (bad) throw new Error(`막힌 명령입니다(${bad.source}) · 터미널에서 직접 실행하세요`);
+    if (bad) throw new Error(st('막힌 명령입니다({rule}) · 터미널에서 직접 실행하세요', { rule: bad.source }));
     const cwd = this.cwdOf(r);
-    if (!existsSync(cwd)) throw new Error(`실행 폴더가 없습니다: ${cwd}`);
+    if (!existsSync(cwd)) throw new Error(st('실행 폴더가 없습니다: {cwd}', { cwd }));
     const runId = Number(this.db.prepare('INSERT INTO script_runs (script_id, command, cwd, started_at, by) VALUES (?, ?, ?, ?, ?)').run(id, r.command, cwd, nowIso(), by).lastInsertRowid);
     const child = spawn('/bin/zsh', ['-lc', r.command], { cwd, detached: true, env: { ...process.env, FORCE_COLOR: '0', CI: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    const st = { child, out: '', scriptId: id, pending: '', timer: null as NodeJS.Timeout | null };
-    this.live.set(runId, st);
-    const flush = () => { st.timer = null; if (st.pending) { bus.emitEvent({ type: 'script_out', runId, chunk: st.pending }); st.pending = ''; } };
+    const lv = { child, out: '', scriptId: id, pending: '', timer: null as NodeJS.Timeout | null };
+    this.live.set(runId, lv);
+    const flush = () => { lv.timer = null; if (lv.pending) { bus.emitEvent({ type: 'script_out', runId, chunk: lv.pending }); lv.pending = ''; } };
     const onData = (b: Buffer) => {
       // eslint-disable-next-line no-control-regex -- 색 코드 제거
       const t = b.toString('utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
-      st.out += t; if (st.out.length > MAX_OUT) st.out = st.out.slice(-MAX_OUT);
-      st.pending += t;
-      if (!st.timer) st.timer = setTimeout(flush, 150);
+      lv.out += t; if (lv.out.length > MAX_OUT) lv.out = lv.out.slice(-MAX_OUT);
+      lv.pending += t;
+      if (!lv.timer) lv.timer = setTimeout(flush, 150);
     };
     child.stdout!.on('data', onData);
     child.stderr!.on('data', onData);
-    const kill = setTimeout(() => { onData(Buffer.from('\n[1시간이 지나 멈춤]\n')); this.stop(runId); }, TIMEOUT_MS);
+    const kill = setTimeout(() => { onData(Buffer.from(`\n${st('[1시간이 지나 멈춤]')}\n`)); this.stop(runId); }, TIMEOUT_MS);
     child.on('close', (code, signal) => {
       clearTimeout(kill);
-      if (st.timer) { clearTimeout(st.timer); flush(); }
+      if (lv.timer) { clearTimeout(lv.timer); flush(); }
       const exit = code ?? (signal ? 130 : -1);
-      this.db.prepare('UPDATE script_runs SET finished_at = ?, exit_code = ?, output = ? WHERE id = ?').run(nowIso(), exit, st.out, runId);
+      this.db.prepare('UPDATE script_runs SET finished_at = ?, exit_code = ?, output = ? WHERE id = ?').run(nowIso(), exit, lv.out, runId);
       this.live.delete(runId);
       log.info(`스크립트 끝 ${r.name} → ${exit}`);
       bus.changed('scripts');
     });
-    child.on('error', (e) => onData(Buffer.from(`\n[실행 오류] ${e.message}\n`)));
+    child.on('error', (e) => onData(Buffer.from(`\n${st('[실행 오류] {msg}', { msg: e.message })}\n`)));
     log.info(`스크립트 실행 ${r.name} (${by}) · ${cwd} · ${r.command.slice(0, 120)}`);
     bus.changed('scripts');
     return runId;
   }
 
   stop(runId: number): boolean {
-    const st = this.live.get(runId);
-    if (!st?.child.pid) return false;
-    try { process.kill(-st.child.pid, 'SIGTERM'); } catch { /* 이미 끝남 */ }
-    setTimeout(() => { if (this.live.has(runId) && st.child.pid) { try { process.kill(-st.child.pid, 'SIGKILL'); } catch { /* 끝남 */ } } }, 5000);
+    const cur = this.live.get(runId);
+    if (!cur?.child.pid) return false;
+    try { process.kill(-cur.child.pid, 'SIGTERM'); } catch { /* 이미 끝남 */ }
+    setTimeout(() => { if (this.live.has(runId) && cur.child.pid) { try { process.kill(-cur.child.pid, 'SIGKILL'); } catch { /* 끝남 */ } } }, 5000);
     return true;
   }
 

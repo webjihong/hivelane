@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
@@ -67,15 +68,15 @@ export function describeTool(tool: string, input: unknown): string {
   const s = (v: unknown) => (typeof v === 'string' ? v : '');
   const short = (p: string) => p.split('/').slice(-2).join('/');
   switch (tool) {
-    case 'Bash': return `실행: ${s(i.description) || s(i.command).slice(0, 80)}`;
-    case 'Read': return `읽기: ${short(s(i.file_path))}`;
-    case 'Write': return `작성: ${short(s(i.file_path))}`;
-    case 'Edit': case 'MultiEdit': return `수정: ${short(s(i.file_path))}`;
-    case 'Glob': return `파일 찾기: ${s(i.pattern)}`;
-    case 'Grep': return `검색: ${s(i.pattern).slice(0, 60)}`;
-    case 'Agent': case 'Task': return `${s(i.subagent_type) || '서브에이전트'}에게 맡김: ${s(i.description)}`;
-    case 'TodoWrite': return '할 일 정리';
-    case 'WebFetch': return `웹 읽기: ${s(i.url).slice(0, 60)}`;
+    case 'Bash': return st('실행: {what}', { what: s(i.description) || s(i.command).slice(0, 80) });
+    case 'Read': return st('읽기: {what}', { what: short(s(i.file_path)) });
+    case 'Write': return st('작성: {what}', { what: short(s(i.file_path)) });
+    case 'Edit': case 'MultiEdit': return st('수정: {what}', { what: short(s(i.file_path)) });
+    case 'Glob': return st('파일 찾기: {what}', { what: s(i.pattern) });
+    case 'Grep': return st('검색: {what}', { what: s(i.pattern).slice(0, 60) });
+    case 'Agent': case 'Task': return st('{who}에게 맡김: {what}', { who: s(i.subagent_type) || st('서브에이전트'), what: s(i.description) });
+    case 'TodoWrite': return st('할 일 정리');
+    case 'WebFetch': return st('웹 읽기: {what}', { what: s(i.url).slice(0, 60) });
     default:
       if (tool.startsWith('mcp__hivelane__')) return tool.replace('mcp__hivelane__', 'hivelane: ');
       return tool;

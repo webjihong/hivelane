@@ -1,7 +1,21 @@
+import { serverLang } from '../i18n.ts';
 import { isSolo, type KnowledgeView, type Project, type TemplateRole } from '../../shared/types.ts';
 
+/**
+ * 답 언어: 설정 › 총괄·엔진 「AI 답변·알림 언어」(settings.lang). 지시문은 한국어 그대로 두고, 사람에게 쓰는 글의 언어만 정한다.
+ * 팀 지시문은 턴마다 다시 만들어지므로(refreshPrompts) 설정을 바꾸면 다음 턴부터 그 언어로 답한다.
+ */
+export function answerLang(): string {
+  return serverLang() === 'en'
+    ? `\n\n## 답 언어 (Answer language)
+- The user reads **English**. Write every answer, report, question (ask_human), plan item and report summary in English, even though these instructions are in Korean.
+- Same format as above: first line **Conclusion: …** in one sentence, then 3–6 bullet points. Keep code, file paths, commands, ids and quoted log lines as they are.`
+    : `\n\n## 답 언어
+- 사람에게 쓰는 모든 글(답·보고·질문·할 일·요약)은 한국어로 쓴다.`;
+}
+
 const COMMON = `
-- 모든 답과 보고는 한국어로, 짧고 구체적으로 쓴다.
+- 모든 답과 보고는 짧고 구체적으로 쓴다(언어는 맨 아래 「답 언어」).
 - 운영 DB·배포 명령은 하지 않는다. 시도하면 거부된다.
 - 작업 디렉토리(현재 worktree) 밖에는 쓰지 않는다.
 - 무거운 명령(테스트·타입 검사·빌드)은 자리가 날 때까지 기다릴 수 있다. 기다림은 정상이다.
@@ -42,7 +56,7 @@ ${opts.standing ? `너는 사용자가 직접 관리하는 상시(직속) 1인 �
 - 팀원이 없다. 수정·테스트·커밋(허용된 경우)까지 직접 한다. 남에게 넘기지 않는다.
 - 필요한 도구(Bash·파일 수정·웹 조회 등)가 이 팀에 없어 일이 막히면 실패로 보고하지 않는다. mcp__hivelane__request_tools(tools, reason) 로 사람에게 임시 권한을 요청하고 턴을 끝낸다. 승인되면 다음 메시지부터 팀 전체(PM 포함)가 그 도구를 쓸 수 있다.
 - 위험한 명령(운영 DB·배포·인프라)은 승인 요청을 거친다(mcp__hivelane__request_approval 이 있으면 그것으로, 없으면 ask_human 으로 사람에게 넘긴다). 승인 없이 실행하면 거부된다.
-- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}`;
+- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}${answerLang()}`;
 }
 
 export function pmPrompt(opts: { roles: TemplateRole[]; project: Project | null; standing: boolean; standingBrief?: string }): string {
@@ -67,7 +81,7 @@ ${team}
 ## 규칙
 - 직접 코드를 고치지 않는다. 읽기·검색으로 상황을 파악하고 팀원에게 맡긴다. 단, 맡길 팀원에게도 필요한 도구가 없으면 임시 권한을 요청해 직접 실행한다.
 - 필요한 도구(Bash·파일 수정·웹 조회 등)가 이 팀에 없어 일이 막히면 실패로 보고하지 않는다. mcp__hivelane__request_tools(tools, reason) 로 사람에게 임시 권한을 요청하고 턴을 끝낸다. 승인되면 다음 메시지부터 팀 전체(PM 포함)가 그 도구를 쓸 수 있다.
-- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}`;
+- 사용자가 중간에 보낸 지시는 「사용자 직접 지시」로 들어온다. 할 일 목록에 반영하고 따른다.${COMMON}${gitRule(opts.project)}${memoryHint(opts.project)}${answerLang()}`;
 }
 
 const ROLE_BASE: Record<string, string> = {
@@ -79,7 +93,7 @@ const ROLE_BASE: Record<string, string> = {
 
 export function rolePrompt(role: TemplateRole, project: Project | null): string {
   const base = role.prompt?.trim() || ROLE_BASE[role.tools] || ROLE_BASE.read!;
-  return `# 역할: ${role.name}\n${base}${COMMON}${gitRule(project)}${memoryHint(project)}`;
+  return `# 역할: ${role.name}\n${base}${COMMON}${gitRule(project)}${memoryHint(project)}${answerLang()}`;
 }
 
 const NOTE_BUDGET = 6000;
@@ -153,6 +167,6 @@ ${notes.map((k) => `- ${k.name}: ${k.body.replace(/\n+/g, ' ')}`).join('\n') || 
 
 ## 규칙
 - 사용자에게 하는 답은 첫 줄에 **결론** 한 문장, 그다음 짧은 항목·표. 긴 문단 금지. 팀 보고를 전할 때도 결론부터 풀어 준다.
-- 한국어로 짧게. 사용자의 명시적 승인 없이 팀을 만들지 않는다(propose_team 만).
-- 팀에 전할 말은 send_to_team. 멈춤·재개·우선순위는 근거가 있을 때만.`;
+- 짧게(언어는 맨 아래 「답 언어」). 사용자의 명시적 승인 없이 팀을 만들지 않는다(propose_team 만).
+- 팀에 전할 말은 send_to_team. 멈춤·재개·우선순위는 근거가 있을 때만.${answerLang()}`;
 }

@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { run } from '../util.ts';
 import { describeRemote, remoteOf, type RemoteInfo } from './git.ts';
 
@@ -19,18 +20,18 @@ async function currentBranch(root: string): Promise<string> {
 
 /** 이미 있는 원격 주소를 origin 으로 연결(+ 원하면 지금 브랜치를 올림) */
 export async function linkRemoteUrl(root: string, url: string, push: boolean): Promise<{ remote: RemoteInfo; log: string[] }> {
-  if (await remoteOf(root)) throw new Error('이미 원격 저장소가 연결돼 있습니다');
+  if (await remoteOf(root)) throw new Error(st('이미 원격 저장소가 연결돼 있습니다'));
   const u = url.trim();
-  if (!/^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(u)) throw new Error('원격 주소는 https://… 또는 git@… 형태여야 합니다');
+  if (!/^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(u)) throw new Error(st('원격 주소는 https://… 또는 git@… 형태여야 합니다'));
   const log: string[] = [];
   const add = await git(root, ['remote', 'add', 'origin', u]);
-  if (add.code !== 0) throw new Error(`연결 실패: ${add.stderr.trim()}`);
+  if (add.code !== 0) throw new Error(st('연결 실패: {err}', { err: add.stderr.trim() }));
   log.push(`origin ← ${describeRemote('origin', u).label}`);
   if (push) {
     const br = await currentBranch(root);
     const p = await git(root, ['push', '-u', 'origin', br], 300_000);
-    if (p.code !== 0) { log.push(`올리기 실패: ${(p.stderr || p.stdout).trim().slice(0, 300)}`); return { remote: describeRemote('origin', u), log }; }
-    log.push(`${br} 브랜치를 올렸습니다`);
+    if (p.code !== 0) { log.push(st('올리기 실패: {err}', { err: (p.stderr || p.stdout).trim().slice(0, 300) })); return { remote: describeRemote('origin', u), log }; }
+    log.push(st('{branch} 브랜치를 올렸습니다', { branch: br }));
   }
   return { remote: describeRemote('origin', u), log };
 }
@@ -40,21 +41,21 @@ export async function linkRemoteUrl(root: string, url: string, push: boolean): P
  * account 를 주면 그 계정의 토큰으로만 실행한다(전역 활성 계정은 바꾸지 않음).
  */
 export async function createGithubRepo(root: string, o: { account?: string; owner?: string; name: string; visibility: 'private' | 'public'; description?: string }): Promise<{ remote: RemoteInfo; log: string[] }> {
-  if (await remoteOf(root)) throw new Error('이미 원격 저장소가 연결돼 있습니다');
-  if (!/^[\w.-]{1,100}$/.test(o.name)) throw new Error('저장소 이름은 영문·숫자·-·_·. 만 씁니다');
-  if (o.owner && !/^[\w-]{1,39}$/.test(o.owner)) throw new Error('소유자(계정·조직) 이름이 이상합니다');
+  if (await remoteOf(root)) throw new Error(st('이미 원격 저장소가 연결돼 있습니다'));
+  if (!/^[\w.-]{1,100}$/.test(o.name)) throw new Error(st('저장소 이름은 영문·숫자·-·_·. 만 씁니다'));
+  if (o.owner && !/^[\w-]{1,39}$/.test(o.owner)) throw new Error(st('소유자(계정·조직) 이름이 이상합니다'));
   const env: NodeJS.ProcessEnv = { ...process.env, GH_PROMPT_DISABLED: '1' };
   if (o.account) {
     const t = await run('gh', ['auth', 'token', '--hostname', 'github.com', '--user', o.account], { timeoutMs: 10_000 });
-    if (t.code !== 0 || !t.stdout.trim()) throw new Error(`${o.account} 계정 토큰을 찾지 못했습니다(gh auth login 필요)`);
+    if (t.code !== 0 || !t.stdout.trim()) throw new Error(st('{account} 계정 토큰을 찾지 못했습니다(gh auth login 필요)', { account: o.account }));
     env.GH_TOKEN = t.stdout.trim();
   }
   const full = o.owner ? `${o.owner}/${o.name}` : o.name;
   const args = ['repo', 'create', full, `--${o.visibility}`, '--source', root, '--remote', 'origin', '--push'];
   if (o.description) args.push('--description', o.description.slice(0, 200));
   const r = await run('gh', args, { cwd: root, timeoutMs: 300_000, env });
-  if (r.code !== 0) throw new Error(`GitHub 저장소 만들기 실패: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
+  if (r.code !== 0) throw new Error(st('GitHub 저장소 만들기 실패: {err}', { err: (r.stderr || r.stdout).trim().slice(0, 300) }));
   const remote = await remoteOf(root);
-  if (!remote) throw new Error('저장소는 만들었지만 origin 연결을 확인하지 못했습니다');
-  return { remote, log: [`GitHub 에 ${remote.label} (${o.visibility === 'private' ? '비공개' : '공개'}) 를 만들고 올렸습니다`] };
+  if (!remote) throw new Error(st('저장소는 만들었지만 origin 연결을 확인하지 못했습니다'));
+  return { remote, log: [st('GitHub 에 {repo} ({vis}) 를 만들고 올렸습니다', { repo: remote.label, vis: o.visibility === 'private' ? st('비공개') : st('공개') })] };
 }

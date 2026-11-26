@@ -200,7 +200,7 @@ function RemoteLink({ p, onDone }: { p: { id?: string; name: string; path?: stri
     const extra = p.id ? {} : { path: p.path };
     const r = await act(() => api<{ remote: { label: string }; log: string[] }>(`/api/projects/${target}/remote`, 'POST', mode === 'url' ? { mode, url: url.trim(), push, ...extra } : { mode, account: account || undefined, owner: owner.trim() || undefined, name: name.trim(), visibility: vis, ...extra }));
     setBusy(false);
-    if (r) { toast(`${t('연결했습니다')} · ${r.remote.label}${r.log.some((l) => l.includes('실패')) ? ` (${t('올리기는 실패 — 대화창 기록 참고')})` : ''}`, 'good'); onDone(); await refreshState(); }
+    if (r) { toast(`${t('연결했습니다')} · ${r.remote.label}${r.log.some((l) => l.includes('실패') || l.includes('Push failed')) ? ` (${t('올리기는 실패 — 대화창 기록 참고')})` : ''}`, 'good'); onDone(); await refreshState(); }
   };
   return (
     <div className="sub-panel rl">

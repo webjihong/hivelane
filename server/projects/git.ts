@@ -1,3 +1,4 @@
+import { st } from '../i18n.ts';
 import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -11,7 +12,7 @@ async function git(cwd: string, args: string[], timeoutMs = 120_000): Promise<Ex
 }
 async function gitOk(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
   const r = await git(cwd, args, timeoutMs);
-  if (r.code !== 0) throw new Error(`git ${args.join(' ')} 실패: ${r.stderr.trim() || r.stdout.trim()}`);
+  if (r.code !== 0) throw new Error(st('{cmd} 실패: {err}', { cmd: `git ${args.join(' ')}`, err: r.stderr.trim() || r.stdout.trim() }));
   return r.stdout.trim();
 }
 
@@ -41,8 +42,8 @@ export async function remoteOf(root: string): Promise<RemoteInfo | null> {
 /** 경로가 git 저장소인지 확인하고 기본값을 추정한다. */
 export async function inspectRepo(path: string): Promise<RepoInfo> {
   const abs = resolve(path.replace(/^~(?=$|\/)/, homedir()));
-  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(`폴더가 없습니다: ${abs}`);
-  const root = await gitOk(abs, ['rev-parse', '--show-toplevel']).catch(() => { throw new Error(`git 저장소가 아닙니다: ${abs}`); });
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(st('폴더가 없습니다: {path}', { path: abs }));
+  const root = await gitOk(abs, ['rev-parse', '--show-toplevel']).catch(() => { throw new Error(st('git 저장소가 아닙니다: {path}', { path: abs })); });
   let baseRef = '';
   const head = await git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
   if (head.code === 0 && head.stdout.trim()) baseRef = head.stdout.trim();
@@ -68,14 +69,14 @@ const DEFAULT_IGNORE = ['node_modules/', '.env', '.env.*', '!.env.example', '*.l
  */
 export async function initRepo(path: string): Promise<RepoInfo> {
   const abs = resolve(path.replace(/^~(?=$|\/)/, homedir()));
-  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(`폴더가 없습니다: ${abs}`);
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(st('폴더가 없습니다: {path}', { path: abs }));
   const home = homedir();
   const parts = abs.split('/').filter(Boolean);
   if (abs === '/' || abs === home || parts.length < 3 || ['/Applications', '/System', '/Library', '/usr', '/opt', '/private', '/Volumes'].some((p) => abs === p || abs.startsWith(`${p}/`)) || [join(home, 'Desktop'), join(home, 'Documents'), join(home, 'Downloads'), join(home, 'Library')].includes(abs)) {
-    throw new Error(`이 위치에서는 git 을 시작하지 않습니다(너무 넓거나 시스템 폴더): ${abs}`);
+    throw new Error(st('이 위치에서는 git 을 시작하지 않습니다(너무 넓거나 시스템 폴더): {path}', { path: abs }));
   }
   const inside = await git(abs, ['rev-parse', '--show-toplevel']);
-  if (inside.code === 0) throw new Error(`이미 git 저장소(또는 그 안쪽)입니다: ${inside.stdout.trim()}`);
+  if (inside.code === 0) throw new Error(st('이미 git 저장소(또는 그 안쪽)입니다: {path}', { path: inside.stdout.trim() }));
   const ignore = join(abs, '.gitignore');
   if (!existsSync(ignore)) writeFileSync(ignore, `# Hivelane 이 git 을 시작하며 만든 기본 목록\n${DEFAULT_IGNORE.join('\n')}\n`);
   await gitOk(abs, ['init', '-b', 'main']);
@@ -109,7 +110,7 @@ export async function addWorktree(root: string, baseRef: string, dir: string, br
   const baseSha = await resolveRef(root, baseRef);
   mkdirSync(dirname(dir), { recursive: true });
   const exists = await git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
-  if (existsSync(dir)) throw new Error(`worktree 경로가 이미 있습니다: ${dir}`);
+  if (existsSync(dir)) throw new Error(st('worktree 경로가 이미 있습니다: {path}', { path: dir }));
   if (exists.code === 0) await gitOk(root, ['worktree', 'add', dir, branch]);
   else await gitOk(root, ['worktree', 'add', '-b', branch, dir, baseSha]);
   return { path: dir, branch, baseSha };

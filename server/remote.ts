@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { run } from './util.ts';
+import { st } from './i18n.ts';
 
 /** 원격 접속(Tailscale serve) 상태: 설정 화면이 상태에 맞는 안내를 고르게 한다 */
 export interface TailscaleState {
@@ -50,11 +51,11 @@ export async function tailscaleState(remotePort: number, fresh = false): Promise
   const bin = tailscaleBin();
   let v: TailscaleState = { installed: !!bin, backend: null, host: null, serving: false, url: null, otherTargets: [], funnel: false, error: null };
   if (bin) {
-    const st = await run(bin, ['status', '--json'], { timeoutMs: 8000, env: cliEnv() });
-    try { const d = JSON.parse(st.stdout) as { BackendState?: string; Self?: { DNSName?: string } }; v.backend = d.BackendState ?? null; v.host = d.Self?.DNSName?.replace(/\.$/, '') ?? null; } catch { v.error = (st.stderr || st.stdout).trim().slice(0, 200) || 'tailscale 상태를 읽지 못했습니다'; }
+    const stat = await run(bin, ['status', '--json'], { timeoutMs: 8000, env: cliEnv() });
+    try { const d = JSON.parse(stat.stdout) as { BackendState?: string; Self?: { DNSName?: string } }; v.backend = d.BackendState ?? null; v.host = d.Self?.DNSName?.replace(/\.$/, '') ?? null; } catch { v.error = (stat.stderr || stat.stdout).trim().slice(0, 200) || st('tailscale 상태를 읽지 못했습니다'); }
     if (v.backend === 'Running') {
       const sv = await run(bin, ['serve', 'status', '--json'], { timeoutMs: 8000, env: cliEnv() });
-      try { v = { ...v, ...parseServe(JSON.parse(sv.stdout || '{}') as ServeJson, remotePort) }; } catch { v.error = (sv.stderr || sv.stdout).trim().slice(0, 200) || 'serve 상태를 읽지 못했습니다'; }
+      try { v = { ...v, ...parseServe(JSON.parse(sv.stdout || '{}') as ServeJson, remotePort) }; } catch { v.error = (sv.stderr || sv.stdout).trim().slice(0, 200) || st('serve 상태를 읽지 못했습니다'); }
     }
   }
   cache = { at: Date.now(), v };

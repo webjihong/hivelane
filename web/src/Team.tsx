@@ -280,7 +280,7 @@ export function Team({ id, snap, embedded = false }: { id: string; snap: StateSn
           </div>}
           {sums.length > 0 && (
             <div className="panel"><h3>{t('요약')}</h3>
-              <div className="timeline">{sums.map((s, i) => <div key={i} className="msg"><time className="mono">{hhmm(s.created_at)}</time><div className="bubble report"><div className="who"><span className="k report">{s.stage}</span></div><div className="msg-body"><RichText text={s.body} /></div></div></div>)}</div>
+              <div className="timeline">{sums.map((s, i) => <div key={i} className="msg"><time className="mono">{hhmm(s.created_at)}</time><div className="bubble report"><div className="who"><span className="k report">{t(s.stage)}</span></div><div className="msg-body"><RichText text={s.body} /></div></div></div>)}</div>
             </div>
           )}
         </div>
