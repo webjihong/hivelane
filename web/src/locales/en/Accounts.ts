@@ -117,4 +117,6 @@ export default {
   '{pct}% 사용': '{pct}% used',
   '위로': 'Move up',
   '아래로': 'Move down',
+  '끌어서 순서 바꾸기': 'Drag to reorder',
+  '위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다 · 같은 종류끼리만 바꿉니다 · 손잡이를 끌어 순서를 바꿉니다': 'Uses the first account from the top that is logged in and below the threshold · switches only within the same kind · drag the handle to reorder',
 } as Record<string, string>;

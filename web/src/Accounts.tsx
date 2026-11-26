@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AccountSwitchView, AiAccountView, AuthLoginView, Provider, StateSnapshot } from '../../shared/types.ts';
 import { act, api, refreshState } from './store.ts';
 import { Section } from './ui.tsx';
@@ -203,6 +203,59 @@ function AccountCard({ a, ro, reload, onDefault }: { a: AiAccountView; ro: boole
   );
 }
 
+/**
+ * 끌어서 순서 바꾸기(마우스·터치 모두: pointer 이벤트). 손잡이를 잡고 위아래로 끌면 놓을 자리가 표시되고, 놓으면 저장한다.
+ * 키보드: 손잡이에 초점을 두고 ↑/↓ 로 한 칸씩.
+ */
+function OrderList({ title, ids, list, ro, onReorder }: { title: string; ids: string[]; list: AiAccountView[]; ro: boolean; onReorder: (next: string[]) => void }) {
+  const [drag, setDrag] = useState<{ id: string; over: number } | null>(null);
+  const ref = useRef<HTMLOListElement>(null);
+  /** 포인터 높이 → 놓을 자리(0..n) */
+  const slotAt = (y: number) => {
+    const items = [...(ref.current?.querySelectorAll<HTMLElement>('[data-sw-id]') ?? [])];
+    let slot = items.length;
+    for (let k = 0; k < items.length; k++) { const r = items[k]!.getBoundingClientRect(); if (y < r.top + r.height / 2) { slot = k; break; } }
+    return slot;
+  };
+  const moveTo = (id: string, slot: number) => {
+    const rest = ids.filter((x) => x !== id);
+    const from = ids.indexOf(id);
+    const at = slot > from ? slot - 1 : slot;
+    onReorder([...rest.slice(0, at), id, ...rest.slice(at)]);
+  };
+  return (
+    <div className="sw-group">
+      <div className="sw-group-h">{title}</div>
+      <ol className={`sw-list${drag ? ' dragging' : ''}`} ref={ref}>
+        {ids.map((id, k) => {
+          const a = list.find((x) => x.id === id)!;
+          const pct = a.peakPct;
+          const cls = ['sw-item', drag?.id === id ? 'is-drag' : '', drag && drag.id !== id && drag.over === k ? 'drop-before' : '', drag && drag.id !== id && drag.over === ids.length && k === ids.length - 1 ? 'drop-after' : ''].filter(Boolean).join(' ');
+          return (
+            <li key={id} className={cls} data-sw-id={id}>
+              {!ro && (
+                <span className="sw-handle" role="button" tabIndex={0} aria-label={t('끌어서 순서 바꾸기')} title={t('끌어서 순서 바꾸기')}
+                  onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDrag({ id, over: k }); }}
+                  onPointerMove={(e) => { if (drag?.id === id) { const over = slotAt(e.clientY); if (over !== drag.over) setDrag({ id, over }); } }}
+                  onPointerUp={() => { if (drag?.id === id) { const slot = drag.over; setDrag(null); if (slot !== k && slot !== k + 1) moveTo(id, slot); } }}
+                  onPointerCancel={() => setDrag(null)}
+                  onKeyDown={(e) => { if (e.key === 'ArrowUp' && k > 0) { e.preventDefault(); moveTo(id, k - 1); } if (e.key === 'ArrowDown' && k < ids.length - 1) { e.preventDefault(); moveTo(id, k + 2); } }}
+                >⠿</span>
+              )}
+              <span className="sw-num">{k + 1}</span>
+              <span className="sw-name">
+                <b className="ellipsis">{a.name}</b>
+                <span className="small muted">{a.usage?.login?.loggedIn ? (pct === null ? t('사용량 모름') : t('{pct}% 사용', { pct: Math.round(pct) })) : t('로그인 필요')}</span>
+              </span>
+              {pct !== null ? <span className="sw-bar" aria-hidden><span style={{ width: `${Math.min(100, pct)}%`, background: pctTone(pct) }} /></span> : <span />}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 const nameOf = (list: AiAccountView[], id: string) => list.find((a) => a.id === id)?.name ?? id;
 
 /** 기본·총괄 계정과 사용량 기준 전환이 어떻게 맞물리는지 · 지금 실제로 쓰는 계정 */
@@ -251,8 +304,13 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
   const cfg = snap.settings.accountSwitch;
   const save = (patch: Partial<typeof cfg>, ok: string) => act(async () => { await api('/api/settings', 'PUT', { accountSwitch: patch }); await refreshState(); await reload(); }, ok);
   const order = [...cfg.order.filter((id) => list.some((a) => a.id === id)), ...list.map((a) => a.id).filter((id) => !cfg.order.includes(id))];
-  /** 같은 종류 안에서 두 계정 자리 바꾸기(사이에 다른 종류가 있어도) */
-  const swap = (i: number, j: number) => { const o = [...order]; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j]!, o[i]!]; void save({ order: o }, t('순서를 바꿨습니다')); };
+  /** 한 종류(group)의 새 순서를 전체 순서에 반영 — 그 종류가 있던 자리에 새 순서대로 채운다 */
+  const reorder = (group: string[], next: string[]) => {
+    if (group.join() === next.join()) return;
+    let k = 0;
+    const o = order.map((id) => (group.includes(id) ? next[k++]! : id));
+    void save({ order: o }, t('순서를 바꿨습니다'));
+  };
   const switchNow = (from: string, to?: string) => act(async () => { await api('/api/accounts/switch', 'POST', { from, to }); await reload(); }, t('바꿔 씁니다'));
   const revert = (from: string) => act(async () => { await api('/api/accounts/revert', 'POST', { from }); await reload(); }, t('원래 계정으로 돌렸습니다'));
   return (
@@ -272,40 +330,12 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
       </div>
       {cfg.mode !== 'off' && list.length > 1 && (
         <div className="sw-order">
-          <div className="sw-order-h"><b>{t('바꿀 순서')}</b> <span className="small muted">{t('위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다 · 같은 종류끼리만 바꿉니다')}</span></div>
+          <div className="sw-order-h"><b>{t('바꿀 순서')}</b> <span className="small muted">{t('위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다 · 같은 종류끼리만 바꿉니다 · 손잡이를 끌어 순서를 바꿉니다')}</span></div>
           <div className="sw-groups">
             {(['claude', 'codex'] as const).map((kind) => {
               const ids = order.filter((id) => list.find((a) => a.id === id)?.provider === kind);
               if (ids.length < 1) return null;
-              return (
-                <div key={kind} className="sw-group">
-                  <div className="sw-group-h">{kind === 'claude' ? 'Claude' : 'Codex'}</div>
-                  <ol className="sw-list">
-                    {ids.map((id, k) => {
-                      const a = list.find((x) => x.id === id)!;
-                      const i = order.indexOf(id);
-                      const prev = ids[k - 1], next = ids[k + 1];
-                      const pct = a.peakPct;
-                      return (
-                        <li key={id} className="sw-item">
-                          <span className="sw-num">{k + 1}</span>
-                          <span className="sw-name">
-                            <b className="ellipsis">{a.name}</b>
-                            <span className="small muted">{a.usage?.login?.loggedIn ? (pct === null ? t('사용량 모름') : t('{pct}% 사용', { pct: Math.round(pct) })) : t('로그인 필요')}</span>
-                          </span>
-                          {pct !== null && <span className="sw-bar" aria-hidden><span style={{ width: `${Math.min(100, pct)}%`, background: pctTone(pct) }} /></span>}
-                          {!ro && (
-                            <span className="sw-move">
-                              <button className="icon-btn" type="button" aria-label={t('위로')} title={t('위로')} disabled={!prev} onClick={() => prev && swap(i, order.indexOf(prev))}>↑</button>
-                              <button className="icon-btn" type="button" aria-label={t('아래로')} title={t('아래로')} disabled={!next} onClick={() => next && swap(i, order.indexOf(next))}>↓</button>
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              );
+              return <OrderList key={kind} title={kind === 'claude' ? 'Claude' : 'Codex'} ids={ids} list={list} ro={ro} onReorder={(next) => reorder(ids, next)} />;
             })}
           </div>
         </div>
