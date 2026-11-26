@@ -27,6 +27,15 @@ const SERVER = join(ROOT, 'dist', 'server', 'index.mjs');
 const WEB = join(ROOT, 'dist', 'web');
 const HERE = import.meta.dirname;
 
+/** 앱 글 언어: HIVELANE_LANG(ko/en) 이 있으면 그것, 아니면 맥 언어(한국어가 아니면 영어) */
+const LANG = (() => {
+  const env = process.env.HIVELANE_LANG?.toLowerCase();
+  if (env === 'ko' || env === 'en') return env;
+  try { return app.getPreferredSystemLanguages()[0]?.toLowerCase().startsWith('ko') ? 'ko' : 'en'; } catch { return 'ko'; }
+})();
+/** 한국어 / 영어 중 앱 언어에 맞는 글 */
+const L = (ko, en) => (LANG === 'ko' ? ko : en);
+
 /** @type {BrowserWindow | null} */ let win = null;
 /** @type {Tray | null} */ let tray = null;
 let quitting = false;
@@ -103,7 +112,7 @@ async function installService() {
     if (r.ok) { sh('launchctl', ['enable', `${DOMAIN}/${LABEL}`]); return { ok: await waitHealthy(), log: LOGS }; }
     last = r.out; await sleep(1000);
   }
-  return { ok: false, error: `launchctl bootstrap 실패: ${last}`, log: LOGS };
+  return { ok: false, error: L(`launchctl bootstrap 실패: ${last}`, `launchctl bootstrap failed: ${last}`), log: LOGS };
 }
 
 function uninstallService() {
@@ -142,7 +151,7 @@ async function status() {
 
 function showSetup() {
   if (!win) createWindow();
-  win.loadFile(join(HERE, 'setup.html'));
+  win.loadFile(join(HERE, 'setup.html'), { query: { lang: LANG } });
 }
 async function showApp() {
   if (!win) createWindow();
@@ -223,48 +232,48 @@ async function refreshTray() {
   paintIcon();
   const owner = serviceOwner();
   const workingN = sum ? sum.working.length + (sum.poBusy ? 1 : 0) : 0;
-  tray.setToolTip(!up ? 'Hivelane · 서버 멈춤' : `Hivelane · ${sum?.need ? `확인할 것 ${sum.need}개 · ` : ''}${workingN ? `일하는 중 ${workingN}` : '쉬는 중'}`);
-  const needItems = (sum?.needTeams ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}${t.question ? ' — 답 기다림' : t.state === 'failed' ? ' — 실패' : t.state === 'down' ? ' — 멈춤' : ''}`, click: () => void openAt(`#team-${t.id}`) }));
+  tray.setToolTip(!up ? L('Hivelane · 서버 멈춤', 'Hivelane · Server stopped') : `Hivelane · ${sum?.need ? L(`확인할 것 ${sum.need}개 · `, `${sum.need} need you · `) : ''}${workingN ? L(`일하는 중 ${workingN}`, `${workingN} working`) : L('쉬는 중', 'Idle')}`);
+  const needItems = (sum?.needTeams ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}${t.question ? L(' — 답 기다림', ' — waiting for answer') : t.state === 'failed' ? L(' — 실패', ' — failed') : t.state === 'down' ? L(' — 멈춤', ' — stopped') : ''}`, click: () => void openAt(`#team-${t.id}`) }));
   const workItems = (sum?.working ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}`, click: () => void openAt(`#team-${t.id}`) }));
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: up ? '● 서버 실행 중' : '○ 서버 멈춤 — 눌러서 시작 화면 열기', click: () => void openMain() },
-    ...(sum?.need ? [{ type: 'separator' }, { label: `확인할 것 ${sum.need}개`, click: () => void openAt('#home') }, ...(sum.proposals ? [{ label: `   총괄 제안 승인 ${sum.proposals}건`, click: () => void openAt('#po') }] : []), ...needItems] : []),
-    ...(workingN ? [{ type: 'separator' }, { label: `일하는 중 ${workingN}`, click: () => void openAt('#home') }, ...(sum?.poBusy ? [{ label: '   총괄 — 생각 중', click: () => void openAt('#po') }] : []), ...workItems] : []),
+    { label: up ? L('● 서버 실행 중', '● Server running') : L('○ 서버 멈춤 — 눌러서 시작 화면 열기', '○ Server stopped — click to open setup'), click: () => void openMain() },
+    ...(sum?.need ? [{ type: 'separator' }, { label: L(`확인할 것 ${sum.need}개`, `Needs you: ${sum.need}`), click: () => void openAt('#home') }, ...(sum.proposals ? [{ label: L(`   총괄 제안 승인 ${sum.proposals}건`, `   Lead proposals to approve: ${sum.proposals}`), click: () => void openAt('#po') }] : []), ...needItems] : []),
+    ...(workingN ? [{ type: 'separator' }, { label: L(`일하는 중 ${workingN}`, `Working: ${workingN}`), click: () => void openAt('#home') }, ...(sum?.poBusy ? [{ label: L('   총괄 — 생각 중', '   Lead — thinking'), click: () => void openAt('#po') }] : []), ...workItems] : []),
     { type: 'separator' },
-    { label: 'Hivelane 열기', click: () => void openMain() },
-    { label: '브라우저로 열기', click: () => void shell.openExternal(BASE) },
-    { label: '서버 다시 시작', enabled: owner !== null, click: async () => { await restartService(); await refreshTray(); win?.reload(); } },
-    { label: '기록 폴더 열기', click: () => void shell.openPath(LOGS) },
-    { label: '휴대폰 연결(Tailscale)…', click: () => void connectPhone() },
-    { label: `데이터 폴더 열기 (${DATA.replace(homedir(), '~')})`, click: () => void shell.openPath(DATA) },
+    { label: L('Hivelane 열기', 'Open Hivelane'), click: () => void openMain() },
+    { label: L('브라우저로 열기', 'Open in browser'), click: () => void shell.openExternal(BASE) },
+    { label: L('서버 다시 시작', 'Restart server'), enabled: owner !== null, click: async () => { await restartService(); await refreshTray(); win?.reload(); } },
+    { label: L('기록 폴더 열기', 'Open logs folder'), click: () => void shell.openPath(LOGS) },
+    { label: L('휴대폰 연결(Tailscale)…', 'Connect phone (Tailscale)…'), click: () => void connectPhone() },
+    { label: L(`데이터 폴더 열기 (${DATA.replace(homedir(), '~')})`, `Open data folder (${DATA.replace(homedir(), '~')})`), click: () => void shell.openPath(DATA) },
     { type: 'separator' },
     owner === 'other'
-      ? { label: '서버 끄기 — 터미널로 설치한 서버라 터미널에서 npm run service:uninstall', enabled: false }
-      : { label: '서버 끄기(상시 실행 해제)', enabled: owner === 'app', click: async () => {
-        const r = await dialog.showMessageBox({ type: 'warning', buttons: ['끄기', '취소'], defaultId: 1, message: '서버를 끄면 일하던 팀이 모두 멈추고, 다시 켤 때까지 휴대폰에서도 접속할 수 없습니다.' });
+      ? { label: L('서버 끄기 — 터미널로 설치한 서버라 터미널에서 npm run service:uninstall', 'Stop server — installed from Terminal, run npm run service:uninstall there'), enabled: false }
+      : { label: L('서버 끄기(상시 실행 해제)', 'Stop server (turn off always-on)'), enabled: owner === 'app', click: async () => {
+        const r = await dialog.showMessageBox({ type: 'warning', buttons: [L('끄기', 'Stop'), L('취소', 'Cancel')], defaultId: 1, message: L('서버를 끄면 일하던 팀이 모두 멈추고, 다시 켤 때까지 휴대폰에서도 접속할 수 없습니다.', 'Stopping the server pauses every working team, and your phone cannot connect until you start it again.') });
         if (r.response === 0) { uninstallService(); await refreshTray(); showSetup(); }
       } },
-    { label: 'Hivelane 앱 종료(서버는 계속 실행)', click: () => { quitting = true; app.quit(); } },
+    { label: L('Hivelane 앱 종료(서버는 계속 실행)', 'Quit Hivelane app (server keeps running)'), click: () => { quitting = true; app.quit(); } },
   ]));
 }
 
 /** tailscale serve 로 내 tailnet 안에서만 열리는 주소를 만들고 알려 준다 */
 function serveTailscale() {
   const bin = tailscaleBin();
-  if (!bin) return { ok: false, error: 'Tailscale 이 설치되어 있지 않습니다.' };
+  if (!bin) return { ok: false, error: L('Tailscale 이 설치되어 있지 않습니다.', 'Tailscale is not installed.') };
   const r = ts(bin, ['serve', '--bg', String(REMOTE_PORT)]);
   const url = tsUrl(ts(bin, ['serve', 'status']).out);
-  if (!r.ok || !url) return { ok: false, error: r.out || 'Tailscale 이 로그인되어 있는지, 관리 화면에서 HTTPS 인증서(HTTPS Certificates)가 켜져 있는지 확인하세요.' };
+  if (!r.ok || !url) return { ok: false, error: r.out || L('Tailscale 이 로그인되어 있는지, 관리 화면에서 HTTPS 인증서(HTTPS Certificates)가 켜져 있는지 확인하세요.', 'Check that Tailscale is logged in and that HTTPS Certificates are enabled in the admin console.') };
   return { ok: true, url };
 }
 async function connectPhone() {
   const r = serveTailscale();
   if (!r.ok) {
-    const b = await dialog.showMessageBox({ type: 'warning', buttons: ['Tailscale 받기', '닫기'], defaultId: 1, message: '휴대폰 연결을 만들지 못했습니다.', detail: `${r.error ?? ''}\n\n맥과 휴대폰에 Tailscale 을 설치하고 같은 계정으로 로그인한 뒤 다시 누르세요.` });
+    const b = await dialog.showMessageBox({ type: 'warning', buttons: [L('Tailscale 받기', 'Get Tailscale'), L('닫기', 'Close')], defaultId: 1, message: L('휴대폰 연결을 만들지 못했습니다.', 'Could not set up the phone connection.'), detail: `${r.error ?? ''}\n\n${L('맥과 휴대폰에 Tailscale 을 설치하고 같은 계정으로 로그인한 뒤 다시 누르세요.', 'Install Tailscale on your Mac and phone, log in with the same account, then try again.')}` });
     if (b.response === 0) void shell.openExternal('https://tailscale.com/download');
     return;
   }
-  const b = await dialog.showMessageBox({ type: 'info', buttons: ['주소 복사', '닫기'], defaultId: 0, cancelId: 1, message: '휴대폰에서 이 주소를 여세요', detail: `${r.url}\n\n처음 열면 거절됩니다. 그다음 맥의 관제실 화면 › 설정 › 원격 접속에서 그 계정을 「주인으로 등록」하세요.` });
+  const b = await dialog.showMessageBox({ type: 'info', buttons: [L('주소 복사', 'Copy address'), L('닫기', 'Close')], defaultId: 0, cancelId: 1, message: L('휴대폰에서 이 주소를 여세요', 'Open this address on your phone'), detail: `${r.url}\n\n${L('처음 열면 거절됩니다. 그다음 맥의 관제실 화면 › 설정 › 원격 접속에서 그 계정을 「주인으로 등록」하세요.', 'The first visit is refused. Then, on your Mac, go to Settings › Remote access and register that account as the owner.')}` });
   if (b.response === 0) clipboard.writeText(r.url);
 }
 
