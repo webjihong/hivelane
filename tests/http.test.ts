@@ -39,15 +39,15 @@ describe('HTTP 접근 제어', () => {
   it('로컬은 전부, 원격 포트는 주인 계정만 + 설정 변경 불가', async () => {
     const { req, store } = app();
     expect((await req('/api/state')).status).toBe(200);
-    const r1 = await req('/api/state', { remote: true, login: 'webjihong@gmail.com' });
+    const r1 = await req('/api/state', { remote: true, login: 'owner@example.com' });
     expect(r1.status).toBe(403);
     expect((await r1.json()).error).toContain('주인');
-    store.saveSettings({ ownerLogin: 'webjihong@gmail.com' });
-    const r2 = await req('/api/state', { remote: true, login: 'webjihong@gmail.com' });
+    store.saveSettings({ ownerLogin: 'owner@example.com' });
+    const r2 = await req('/api/state', { remote: true, login: 'owner@example.com' });
     expect(r2.status).toBe(200);
     expect((await r2.json()).access).toBe('remote');
     expect((await req('/api/state', { remote: true, login: 'other@x' })).status).toBe(403);
-    expect((await req('/api/settings', { method: 'PUT', body: { autoApprove: true }, remote: true, login: 'webjihong@gmail.com' })).status).toBe(403);
+    expect((await req('/api/settings', { method: 'PUT', body: { autoApprove: true }, remote: true, login: 'owner@example.com' })).status).toBe(403);
     expect((await req('/api/settings', { method: 'PUT', body: { autoApprove: true } })).status).toBe(200);
     expect(store.getSettings().autoApprove).toBe(true);
   });
