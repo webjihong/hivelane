@@ -821,6 +821,36 @@ ${msgs.map((m) => `- ${m.from_label}→${m.to_label ?? ''} (${m.kind}): ${trunca
     store.addDecision(teamId, 'user', 'cancel', st('사용자가 중단'));
   }
 
+  /** 끝난 팀으로 보낼 수 있는 업무 팀 상태(일하는 중이 아닌 것) */
+  static readonly CLOSABLE = ['failed', 'paused', 'queued', 'waiting_human'];
+
+  /**
+   * 업무 팀을 「끝난 팀」으로 보낸다(보관). 실패·멈춤·대기·사람 확인 팀에 쓴다.
+   * 남은 턴·자리를 정리하고, worktree 가 있으면 변경을 패치로 남긴 뒤 지운다(브랜치는 남김). 직속 팀·일하는 팀은 거부.
+   */
+  async closeTask(teamId: string, by = '사용자', reason = ''): Promise<void> {
+    const { store } = this.deps;
+    const t = store.getTeam(teamId);
+    if (!t) throw new ConflictError(st('팀이 없습니다'));
+    if (t.lifetime !== 'task') throw new ConflictError(st('직속 팀은 끝난 팀으로 보낼 수 없습니다. 직속 팀 종료를 쓰세요.'));
+    if (!Orchestrator.CLOSABLE.includes(t.state)) throw new ConflictError(t.state === 'running' ? st('일하는 중인 팀은 끝난 팀으로 보낼 수 없습니다. 먼저 멈추거나 중단하세요.') : st('이미 끝난 팀입니다'));
+    // 남은 루프·자리 정리(멈춘 팀도 강한 멈춤이면 풀어 준 뒤 끊는다)
+    const l = this.live.get(teamId);
+    this.deps.slots.cancelTeam(teamId);
+    if (l?.hardPaused) await this.continueTree(teamId, st('정리를 위해 강한 멈춤 해제'));
+    if (l?.loop) { l.pausePending = true; l.pending = []; await Promise.all([l.handle?.interrupt(), ...[...l.subHandles].map((h) => h.interrupt())]); await l.loop; }
+    this.revokeGrants(teamId);
+    const why = reason.trim() || st('끝난 팀으로 보냄');
+    store.updateTeam(teamId, { finished_at: t.finished_at ?? nowIso(), question: null, paused_reason: null, pause_kind: null });
+    if (t.task_id) store.updateTask(t.task_id, { status: t.state === 'failed' ? 'failed' : 'done', finished_at: nowIso() });
+    store.db.prepare("UPDATE agents SET state = 'stop', current_step = ? WHERE team_id = ?").run(st('끝난 팀'), teamId);
+    store.addMessage({ team_id: teamId, from_label: 'PO 엔진', kind: 'engine', body: st('끝난 팀으로 보냄({by}) · {why}', { by, why }) });
+    // worktree 가 남아 있으면 기존 정리 흐름(패치 보관 → 삭제)으로 함께 정리하고 archived 로
+    if (store.getTeam(teamId)?.worktree_path) await this.archive(teamId, by);
+    else store.updateTeam(teamId, { state: 'archived' });
+    store.addDecision(teamId, by === '총괄' ? 'agent' : 'user', 'close', st('끝난 팀으로 보냄 · {why}', { why }));
+  }
+
   /** worktree 정리(브랜치는 남긴다) 후 보관. */
   async archive(teamId: string, by = '사용자', o: { discarded?: boolean } = {}): Promise<void> {
     const { store, cfg } = this.deps;

@@ -106,4 +106,8 @@ export default {
   '검사': 'Check',
   '보고': 'Report',
   '최종': 'Final',
+  '끝난 팀으로 보내기': 'Move to finished',
+  '이 팀을 끝난 팀 목록으로 옮길까요? 작업 폴더의 변경은 패치로 남기고 정리합니다(브랜치는 남김). 다시 이어서 하려면 새 업무로 맡겨야 합니다.': 'Move this team to finished teams? Changes in its worktree are saved as a patch and the worktree is removed (the branch stays). To continue the work later, start a new task.',
+  '이 팀을 끝난 팀 목록으로 옮길까요? 다시 이어서 하려면 새 업무로 맡겨야 합니다.': 'Move this team to finished teams? To continue the work later, start a new task.',
+  '끝난 팀으로 옮겼습니다': 'Moved to finished teams',
 } as Record<string, string>;

@@ -810,3 +810,5 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .team-ref-n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .team-ref-id { font-family: var(--font-mono); font-size: 0.85em; color: var(--muted); }
 .rt-code { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 12px; margin: 6px 0; }
+/* 팀 상세: 「끝난 팀으로 보내기」는 다른 단추와 떨어뜨려 오른쪽 끝에 */
+.team-close { margin-left: auto; }

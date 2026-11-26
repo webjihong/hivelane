@@ -380,6 +380,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   });
   app.post('/api/teams/:id/interrupt', async (c) => { team(c.req.param('id')); return c.json({ ok: await orch.cancelTurn(c.req.param('id')) }); });
   app.post('/api/teams/:id/cancel', async (c) => { const t = team(c.req.param('id')); if (t.lifetime === 'standing') await orch.endStanding(t.id, 'user', st('사용자가 화면에서 종료')); else await orch.cancel(t.id); return c.json({ ok: true }); });
+  app.post('/api/teams/:id/close', async (c) => { localOnly(c); const b = await body(c, z.object({ reason: z.string().max(500).optional() })); team(c.req.param('id')); await orch.closeTask(c.req.param('id'), st('사용자'), b.reason ?? ''); return c.json({ ok: true }); });
   app.post('/api/teams/:id/archive', async (c) => { localOnly(c); team(c.req.param('id')); await orch.archive(c.req.param('id')); return c.json({ ok: true }); });
   app.post('/api/teams/:id/retry', async (c) => {
     const t = team(c.req.param('id'));

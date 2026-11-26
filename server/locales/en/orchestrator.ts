@@ -101,4 +101,12 @@ export default {
   '프로젝트 변경으로 정리 · {what}': 'Cleaned up for project change · {what}',
   '프로젝트 없음': 'No project',
   '프로젝트를 찾을 수 없습니다': 'Project not found',
+  '직속 팀은 끝난 팀으로 보낼 수 없습니다. 직속 팀 종료를 쓰세요.': 'Standing teams cannot be moved to finished teams. End the standing team instead.',
+  '일하는 중인 팀은 끝난 팀으로 보낼 수 없습니다. 먼저 멈추거나 중단하세요.': 'A team that is working cannot be moved to finished teams. Pause or stop it first.',
+  '이미 끝난 팀입니다': 'This team is already finished',
+  '정리를 위해 강한 멈춤 해제': 'Released hard pause to close the team',
+  '끝난 팀으로 보냄': 'Moved to finished teams',
+  '끝난 팀': 'Finished',
+  '끝난 팀으로 보냄({by}) · {why}': 'Moved to finished teams ({by}) · {why}',
+  '끝난 팀으로 보냄 · {why}': 'Moved to finished teams · {why}',
 } as Record<string, string>;

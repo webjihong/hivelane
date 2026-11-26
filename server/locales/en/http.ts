@@ -50,4 +50,5 @@ export default {
   '허용되지 않은 계정입니다: {login}': 'Account not allowed: {login}',
   '허용되지 않은 출처: {origin}': 'Origin not allowed: {origin}',
   '화면이 빌드되지 않았습니다. `npm run build` 후 다시 열거나, 개발 중이면 http://127.0.0.1:4311 을 여세요.': 'The UI has not been built. Run `npm run build` and reopen, or open http://127.0.0.1:4311 during development.',
+  '사용자': 'User',
 } as Record<string, string>;

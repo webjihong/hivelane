@@ -49,7 +49,7 @@ export interface PoTools {
   endStanding(teamId: string, reason: string): Promise<string>;
   scanGitCleanup(project: string): Promise<string>;
   gitCleanup(p: { project: string; ids: string[]; discard_changes?: boolean; reason: string }): Promise<string>;
-  sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string;
+  sendToTeam(teamId: string, msg: string): string; setPriority(teamId: string, p: Priority): string; pauseTeam(teamId: string, reason: string): Promise<string>; resumeTeam(teamId: string): Promise<string>; pinTeam(teamId: string, on: boolean): string; archiveTeam(teamId: string, reason: string): Promise<string>;
 }
 
 export class PoAgent {
@@ -341,6 +341,10 @@ ${chat}
       },
       sendToTeam: (teamId, msg) => { if (!store.getTeam(teamId)) return '없는 팀이다.'; const r = orch.message(teamId, msg, 'po'); return r === 'delivered' ? '전달했다.' : '팀이 멈춰 있어 재개될 때 전달된다.'; },
       setPriority: (teamId, p) => { orch.setPriority(teamId, p, 'agent'); return `우선순위를 ${p}로 바꿨다.`; },
+      archiveTeam: async (teamId, reason) => {
+        try { await orch.closeTask(teamId, '총괄', reason); return '끝난 팀으로 보냈다(보관). worktree 가 있었으면 변경을 패치로 남기고 정리했다.'; }
+        catch (e) { return `보내지 못했다: ${e instanceof Error ? e.message : String(e)}`; }
+      },
       pauseTeam: async (teamId, reason) => { await orch.pause(teamId, 'user', st('총괄: {reason}', { reason })); return '멈췄다.'; },
       resumeTeam: async (teamId) => { await orch.resume(teamId, 'user', st('총괄 재개')); return '재개했다.'; },
       pinTeam: (teamId, on) => { orch.pin(teamId, on, 'agent'); return on ? '멈추지 않음으로 설정했다.' : '해제했다.'; },
@@ -348,7 +352,7 @@ ${chat}
   }
 }
 
-const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'read_team_patch', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team'].map((n) => `mcp__hivelane__${n}`);
+const PO_TOOL_NAMES = ['list_projects', 'list_templates', 'list_teams', 'get_task_status', 'find_changes', 'read_team_patch', 'get_timeline', 'search_records', 'propose_team', 'system_status', 'learn', 'recall', 'forget', 'create_standing_team', 'update_standing_team', 'end_standing_team', 'scan_git_cleanup', 'git_cleanup', 'send_to_team', 'set_priority', 'pause_team', 'resume_team', 'pin_team', 'archive_team'].map((n) => `mcp__hivelane__${n}`);
 
 /** 총괄의 Bash 는 진단·조회용. 프로세스 종료·시스템 변경은 사람 몫. */
 export const PO_BLOCKED = ['\\b(kill|pkill|killall)\\b', '\\blaunchctl\\s+(unload|load|bootout|bootstrap|remove|kill|stop|disable)', '\\b(shutdown|reboot|halt)\\b', '\\bdefaults\\s+write\\b', '\\bnpm\\s+(i|install|ci|uninstall)\\b', '\\bbrew\\s+(install|uninstall|upgrade|remove)\\b', '\\btailscale\\s+(up|down|serve|funnel|logout)'];
@@ -396,6 +400,7 @@ function poMcpServer(impl: PoTools) {
       async (a) => text(await impl.endStanding(a.team_id, a.reason))),
     T('send_to_team', '팀 PM 에게 말을 전한다', { team_id: z.string(), message: z.string() }, async (a) => text(impl.sendToTeam(a.team_id, a.message))),
     T('set_priority', '팀 우선순위 변경', { team_id: z.string(), priority: z.enum(['urgent', 'normal', 'low']) }, async (a) => text(impl.setPriority(a.team_id, a.priority))),
+    T('archive_team', '업무 팀을 「끝난 팀」으로 보낸다(보관). 실패·멈춤·대기·사람 확인 상태의 업무 팀만 된다(일하는 팀·직속 팀은 안 됨). worktree 가 남아 있으면 변경을 패치로 남기고 정리한다(브랜치는 남김). 사용자가 이 대화에서 그 팀을 닫으라고(끝내라·목록에서 빼라·보관하라) 했을 때만 쓴다. 일을 끝내려고 멈춤·재개를 우회하지 말 것.', { team_id: z.string(), reason: z.string().describe('사용자가 닫으라고 한 말과 이유') }, async (a) => text(await impl.archiveTeam(a.team_id, a.reason))),
     T('pause_team', '팀을 멈춘다(근거 필요)', { team_id: z.string(), reason: z.string() }, async (a) => text(await impl.pauseTeam(a.team_id, a.reason))),
     T('resume_team', '멈춘 팀을 재개', { team_id: z.string() }, async (a) => text(await impl.resumeTeam(a.team_id))),
     T('pin_team', '「멈추지 않음」 설정/해제', { team_id: z.string(), on: z.boolean() }, async (a) => text(impl.pinTeam(a.team_id, a.on))),
