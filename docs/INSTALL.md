@@ -13,6 +13,22 @@
 | GitHub CLI (선택) | `gh auth login` 해 두면 PR 목록·검사·병합이 동작합니다 |
 | Tailscale (선택) | 휴대폰에서 쓰려면 필요합니다 |
 
+### 처음이라면: 준비물 설치
+
+터미널(응용 프로그램 › 유틸리티 › 터미널)을 열고 한 줄씩 붙여 넣습니다. 이미 있는 것은 건너뜁니다.
+
+```bash
+# 1) Homebrew(맥용 설치 도구) — 안내가 나오면 맥 비밀번호를 넣습니다
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# 2) Node.js 와 git
+brew install node git
+# 3) Claude Code 설치 후 로그인(브라우저가 열리면 Claude 계정으로 승인)
+npm install -g @anthropic-ai/claude-code
+claude
+```
+
+`claude` 화면이 뜨고 로그인이 끝나면 `/exit` 로 나옵니다.
+
 Claude Code 로그인 확인:
 
 ```bash
@@ -44,7 +60,7 @@ npm run service:install
 | 명령 | 설명 |
 | --- | --- |
 | `npm run service:status` | launchd 상태 · tailscale serve 주소 · 서버 응답 |
-| `npm run service:restart` | 다시 시작 (일하는 팀의 턴이 끊기니 팀이 쉴 때) |
+| `npm run service:restart` | 화면을 다시 빌드하고 서버 다시 시작 (일하는 팀의 턴이 끊기니 팀이 쉴 때) |
 | `npm run service:uninstall` | 서비스·tailscale serve 해제 (데이터는 남음) |
 
 ### 직접 실행(시험용)
