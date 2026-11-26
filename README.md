@@ -14,7 +14,8 @@
   <a href="#할-수-있는-일">할 수 있는 일</a> ·
   <a href="#비슷한-도구와-무엇이-다른가">비슷한 도구와 차이</a> ·
   <a href="#자주-묻는-질문">자주 묻는 질문</a> ·
-  <a href="docs/GUIDE.md">사용 가이드</a>
+  <a href="docs/GUIDE.md">사용 가이드</a> ·
+  <a href="https://webjihong.github.io/hivelane/ko/">소개 페이지</a>
 </p>
 
 **한국어** · [English](README.en.md)
@@ -166,6 +167,18 @@ flowchart LR
 ## 시작하기
 
 준비물: **macOS**(Apple Silicon 권장), **Claude 구독**(Pro·Max 등, `claude` 로그인만 되면 되고 API 키는 필요 없음). Codex를 쓰려면 ChatGPT 구독 또는 OpenAI API 키.
+
+### Homebrew로 설치(가장 쉬움) — 업데이트도 한 줄
+
+```bash
+brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+brew install --cask hivelane
+
+# 새 버전이 나오면
+brew upgrade --cask hivelane
+```
+
+설치한 뒤 Hivelane을 열고 「서버 설치하고 시작」을 누릅니다. 업데이트하면 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다. Homebrew로 설치하면 「확인되지 않은 개발자」 경고 단계가 없습니다.
 
 ### 맥 앱으로 설치(권장) — 터미널 없이
 

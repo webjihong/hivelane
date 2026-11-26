@@ -1,4 +1,5 @@
 import { initServerI18n } from './i18n.ts';
+import { diskVersion, VERSION } from './version.ts';
 import { SERVER_EN } from './locales/en/index.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { serve } from '@hono/node-server';
@@ -102,6 +103,20 @@ if (process.platform === 'darwin' && !process.env.HIVELANE_NO_CAFFEINATE) {
 }
 
 let closing = false;
+// 새 버전이 깔리면(brew upgrade·DMG 교체·git pull) 일하는 팀·총괄이 없을 때 스스로 내려가 새 버전으로 다시 뜬다(launchd KeepAlive)
+if (underLaunchd) {
+  const updTimer = setInterval(() => {
+    const next = diskVersion();
+    if (next === VERSION || next === '0.0.0') return;
+    const busy = store.listTeams("state IN ('running','reviving')").length > 0 || po.busy;
+    if (busy) return;
+    log.info(`새 버전 ${next} 감지(지금 ${VERSION}) · 일하는 팀이 없어 다시 시작`);
+    clearInterval(updTimer);
+    void shutdown('update');
+  }, 60_000);
+  updTimer.unref();
+}
+
 async function shutdown(sig: string) {
   if (closing) return;
   closing = true;

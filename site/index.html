@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hivelane — a control room for AI dev teams on your Mac</title>
+  <meta name="description" content="Tell the Lead AI what you need. It sets up teams of Claude Code and Codex agents (PM, developer, QA) that work in parallel on your Mac. You only step in when a decision is needed." />
+  <meta property="og:title" content="Hivelane — a control room for AI dev teams on your Mac" />
+  <meta property="og:description" content="Run several Claude Code / Codex agent teams in parallel on one Mac, follow them from a messenger-style UI on Mac and phone." />
+  <meta property="og:image" content="images/en/po-chat.png" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28" /> Hivelane</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#compare">Compare</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/webjihong/hivelane">GitHub</a>
+      <a href="ko/" lang="ko">한국어</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>A control room for AI dev teams,<br />right on your Mac</h1>
+      <p class="lead">Tell the <b>Lead</b> AI what you need. It puts together a team — PM, developer, QA — out of Claude Code and Codex agents. Teams work in parallel in their own git worktrees, and you only step in when a decision is needed.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/webjihong/hivelane/releases/latest">Download for Mac</a>
+        <a class="btn" href="#install">brew install</a>
+      </div>
+      <p class="small">Free & open source (MIT) · macOS on Apple silicon · uses your existing Claude / ChatGPT subscription</p>
+      <img class="shot" src="images/en/po-chat.png" alt="Asking the Lead for a status table of all teams" />
+    </section>
+
+    <section id="features" class="grid">
+      <article><h3>Delegate in plain words</h3><p>The Lead proposes a team (roles, models, budget). Approve and it starts — no terminal juggling.</p></article>
+      <article><h3>Teams work in parallel</h3><p>Each task gets its own branch and worktree. Watch plan → build → check → report, live.</p></article>
+      <article><h3>You only decide</h3><p>Questions land in one Inbox with answer buttons. Production DB and deploy commands always need your approval.</p></article>
+      <article><h3>Kind to your Mac</h3><p>The Lead engine watches CPU and memory, pauses and resumes teams, and queues heavy builds.</p></article>
+      <article><h3>Accounts & models per role</h3><p>Mix Claude and Codex accounts per role. When one account hits its limit, it switches — and the conversation continues.</p></article>
+      <article><h3>From your phone, too</h3><p>Messenger-style web UI with push notifications, reachable only inside your own Tailscale network.</p></article>
+    </section>
+
+    <section class="shots">
+      <figure><img src="images/en/team-detail.png" alt="Team channel and team details" /><figcaption>Every team has a channel: stage, to-dos, what each agent is doing, cost.</figcaption></figure>
+      <figure class="phone"><img src="images/en/mobile.png" alt="Inbox on a phone" /><figcaption>Answer from your phone.</figcaption></figure>
+    </section>
+
+    <section id="compare">
+      <h2>How it differs</h2>
+      <table>
+        <thead><tr><th></th><th>Claude Code alone</th><th>Parallel-session apps</th><th>Cloud agents</th><th>Hivelane</th></tr></thead>
+        <tbody>
+          <tr><td>Who splits the work</td><td>You</td><td>You, per session</td><td>You, per task</td><td><b>Lead AI proposes teams</b></td></tr>
+          <tr><td>Roles inside a task</td><td>One agent</td><td>One agent per session</td><td>One agent</td><td><b>PM delegates to dev / QA / reviewer</b></td></tr>
+          <tr><td>Mac load control</td><td>—</td><td>Mostly none</td><td>n/a</td><td><b>Pause/resume by CPU & memory</b></td></tr>
+          <tr><td>Usage limit hit</td><td>Wait</td><td>Wait or switch manually</td><td>Plan-based</td><td><b>Auto-switch account, same conversation</b></td></tr>
+          <tr><td>Code & data</td><td>Your Mac</td><td>Your Mac</td><td>Cloud</td><td>Your Mac</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Summarised from public material as of November 2026; other tools may have changed.</p>
+    </section>
+
+    <section id="install">
+      <h2>Install</h2>
+      <div class="cols">
+        <div>
+          <h3>Homebrew (recommended)</h3>
+          <pre><code>brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+brew install --cask hivelane
+
+# later, to update
+brew upgrade --cask hivelane</code></pre>
+          <p class="small">After an update the server switches to the new version by itself once no team is working.</p>
+        </div>
+        <div>
+          <h3>DMG</h3>
+          <p><a href="https://github.com/webjihong/hivelane/releases/latest">Download the latest DMG</a>, drag Hivelane to Applications, open it and click <b>Install server and start</b>.</p>
+          <p class="small">The app is not notarized yet, so the first launch needs <i>System Settings › Privacy & Security › Open Anyway</i>. Homebrew installs skip this step.</p>
+          <p><a href="https://github.com/webjihong/hivelane/blob/main/docs/en/MAC_APP.md">Mac app guide →</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/webjihong/hivelane">GitHub</a> · <a href="https://github.com/webjihong/hivelane/blob/main/CHANGELOG.en.md">Changelog</a> · <a href="https://github.com/webjihong/hivelane/blob/main/docs/en/GUIDE.md">User guide</a> · MIT License
+  </footer>
+</body>
+</html>

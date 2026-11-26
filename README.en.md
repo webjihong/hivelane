@@ -14,7 +14,8 @@
   <a href="#what-it-can-do">What it can do</a> ·
   <a href="#how-it-compares-to-similar-tools">Compared with similar tools</a> ·
   <a href="#faq">FAQ</a> ·
-  <a href="docs/en/GUIDE.md">User guide</a>
+  <a href="docs/en/GUIDE.md">User guide</a> ·
+  <a href="https://webjihong.github.io/hivelane/">Website</a>
 </p>
 
 [한국어](README.md) · **English**
@@ -166,6 +167,18 @@ There are already several tools for running multiple AI coding agents at once. M
 ## Getting started
 
 You'll need **macOS** (Apple Silicon recommended) and a **Claude subscription** (Pro, Max, etc.; you just need to be logged in to `claude`, no API key required). To use Codex, you'll also need a ChatGPT subscription or an OpenAI API key.
+
+### Install with Homebrew (easiest) — one-line updates
+
+```bash
+brew tap webjihong/hivelane https://github.com/webjihong/hivelane
+brew install --cask hivelane
+
+# when a new version is out
+brew upgrade --cask hivelane
+```
+
+Open Hivelane and click "Install server and start". After an update the server restarts on the new version by itself once no team is working. Installing with Homebrew skips the "unidentified developer" step.
 
 ### Install the Mac app (recommended), no terminal needed
 

@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { bumpCask } from './cask.ts';
 
 const ROOT = join(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -53,4 +54,14 @@ if (!dry && !existsSync(dmg)) fail(`DMG 가 없습니다: ${dmg}`);
 const notesFile = join(tmpdir(), `hivelane-${tag}.md`);
 writeFileSync(notesFile, `${notes}\n\n---\n설치: DMG 를 열어 Hivelane 을 응용 프로그램 폴더로 옮기고, 처음 열 때 「그래도 열기」를 한 번 누르세요. 자세한 내용은 [맥 앱 가이드](https://github.com/webjihong/hivelane/blob/${tag}/docs/MAC_APP.md).\n`);
 sh('gh', ['release', 'create', tag, dmg, '--title', `Hivelane ${tag}`, '--notes-file', notesFile, '--latest']);
+
+// 4) Homebrew cask(Casks/hivelane.rb) 를 새 버전·sha256 으로 → brew upgrade --cask hivelane 로 받을 수 있게
+if (!dry) {
+  const sha = execFileSync('shasum', ['-a', '256', dmg], { encoding: 'utf8' }).split(' ')[0]!;
+  const caskPath = join(ROOT, 'Casks', 'hivelane.rb');
+  writeFileSync(caskPath, bumpCask(readFileSync(caskPath, 'utf8'), version, sha));
+}
+sh('git', ['commit', '-am', `🍺 Homebrew cask ${tag}`]);
+sh('git', ['push', 'origin', 'main']);
 console.log(`✓ ${tag} 릴리스 완료 → https://github.com/webjihong/hivelane/releases/tag/${tag}`);
+

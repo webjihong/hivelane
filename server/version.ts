@@ -16,3 +16,6 @@ function find(): string {
 }
 
 export const VERSION = find();
+
+/** 디스크에 있는 지금 버전(앱을 brew·DMG 로 바꿨거나 git pull 했으면 VERSION 과 달라진다) */
+export function diskVersion(): string { return find(); }
