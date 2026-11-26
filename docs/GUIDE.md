@@ -1,161 +1,161 @@
-**한국어** · [English](en/GUIDE.md)
+[한국어](ko/GUIDE.md) · **English**
 
-# 사용 가이드
+# User guide
 
-## 1. 화면 구성
+## 1. Screen layout
 
 ```
 ┌──────────────┬──────────────────────────────────────┐
-│ 지금 볼 것 3 │                                      │
-│ 총괄           │   가운데: 고른 채널                   │
-│ 스크립트     │   (지금 볼 것 / 총괄 대화 / 팀 채널 /    │
-│ 직속 팀  ＋  │    PR / 스크립트 / 설정)              │
-│ 업무 팀      │                                      │
+│ Inbox      3 │                                      │
+│ Lead         │   Center: the selected channel       │
+│ Scripts      │   (Inbox / Lead chat / team channel /│
+│ Standing team ＋ │    PRs / Scripts / Settings)         │
+│ Task teams   │                                      │
 │ ──────────── │                                      │
-│ 저장소 · PR  │                                      │
-│ [여유] CPU 메모리                                    │
-│ [토큰] 69% 사용 중 (목요일 초기화)                   │
-│ [인증] 로그인 12/12 만료   [재인증]                          │
+│ Repositories · PRs │                                      │
+│ [OK] CPU Memory                                     │
+│ [Tokens] 69% used (resets Thursday)                 │
+│ [Auth] Login expires 12/12   [Re-authenticate]      │
 └──────────────┴──────────────────────────────────────┘
 ```
 
-- **채널 점**: 초록 깜빡임 = 일하는 중 · 빨강 = 내 결정 필요/실패/장애 · 노란 원 = 멈춤 · 점선 = 대기열 · 회색 = 쉬는 중. 옆 숫자는 안 읽은 답.
-- **휴대폰**: 첫 화면은 채널 목록. 아래 탭은 대화 · PR · 스크립트 · 설정.
+- **Channel dots**: blinking green = working · red = needs your decision / failed / down · yellow circle = paused · dotted = queued · gray = idle. The number next to it is unread replies.
+- **Phone**: the first screen is the channel list. The bottom tabs are Chat · PR · Scripts · Settings.
 
-### 지금 볼 것
+### Inbox
 
-내가 답해야 할 것(PM 질문, 명령 승인 요청, 실패, 팀 구성 제안), 새 소식(새 답변, 새 PR), 일하는 중인 팀, 열린 PR을 한 화면에 모읍니다. 질문 카드의 버튼으로 바로 답할 수 있습니다.
+Gathers everything that needs your answer (PM questions, command approval requests, failures, team proposals), what's new (new replies, new PRs), teams that are working, and open PRs on a single screen. You can answer directly with the buttons on a question card.
 
-## 2. 총괄에게 일 맡기기
+## 2. Handing work to the Lead
 
-총괄 채널에서 평소 말하듯 지시합니다.
+In the Lead channel, give instructions the way you'd normally talk.
 
-> my-app 저장소에서 로그인 화면 비밀번호 표시 버튼 고쳐줘. 테스트까지.
+> In the my-app repository, fix the show-password button on the login screen. Include tests.
 
-1. 총괄이 업무를 다듬고 **팀 구성 제안 카드**(프로젝트·템플릿·역할·모델·예산)를 올립니다.
-2. 카드에서 고치거나 그대로 **승인**하면 팀이 만들어지고 대기열에 들어갑니다. (설정에서 자동 승인 가능)
-3. 엔진이 리소스를 보고 팀을 시작합니다. 팀은 업무 전용 worktree(`hivelane/<업무 id>` 브랜치)에서 일합니다.
-4. 끝나면 PM이 보고하고 알림이 옵니다. 바뀐 파일·요약은 팀 상세에 남습니다.
+1. The Lead refines the task and posts a **team proposal card** (project, template, roles, models, budget).
+2. Edit the card or **approve** it as is; the team is created and goes into the queue. (Auto-approval can be turned on in Settings.)
+3. The engine checks resources and starts the team. The team works in a worktree dedicated to the task (branch `hivelane/<task id>`).
+4. When it's done, the PM reports and you get a notification. Changed files and summaries are kept in the team details.
 
-총괄에게 이런 것도 시킬 수 있습니다.
+You can also ask the Lead for things like these:
 
-| 말하기 | 총괄이 하는 일 |
+| What you say | What the Lead does |
 | --- | --- |
-| 「어제 결제 쪽 누가 뭐 바꿨어?」 | 기록 검색으로 답함 |
-| 「앱팀 멈춰」/「먼저 해」 | 멈춤·재개·우선순위 |
-| 「맥이 왜 느려?」 | CPU·메모리를 누가 쓰는지 진단 |
-| 「git 정리해줘」 | 안 쓰는 worktree·로컬 브랜치를 정리 가능/확인 필요/남김으로 나눠 보여 줌 → 「정리 가능한 거 지워」 |
-| 「이거 배워」/「기억해」/「잊어」 | 총괄이 절차·사실을 기억(「배운 것」에서 보고 고침) |
-| 「점검팀 만들어줘」 | 직속 팀 생성 |
+| "Who changed what in payments yesterday?" | Answers by searching the records |
+| "Pause the app team" / "Do that one first" | Pause, resume, priority |
+| "Why is my Mac slow?" | Diagnoses who's using CPU and memory |
+| "Clean up git" | Shows unused worktrees and local branches split into Removable / Needs review / Kept → "Delete the removable ones" |
+| "Learn this" / "Remember this" / "Forget that" | The Lead remembers procedures and facts (view and edit them under "What the Lead has learned") |
+| "Create a check team" | Creates a standing team |
 
-## 3. 팀 채널
+## 3. Team channels
 
-- 내 지시는 오른쪽, PM·총괄은 왼쪽에 나옵니다. 팀원끼리 주고받은 맡김·보고는 한 줄로 접혀 있습니다.
-- **PM 질문·명령 승인 요청**은 입력칸 위 카드로 뜹니다. 버튼을 누르거나 직접 답하면 바로 다시 일합니다.
-- 일하는 중에 보낸 지시는 다음 단계에 반영됩니다. **진행 취소**로 지금 하던 일을 끊을 수 있습니다.
-- 위쪽 버튼: 멈춤/재개/다시 시작, 이 팀이 만든 PR, **팀 상세**(할 일, 바뀐 파일, 결정 기록, 팀원별 진행 스트림, 상시 지시서, 작업 환경).
+- Your instructions appear on the right, the PM and Lead on the left. Hand-offs and reports exchanged between team members are collapsed into a single line.
+- **PM questions and command approval requests** appear as cards above the input box. Click a button or answer in your own words and the team gets back to work right away.
+- Instructions you send while the team is working are applied at the next step. **Cancel run** interrupts what it's doing right now.
+- Buttons at the top: Pause / Resume / Restart, PRs from this team, **Team details** (to-dos, changed files, decision log, per-member activity stream, standing brief, environment).
 
-### 직속 팀
+### Standing teams
 
-채널 목록의 「직속 팀 ＋」로 만듭니다. 이름·프로젝트·템플릿·상시 지시서, 그리고 선택으로 점검 명령과 주기를 넣습니다.
-점검 명령이 실패하면(종료 코드 ≠ 0) 팀이 출력을 보고 깨어납니다. 평소에는 토큰을 쓰지 않습니다.
+Create one with "**Standing team ＋**" in the channel list. Enter a name, project, template and standing brief, plus an optional check command and check interval.
+If the check command fails (exit code ≠ 0), the team wakes up and looks at the output. Otherwise it uses no tokens.
 
-**작업 환경**
-- `격리`(기본): 저장소 규칙만 읽고, 역할별 도구만 씁니다.
-- `내 환경`: 내 Claude Code 전역 설정·플러그인·스킬·MCP를 그대로 씁니다. 운영 명령은 실행 전에 승인 카드가 뜨고, 승인하면 그 명령만 한 번 실행합니다.
+**Environment**
+- `Isolated` (default): reads only the repository's rules and uses only the tools for its role.
+- `My environment`: uses your own global Claude Code settings, plugins, skills and MCP servers as is. Production commands show an approval card before they run; approving runs just that one command, once.
 
-### worktree·브랜치 정리
+### Cleaning up worktrees and branches
 
-정리할 worktree·로컬 브랜치가 있으면 채널 목록의 「끝난 팀」 옆에 **worktree·브랜치 정리 N** 버튼이 뜹니다(10분마다 등록된 저장소를 살펴봄).
-끝난 팀 하나만 정리하려면 팀 채널 위쪽 「팀 상세」 왼쪽의 **worktree 정리**를 누릅니다(브랜치는 남김 · 커밋 안 한 변경이 있으면 파일 목록을 보여 주고 한 번 더 묻습니다).
-누르면 저장소별로 **정리 가능**(미리 체크) · **확인 필요**(체크하면 커밋 안 한 변경·어디에도 없는 커밋을 버림) · **남김**(쓰는 중·최근 12시간 사용·기준 브랜치, 지우지 않음)으로 나뉜 목록이 나오고, 고른 것만 지웁니다. 지우기는 맥에서만 됩니다. 총괄에게 「git 정리해줘」라고 해도 같은 기준으로 정리합니다.
+When there are worktrees or local branches to clean up, a **Clean up worktrees & branches N** button appears next to "Finished teams" in the channel list (registered repositories are scanned every 10 minutes).
+To clean up just one finished team, click **Clean up worktree** at the top of its team channel, to the left of "Team details" (the branch is kept · if there are uncommitted changes, it lists the files and asks once more).
+Clicking the button shows a list per repository split into **Removable** (pre-checked) · **Needs review** (checking these discards uncommitted changes and commits that exist nowhere else) · **Kept** (in use, used in the last 12 hours, or the base branch; never deleted), and only what you select is deleted. Deleting only works on the Mac. Asking the Lead to "clean up git" uses the same rules.
 
-### 끝난 팀 · 정리 기록
+### Finished teams · cleanup log
 
-- 채널 목록의 「끝난 팀」을 펼치면 최근 20개가 나오고, 맨 아래 **전체 보기**로 끝난 팀 전체 페이지(`#finished`)에 갑니다. 검색, 상태(완료·실패·보관) 거르기, 저장소 거르기, 50개씩 더 보기가 됩니다. worktree 를 정리해 보관된 팀도 여기서 열 수 있습니다.
-- **정리 기록** 탭(`#finished/log`)은 화면·총괄·팀 버튼·자동으로 지운 worktree·브랜치를 최신순으로 보여 줍니다.
-- worktree 를 지우기 직전에 변경(커밋한 것 + 커밋 안 한 것 + 새 파일)을 `~/.hivelane/archive/*.patch` 로 남깁니다. 고유 커밋이 있던 브랜치는 커밋 패치와 되살리기 명령(`git branch 이름 sha`)을 남깁니다. 정리 기록의 **변경 보기**나 팀 상세의 파일 diff 로 볼 수 있고, 총괄도 읽습니다. 되살리려면 저장소에서 `git apply <패치>`.
-- **자동 정리**: 끝난 지 7일(설정 › 끝난 팀 worktree 자동 정리, 0이면 끔)이 지난 업무 팀의 worktree 를 패치로 남기고 지웁니다. 브랜치는 남기고, 잠긴 것·안에서 프로그램이 도는 것은 건너뜁니다.
-- 화면에는 일하는 팀과 최근 끝난 팀(7일 안 또는 최근 20개)만 실어 보내므로, 끝난 팀이 수백 개여도 화면이 무거워지지 않습니다.
+- Expanding "Finished teams" in the channel list shows the 20 most recent, and **View all** at the bottom takes you to the full finished-teams page (`#finished`). There you can search, filter by status (Done, Failed, Archived) and by repository, and load 50 more at a time. Teams that were archived after their worktree was cleaned up can also be opened here.
+- The **Cleanup log** tab (`#finished/log`) shows, newest first, the worktrees and branches deleted from the UI, by the Lead, with team buttons, or automatically.
+- Right before deleting a worktree, its changes (committed + uncommitted + new files) are saved to `~/.hivelane/archive/*.patch`. For branches that had unique commits, a commit patch and a restore command (`git branch <name> <sha>`) are saved. You can view them with **View changes** in the cleanup log or the file diff in team details, and the Lead can read them too. To restore, run `git apply <patch>` in the repository.
+- **Auto-cleanup**: worktrees of task teams that finished more than 7 days ago (Settings › Lead & engine › Auto-clean finished team worktrees; 0 turns it off) are saved as patches and deleted. Branches are kept, and locked worktrees or ones with a program running inside are skipped.
+- The UI only loads working teams and recently finished ones (within 7 days or the latest 20), so it stays fast even with hundreds of finished teams.
 
-## 4. PR
+## 4. PRs
 
-등록된 저장소마다 2분에 한 번 `gh pr list` 로 열린 PR과 최근 병합/닫힌 PR을 가져옵니다.
-PR을 누르면 검사(로그 링크)·리뷰·병합 가능 상태가 펼쳐지고, 병합 방식(병합 커밋·스쿼시·리베이스)을 골라 병합할 수 있습니다. 휴대폰에서도 됩니다. 보호 규칙·충돌은 GitHub가 거절하고 이유를 보여 줍니다.
+For each registered repository, open PRs and recently merged/closed PRs are fetched with `gh pr list` every 2 minutes.
+Click a PR to expand its checks (with log links), reviews and mergeability, then pick a merge method (Merge commit, Squash, Rebase) and merge. This works from your phone, too. If protection rules or conflicts get in the way, GitHub refuses and the reason is shown.
 
-사이드바 아래 **저장소** 줄은 5분마다 `git fetch` 해서 앞섬/뒤처짐/안 커밋한 파일 수를 보여 주고, 뒤처졌으면 pull 버튼이 나옵니다.
+The **repository** lines at the bottom of the sidebar run `git fetch` every 5 minutes to show ahead/behind counts and the number of uncommitted files; if you're behind, a **Pull** button appears.
 
-## 5. 스크립트 버튼
+## 5. Script buttons
 
-자주 쓰는 터미널 명령을 버튼으로 만들어 두고 맥·휴대폰에서 실행합니다.
+Turn terminal commands you use often into buttons and run them from your Mac or phone.
 
-1. **스크립트 › 추가**(맥에서): 프로젝트, 이름, 명령, 실행 폴더. 「package.json 스크립트에서 고르기」로 `npm run …` 을 바로 고를 수 있습니다.
-2. 운영 배포·DB처럼 위험한 명령은 **실행 전 확인**을 켭니다(이름에 prod·deploy·db: 등이 있으면 자동으로 켜짐).
-3. 실행하면 출력이 실시간으로 흐르고, 종료 코드와 최근 10번 기록이 남습니다. 1시간 넘으면 멈춥니다. `sudo`·`rm -rf /` 는 막혀 있습니다.
+1. **Scripts › Add** (on the Mac): project, name, command, working folder. "Pick from package.json scripts" lets you choose an `npm run …` directly.
+2. For risky commands like production deploys or databases, turn on **Confirm before running** (it's turned on automatically if the name contains prod, deploy, db:, etc.).
+3. When it runs, the output streams in real time, and the exit code and the last 10 runs are kept. It's stopped after 1 hour. `sudo` and `rm -rf /` are blocked.
 
-## 6. 사이드바 상태줄
+## 6. Sidebar status lines
 
-| 줄 | 내용 |
+| Line | Contents |
 | --- | --- |
-| 여유/주의/과부하 · CPU · 메모리 | 총괄 엔진이 보는 구간. 누르면 맥에서 누가 쓰는지(Claude Code 세션·앱·Hivelane 팀별) |
-| 토큰 | Claude 플랜 한도 대비 사용률과 초기화 시점. 5분마다 갱신(토큰을 쓰지 않는 조회) |
-| 인증 | Claude 로그인 만료일(그 전에 재인증하면 연장). **재인증**을 누르면 `claude auth login` 과 같은 로그인을 화면에서 진행합니다(링크 열기 → 로그인 → 코드가 보이면 붙여 넣기) |
+| OK / Busy / Overloaded · CPU · Memory | The zone the Lead engine sees. Click to see who's using your Mac (Claude Code sessions, apps, each Hivelane team) |
+| Tokens | Usage against your Claude plan limit and when it resets. Refreshed every 5 minutes (a lookup that uses no tokens) |
+| Auth | When your Claude login expires (re-authenticating before then extends it). **Re-authenticate** runs the same login as `claude auth login` from the UI (open the link → log in → if a code appears, paste it) |
 
-## 7. 설정
+## 7. Settings
 
-| 구역 | 내용 |
+| Section | Contents |
 | --- | --- |
-| 화면 | 언어(한국어·English · 처음에는 맥·브라우저 언어를 따름), 테마 11가지(기본 + 프리셋 10)와 영역별 글자 크기(왼쪽 목록·페이지·대화·입력칸) · 모두 이 기기에만 저장 |
-| 총괄·엔진 | AI 답변·알림 언어(한국어·English · 총괄·팀이 답하는 말과 알림·시스템 메시지, 화면 언어와 따로), 총괄 모델, 팀 구성 자동 승인, 업무 기본 예산, 맥락 한도, 끝난 팀 worktree 자동 정리(기본 7일) · 노랑/빨강 구간 기준, 동시 실행 팀 수, 무거운 명령 슬롯 |
-| AI 계정 | 탭으로 나눔(「기본·전환」 · 계정마다 한 탭 · 「+ 계정 추가」) · Claude 계정을 여러 개 연결(계정마다 로그인 정보를 따로 둠 · 로그인 버튼 → 브라우저에서 승인) · Codex(ChatGPT·OpenAI) 계정도 추가(기기 코드 로그인 또는 API 키 · 「이 맥 Codex」는 ~/.codex) · 내 Claude 계정을 추가하면 「이 맥 기본 계정」(~/.claude, 터미널 Claude Code 와 같은 로그인)은 숨김 · 계정별 플랜 사용량(Codex 는 5시간·주간) · 사용량 기준 전환은 고른 계정을 그대로 두고 기준을 넘는 동안만 다음 계정을 빌려 씀 · 기본 계정·총괄 계정 고르기 · 계정을 바꿔도 대화 기록 파일을 새 계정 쪽으로 옮겨 같은 대화로 이어 감(기록을 못 찾을 때만 요약으로 새 대화) |
-| 프로젝트 | 저장소(Finder에서 고르기 · git 이 아니면 여기서 git 시작하기 · 원격이 없으면 「원격 연결」로 GitHub 에 새로 만들거나 기존 주소 연결), 기준 브랜치, 팀 작업 폴더의 패키지(node_modules 연결·새로 설치·안 함), 의존성 방식, 기본 템플릿, git 권한, 보호 브랜치, 막을/무거운 명령 |
-| 직속 팀 | 만들기·종료 |
-| 알림 | 읽지 않은 답 다시 알림 간격, 슬랙 웹훅, 웹 푸시 |
-| 원격 접속 | 주인 Tailscale 계정 |
-| 검색 | 총괄이 지난 기록(팀 대화·요약·바뀐 파일·배운 것·총괄 대화)을 찾을 때. 기록은 생길 때 자동으로 색인되고, 벡터가 빠진 기록은 10분마다 채웁니다. 색인 상태(벡터 수·모델·마지막 색인·오류)를 보여 줍니다. 벡터 검색(Ollama 또는 Voyage), 없으면 전문 검색만. Ollama 는 설정 › 검색에서 설치(brew)·켜기·모델 받기를 버튼으로 하고, Hivelane 이 켜질 때 같이 켜고 꺼질 때 같이 끕니다(Homebrew 자체는 관리자 비밀번호가 필요해 터미널에서 직접) |
-| 저장 공간 | DB 안에서 무엇이 얼마나 차지하는지(진행 기록·색인·대화 등), 폴더(worktree·패치·로그·이미지)·Ollama 모델 크기, DB 압축 |
-| 백업 | 대화·요약·진행 기록·설정·올린 이미지를 파일 하나(tar.gz)로 · 자동 백업(끄기/몇 시간마다(30분·1·2·3·6·12시간)/매일/매주·요일·시각, 놓치면 깨어날 때 바로, 바뀐 것 없으면 건너뜀) · 최근 N개 보관 · 저장소: 이 맥 폴더 · 시놀로지 NAS(Finder 로 연결한 폴더 또는 WebDAV) · AWS S3(호환 포함), 여러 곳 동시 · 비밀번호·비밀 키는 맥 키체인 · 「열어 보기」로 그 시점 팀 대화·요약·진행 기록·총괄 대화를 읽기 전용으로 · 「복구」는 직전 상태를 먼저 백업하고 서버를 다시 띄워 바꿔 끼움(설정은 ~/.hivelane/backup.json 이라 복구해도 그대로) |
-| 팀 템플릿 | 역할(이름·모델·계정·실행 방식·도구·지시문) 묶음 · 계정을 비우면 기본 계정, Agent 도구로 부르는 팀원은 PM 계정 · Codex 계정은 「독립 세션」 팀원만 고를 수 있음(도구 읽기 → 읽기 전용 샌드박스, 검증·쓰기 → 작업 폴더만 쓰기 가능 · 네트워크 끔 · 모델은 Codex 기본값) |
+| Display | Language (한국어 / English · by default the language chosen on the Mac app's setup screen), 11 themes (Default + 10 presets) and text size per area (left list, page, chat, input box) · all saved on this device only |
+| Lead & engine | AI reply & notification language (한국어 / English · the language the Lead and teams answer in and that notifications and system messages use, separate from the screen language; by default the language chosen on the Mac app's setup screen (English if none)), Lead model, auto-approve team plans, default task budget, context limit, auto-clean finished team worktrees (7 days by default) · yellow/red zone thresholds, number of concurrent teams, heavy command slots |
+| AI accounts | Organized in tabs ("Default & switching" · one tab per account · "+ Add account") · connect several Claude accounts (each keeps its own login · Log in button → approve in the browser) · add Codex (ChatGPT / OpenAI) accounts too (device code login or API key · "This Mac's Codex" uses ~/.codex) · once you add your own Claude account, "This Mac's default account" (~/.claude, the same login as Claude Code in the terminal) is hidden · plan usage per account (5-hour and weekly for Codex) · usage-based switching keeps the accounts you picked and only borrows the next account while one is over the threshold · choose the default account and the Lead account · when an account changes, the conversation file is moved to the new account so the same conversation continues (a new conversation from a summary only if the file can't be found) |
+| Projects | Repository (choose in Finder · "Initialize git here" if it isn't a git repository · if there's no remote, "Connect remote" creates a new one on GitHub or links an existing URL), base branch, packages in team worktrees (link node_modules, install fresh, or none), dependency mode, default template, git permissions, protected branches, blocked/heavy commands |
+| Standing teams | Create and shut down |
+| Notifications | Reminder interval for unread replies, Slack webhook, web push |
+| Remote access | Owner Tailscale account |
+| Search | Used when the Lead looks up past records (team conversations, summaries, changed files, what it has learned, Lead conversations). Records are indexed automatically as they're created, and records missing vectors are filled in every 10 minutes. Shows index status (vector count, model, last indexed, errors). Vector search (Ollama or Voyage), otherwise full-text search only. Ollama can be installed (brew), started and its model downloaded with buttons in Settings › Search; Hivelane starts it when it starts and stops it when it stops (Homebrew itself needs your admin password, so install it yourself in a terminal) |
+| Storage | What takes up how much space in the DB (activity logs, indexes, conversations, etc.), folder sizes (worktrees, patches, logs, images) and Ollama model size, DB compaction |
+| Backup | Conversations, summaries, activity logs, settings and uploaded images in a single file (tar.gz) · automatic backup (off / every few hours (30 min, 1, 2, 3, 6, 12 hours) / daily / weekly · day and time; if missed, runs as soon as the Mac wakes; skipped if nothing changed) · keep the latest N · destinations: a folder on this Mac · Synology NAS (a folder connected in Finder, or WebDAV) · AWS S3 (including compatible services), several at once · passwords and secret keys are stored in the macOS Keychain · "Browse" shows that point in time's team conversations, summaries, activity logs and Lead conversations read-only · "Restore" first backs up the current state, then restarts the server and swaps it in (settings live in ~/.hivelane/backup.json, so they stay the same after a restore) |
+| Team templates | A set of roles (name, model, account, run mode, tools, instructions) · an empty account means the default account; members called through the Agent tool use the PM's account · Codex accounts can only be picked for "Separate session" members (read tools → read-only sandbox, verify/write → write access to the worktree only · network off · model is the Codex default) |
 
-## 8. AI 계정과 모델 — 팀·역할마다 고르고, 한도가 차도 이어서
+## 8. AI accounts and models
 
-Hivelane은 **누가(어느 계정으로) 어떤 모델로** 일할지를 팀과 역할 단위로 정합니다.
+Hivelane decides **who (which account) works with which model** per team and per role, and keeps work going when an account hits its limit.
 
-### 계정 연결 (설정 › AI 계정)
+### Connecting accounts (Settings › AI accounts)
 
-| 종류 | 연결 방법 | 쓸 수 있는 곳 |
+| Type | How to connect | Where it can be used |
 | --- | --- | --- |
-| Claude | 「+ 계정 추가」 › Claude › 「로그인」 → 브라우저에서 승인(코드가 보이면 붙여 넣기) | 총괄 · PM · 모든 팀원 |
-| Codex(OpenAI) | 「+ 계정 추가」 › Codex › 「로그인」 → 링크를 열어 화면의 일회용 코드 입력, 또는 OpenAI API 키 | PM 이 일을 맡기는 「독립 세션」 팀원 |
+| Claude | "+ Add account" › Claude › "Log in" → approve in the browser (if a code appears, paste it) | Lead · PM · all team members |
+| Codex (OpenAI) | "+ Add account" › Codex › "Log in" → open the link and enter the one-time code shown, or use an OpenAI API key | "Separate session" members that a PM delegates work to |
 
-- 계정마다 로그인 정보를 따로 둡니다(`~/.hivelane/accounts/…`). 회사·개인 계정을 함께 연결해 둘 수 있습니다.
-- 계정 탭마다 **플랜 사용량**(5시간·주간 %)과 초기화 시각이 보입니다.
-- 내 Claude 계정을 추가하면 「이 맥 기본 계정」(터미널 Claude Code 와 같은 로그인)은 숨깁니다. 터미널에서 `/login` 으로 계정을 바꿔도 팀 계정은 그대로입니다.
+- Each account keeps its own login (`~/.hivelane/accounts/…`). You can connect work and personal accounts side by side.
+- Each account tab shows **plan usage** (5-hour and weekly %) and when it resets.
+- Once you add your own Claude account, "This Mac's default account" (the same login as Claude Code in the terminal) is hidden. Switching accounts with `/login` in the terminal doesn't change the team accounts.
 
-### 누가 어떤 계정·모델을 쓰나
+### Who uses which account and model
 
-| 대상 | 정하는 곳 | 모델 | 계정 |
+| Who | Where it's set | Model | Account |
 | --- | --- | --- | --- |
-| 총괄 | 설정 › 총괄·엔진(모델), 설정 › AI 계정(총괄 계정) | Opus/Sonnet/Haiku | 총괄 계정(비우면 기본 계정) |
-| 팀의 PM | 팀 템플릿의 `pm` 역할 | 역할마다 | 역할마다(비우면 기본 계정) |
-| 독립 세션 팀원 | 팀 템플릿 역할(실행 방식 「독립 세션」) | 역할마다 | 역할마다 · **Codex 계정도 가능** |
-| 서브에이전트 팀원 | 팀 템플릿 역할(실행 방식 「서브에이전트」) | 역할마다 | PM 과 같은 계정 |
+| Lead | Settings › Lead & engine (model), Settings › AI accounts (Lead account) | Opus/Sonnet/Haiku | Lead account (default account if empty) |
+| A team's PM | The `pm` role in the team template | Per role | Per role (default account if empty) |
+| Separate session members | A role in the team template (run mode "Separate session") | Per role | Per role · **Codex accounts allowed** |
+| Subagent members | A role in the team template (run mode "Subagent") | Per role | Same account as the PM |
 
-예를 들어 「PM 은 Opus·회사 계정, 개발은 Sonnet·개인 계정, 검토는 Codex」처럼 한 팀 안에서도 섞을 수 있습니다. 총괄이 팀을 제안할 때 템플릿의 구성을 따르고, 제안 카드에서 고칠 수 있습니다.
+For example, you can mix within a single team: "PM on Opus with the work account, developer on Sonnet with the personal account, reviews by Codex". When the Lead proposes a team it follows the template's setup, and you can change it on the proposal card.
 
-### 한도가 차면 — 사용량 기준 전환과 대화 이어 쓰기
+### When a limit is reached: usage-based switching and continuing conversations
 
-1. 설정 › AI 계정 › 「기본·전환」에서 방식(끄기 · 알림 후 한 번 눌러 전환 · 자동)과 기준(예: 90%), 바꿀 순서를 정합니다.
-2. 어떤 계정의 사용량이 기준을 넘으면, **설정은 그대로 둔 채** 그 계정을 쓰던 곳만 순서상 다음 계정(로그인돼 있고 기준 아래인 같은 종류)을 빌려 씁니다. 「돌려쓰는 중」으로 보입니다.
-3. 한도가 초기화돼 원래 계정이 기준 아래로 내려오면 저절로 돌아옵니다.
-4. 계정이 바뀌어도 **하던 대화(세션)를 그대로 이어 갑니다.** 대화 기록 파일을 새 계정 쪽으로 옮겨 쓰기 때문에, 팀원이 처음부터 다시 설명을 들을 필요가 없습니다(기록을 못 찾을 때만 요약을 넘겨받아 새로 시작).
+1. In Settings › AI accounts › "Default & switching", choose the mode (Off · Notify, switch with one click · Switch automatically), the threshold (e.g. 90%) and the switch order.
+2. When an account's usage goes over the threshold, **your settings stay as they are**; only the places that were using that account borrow the next account in order (logged in, below the threshold, and of the same kind). It shows as "Borrowing".
+3. When the limit resets and the original account drops below the threshold, it switches back automatically.
+4. Even when the account changes, **the ongoing conversation (session) continues as is.** The conversation file is moved over to the new account, so members don't need to be briefed again from scratch (only if the file can't be found do they start over with a handed-over summary).
 
-Claude 계정끼리, Codex 계정끼리만 바꿔 씁니다. 같은 사람이 구독을 여러 개 만들어 한도를 피하는 것은 서비스 약관에 어긋날 수 있으니 회사·개인처럼 실제로 다른 계정을 연결하세요.
+Switching only happens between Claude accounts, or between Codex accounts. Creating several subscriptions as the same person to get around limits may violate the services' terms, so connect accounts that are genuinely different, such as work and personal.
 
-## 9. 안전장치
+## 9. Safety rails
 
-- 팀은 자기 worktree 밖에 쓸 수 없습니다(쓰기 도구·셸 리다이렉션 가드).
-- 기본으로 커밋·푸시·reset·rebase·worktree 조작·운영 DB/배포·sudo를 막습니다(프로젝트마다 조정). **병합은 사람이 합니다.**
-- 업무마다 비용 상한을 둘 수 있고, 넘으면 사람에게 묻습니다.
-- 원격은 주인 계정만 허용합니다. 설정 변경은 맥에서만 됩니다.
-- 총괄의 지우기 작업(git 정리, 직속 팀 종료 등)은 내가 보낸 메시지에 대한 턴에서만 실행됩니다. 다른 Claude 세션이 쓰고 있을 수 있는 worktree·브랜치는 남깁니다.
+- Teams can't write outside their own worktree (guards on write tools and shell redirection).
+- By default, commits, pushes, reset, rebase, worktree operations, production DB/deploy commands and sudo are blocked (adjustable per project). **Merging is done by a human.**
+- You can set a cost cap per task; when it's exceeded, a human is asked.
+- Remote access is allowed only for the owner account. Settings can only be changed on the Mac.
+- The Lead's deleting actions (git cleanup, shutting down standing teams, etc.) only run in a turn responding to a message you sent. Worktrees and branches that another Claude session might be using are left alone.

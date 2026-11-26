@@ -64,6 +64,11 @@ export function webBuild(dir: string): string | null {
   try { return readFileSync(join(dir, 'index.html'), 'utf8').match(/\/assets\/[\w.-]+\.js/)?.[0] ?? null; } catch { return null; }
 }
 
+/** index.html 의 <html lang> 을 설정 언어로 바꾸고 data-default-lang 으로 화면에 알린다 */
+export function withLang(html: string, lang: 'ko' | 'en'): string {
+  return html.replace(/<html\b[^>]*>/i, `<html lang="${lang}" data-default-lang="${lang}">`);
+}
+
 export function createApp(d: AppDeps): Hono<Env> {
   const { store, orch, engine, po, search, cfg, notifier } = d;
   const app = new Hono<Env>();
@@ -563,9 +568,13 @@ export function createApp(d: AppDeps): Hono<Env> {
       if (c.req.path.startsWith('/api/')) return;
       c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') && c.res.status === 200 ? 'public, max-age=31536000, immutable' : 'no-cache');
     });
-    app.use('/*', serveStatic({ root: cfg.webDist, rewriteRequestPath: (p) => p }));
+    // index.html 에는 설정 언어를 심어 둔다 → 기기에 고른 화면 언어가 없으면 이 언어로 연다(web/src/i18n.ts)
     const index = join(cfg.webDist, 'index.html');
-    app.get('*', (c) => c.html(readFileSync(index, 'utf8')));
+    const page = (c: Context) => c.html(withLang(readFileSync(index, 'utf8'), store.getSettings().lang ?? 'en'));
+    app.get('/', page);
+    app.get('/index.html', page);
+    app.use('/*', serveStatic({ root: cfg.webDist, rewriteRequestPath: (p) => p }));
+    app.get('*', page);
   } else {
     app.get('/', (c) => c.text(st('화면이 빌드되지 않았습니다. `npm run build` 후 다시 열거나, 개발 중이면 http://127.0.0.1:4311 을 여세요.')));
   }

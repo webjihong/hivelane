@@ -1,55 +1,55 @@
-**한국어** · [English](CHANGELOG.en.md)
+[한국어](CHANGELOG.ko.md) · **English**
 
-# 변경 기록
+# Changelog
 
-버전은 [유의적 버전](https://semver.org/lang/ko/)을 따릅니다: **큰 변화.기능 추가.고침** (예: 1.2.3).
-맥 앱(DMG)은 버전마다 [Releases](https://github.com/webjihong/hivelane/releases)에 올립니다.
+Versions follow [Semantic Versioning](https://semver.org/): **major.feature.fix** (e.g. 1.2.3).
+The Mac app (DMG) for each version is published on [Releases](https://github.com/webjihong/hivelane/releases).
 
 ## 1.0.2 — 2026-11-26
 
-### 고침
-- 「팀 정리」가 이미 지워진 작업 폴더(worktree)에서 실패하던 문제: 폴더가 없거나 git 이 모르면 「이미 정리됨」으로 남기고 보관을 계속합니다. git 정리가 팀 폴더를 지우면 그 팀 기록도 함께 비웁니다.
-- 한 번에 보낼 수 있는 지시·답·총괄 대화가 8,000자로 막히던 것 → 10만 자(상시 지시서는 2만 자). 넘으면 보내기 전에 알기 쉽게 안내합니다.
-- 맥 앱·서비스로 띄운 서버가 맥 언어를 못 읽어 AI 답변·알림 기본 언어를 영어로 잡던 문제 → 맥 시스템 언어로 판단합니다.
-- 기본·총괄 계정 고르기에 Codex 계정이 섞여 보이던 것.
+### Fixed
+- "Clean up team" failed when the worktree had already been removed: if the folder is gone or git no longer knows it, it is recorded as already cleaned and the team is archived. Git cleanup now also clears the team's worktree record when it removes a team folder.
+- Instructions, answers and Lead chat were limited to 8,000 characters → now 100,000 (standing briefs 20,000), with a clear message before sending if you go over.
+- When started as a service or Mac app, the server could not read the Mac language and defaulted AI replies and notifications to English → it now uses the Mac system language.
+- Codex accounts showed up in the default and Lead account pickers.
 
-### 바뀜
-- AI 계정 「바꿀 순서」: Claude·Codex 별 목록으로 나누고, 줄을 잡아 끌어서 순서를 바꿉니다(잡은 줄이 따라오고 다른 줄이 비켜섬, 터치·키보드도).
-- GitHub 릴리스 만들기·올리기·고치기는 막지 않고 사람 승인 1번 뒤 그 명령만 실행합니다. 릴리스 지우기·PR 병합 등은 그대로 막고, 승인해도 실행할 수 없는 명령은 처음부터 「사람이 직접 실행」으로 안내합니다.
+### Changed
+- AI accounts "Switch order": separate Claude and Codex lists, reordered by dragging rows (the row follows your pointer and the others slide aside; touch and keyboard work too).
+- Creating, uploading to or editing a GitHub release is no longer hard-blocked: it runs once after a human approves that exact command. Deleting releases, merging PRs and the like stay blocked, and commands that cannot run even with approval are reported as "a human must run this" instead of asking for approval.
 
 ## 1.0.1 — 2026-11-26
 
-### 한국어·영어
-- 화면 언어: 설정 › 화면 › 언어(한국어 / English). 기기마다 저장하고, 처음에는 맥·브라우저 언어를 따릅니다. 맥 앱의 메뉴 막대·처음 설정 화면도 맥 언어를 따릅니다.
-- AI 답변·알림 언어: 설정 › 총괄·엔진. 영어로 두면 총괄·PM·팀원이 영어로 답하고, 알림·오류·시스템 메시지도 영어로 나옵니다(이미 남은 기록은 그대로).
-- 영어 문서: README.en.md, docs/en(설치·맥 앱·사용 가이드), 영어 화면 스크린샷.
+### Korean and English
+- UI language: Settings › Display › Language (한국어 / English). Saved per device; the first run follows the Mac/browser language. The Mac app's menu bar and first-run setup follow the Mac language.
+- AI reply & notification language: Settings › Lead & engine. Set to English and the Lead, PMs and members answer in English, and notifications, errors and system messages are in English too (existing records stay as they are).
+- English docs: README.en.md, docs/en (install, Mac app, user guide) and English screenshots.
 
-### 그 밖에
-- 글 속 팀 id(tm-…, s-…)를 「팀 이름 · id」 칩으로 보여 주고 누르면 그 팀으로 갑니다. 알림 글에는 「이름(id)」로 씁니다.
-- 앱 버전을 package.json 에서 읽어 화면·연동에 표시합니다.
-- 「팀 정리」: 끝남·실패·멈춤·대기·확인 대기 업무 팀을 단추 하나로 정리(대화 종료 · 작업 폴더는 변경을 패치로 남긴 뒤 삭제, 브랜치는 남김 · 끝난 팀으로). 팀 상세·팀 채널·끝난 팀 목록에서 같고, 「worktree 정리」를 대신합니다. 총괄도 사용자가 닫으라고 하면 같은 일을 합니다(archive_team).
+### Also
+- Team ids in text (tm-…, s-…) are shown as "team name · id" chips that open the team. Notifications write them as "name (id)".
+- The app version is read from package.json and shown in the UI and integrations.
+- "Clean up team": one button for finished, failed, paused, queued or waiting task teams (ends the conversation, saves worktree changes as a patch and deletes the folder while keeping the branch, moves the team to finished teams). Same in team details, the team channel and the finished-teams list; it replaces "Clean up worktree". The Lead does the same when you ask it to close a team (archive_team).
 
 ## 1.0.0 — 2026-11-26
 
-첫 정식 버전입니다.
+The first official release.
 
-### 총괄과 팀
-- 총괄 AI에게 채팅으로 일을 맡기면 팀 구성(PM·개발·QA·리뷰어, 모델, 예산)을 제안하고, 승인하면 팀이 만들어져 일합니다.
-- 팀마다 git worktree에서 따로 일하고, 기획 → 구현 → 검사 → 보고 단계·할 일·팀원별 현재 작업·비용이 실시간으로 보입니다.
-- 팀이 막히면 질문을 올리고, 「지금 볼 것」에서 단추로 답합니다. 운영 DB·배포 명령은 사람 승인 뒤에만 실행됩니다.
-- 직속 팀: 총괄을 거치지 않고 바로 지시하는 상시 팀(점검·긴급 대응), 죽으면 스스로 되살아남.
-- 총괄 엔진: CPU·메모리를 보고 팀을 멈추고 다시 돌림, 무거운 명령(테스트·빌드)은 대기열로.
+### Lead and teams
+- Hand work to the Lead AI in a chat and it proposes a team (PM, developer, QA, reviewer, models, budget); approve it and the team is created and gets to work.
+- Each team works separately in its own git worktree, and its stage (Plan → Build → Check → Report), to-dos, what each member is doing and its cost are shown in real time.
+- When a team gets stuck it posts a question, and you answer with buttons in the Inbox. Production DB and deploy commands run only after human approval.
+- Standing teams: always-on teams you instruct directly without going through the Lead (checks, incident response) that revive themselves if they die.
+- Lead engine: pauses and resumes teams based on CPU and memory, and queues heavy commands (tests, builds).
 
-### AI 계정
-- Claude 계정 여러 개 연결, 역할마다 계정 고르기, 계정별 플랜 사용량.
-- 사용량 기준 전환(끄기·알림 후 한 번 눌러·자동): 기준을 넘으면 다음 계정을 빌려 쓰고 한도가 풀리면 돌아옴. 계정이 바뀌어도 하던 대화는 이어짐.
-- Codex(OpenAI) 계정: PM이 일을 맡기는 독립 세션 팀원으로 실행(작업 폴더 샌드박스·네트워크 끔).
+### AI accounts
+- Connect multiple Claude accounts, pick an account per role, and see plan usage per account.
+- Usage-based switching (Off · Notify, switch with one click · Switch automatically): past the threshold, the next account is borrowed, and the original returns once the limit resets. Ongoing conversations continue even when the account changes.
+- Codex (OpenAI) accounts: run as Separate session members that a PM delegates work to (sandboxed to the worktree, network off).
 
-### 기록과 백업
-- 모든 대화·도구 실행·바뀐 파일·요약을 SQLite에 남기고 한국어 검색(선택: 벡터 검색).
-- 백업: 이 맥 폴더·시놀로지 NAS(연결 폴더·WebDAV)·AWS S3(호환 포함), 30분~매주 자동, 바뀐 것 없으면 건너뜀, 보관 개수, 읽기 전용 「열어 보기」, 복구.
+### Records and backup
+- Every conversation, tool run, changed file and summary is stored in SQLite, with Korean-aware search (optional vector search).
+- Backup: a folder on this Mac, Synology NAS (connected folder or WebDAV) and AWS S3 (including compatible services); automatic every 30 minutes to weekly, skipped when nothing changed, number of backups to keep, read-only "Browse", and restore.
 
-### 화면
-- 메신저형 웹 화면(맥·휴대폰), 휴대폰은 Tailscale로 내 기기만, 웹 푸시·슬랙·맥 알림.
-- 맥 앱(DMG): 처음 설정 안내, 메뉴 막대 벌집 아이콘(일하는 중·확인할 것), 맥 알림.
-- PR(검사·리뷰·병합)·저장소 상태·스크립트 단추·git 정리, 테마 11가지·글자 크기.
+### UI
+- Messenger-style web UI (Mac and phone); phone access limited to your own devices via Tailscale; web push, Slack and macOS notifications.
+- Mac app (DMG): first-run setup guide, honeycomb menu bar icon (working / needs you), macOS notifications.
+- PRs (checks, reviews, merging), repository status, script buttons, git cleanup, 11 themes and text sizes.

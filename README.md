@@ -1,323 +1,325 @@
 <p align="center">
-  <img src="web/public/icon-512.png" width="96" alt="Hivelane 로고" />
+  <img src="web/public/icon-512.png" width="96" alt="Hivelane logo" />
 </p>
 
 <h1 align="center">Hivelane</h1>
 
 <p align="center">
-  <b>내 맥 안에 AI 개발팀을 여러 개 두고, 메신저로 일을 맡기는 관제실</b><br />
-  말로 지시하면 총괄 AI가 팀(PM·개발·QA)을 꾸려 맡기고, 팀들은 동시에 일하며, 나는 결정이 필요할 때만 답합니다.
+  <b>A control room on your Mac: run several AI dev teams and hand them work through a messenger</b><br />
+  Tell the Lead AI what you need. It puts together a team (PM, developer, QA), the teams work in parallel, and you only step in when a decision is needed.
 </p>
 
 <p align="center">
-  <a href="#시작하기">시작하기</a> ·
-  <a href="#할-수-있는-일">할 수 있는 일</a> ·
-  <a href="#비슷한-도구와-무엇이-다른가">비슷한 도구와 차이</a> ·
-  <a href="#자주-묻는-질문">자주 묻는 질문</a> ·
-  <a href="docs/GUIDE.md">사용 가이드</a> ·
-  <a href="https://webjihong.github.io/hivelane/ko/">소개 페이지</a>
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#what-it-can-do">What it can do</a> ·
+  <a href="#how-it-compares-to-similar-tools">Compared with similar tools</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="docs/GUIDE.md">User guide</a> ·
+  <a href="https://webjihong.github.io/hivelane/">Website</a>
 </p>
 
-**한국어** · [English](README.en.md)
+[한국어](README.ko.md) · **English**
 
 <p align="center">
-  <img src="docs/images/po-chat.png" alt="총괄에게 말로 일을 맡기고 팀 상황을 표로 받는 화면" width="900" />
+  <img src="docs/images/en/po-chat.png" alt="Handing work to the Lead in chat and getting a table of team status back" width="900" />
 </p>
 
 ---
 
-## Hivelane이 뭔가요?
+## What is Hivelane?
 
-AI 코딩 도구(Claude Code 등)는 똑똑하지만, **한 번에 한 가지 일을, 내가 터미널 앞에 붙어서** 시켜야 합니다.
-일이 여러 개면 창을 여러 개 띄우고, 누가 뭘 하는지 기억하고, 맥이 느려지면 직접 꺼야 합니다.
+AI coding tools such as Claude Code are smart, but they handle **one task at a time, with you sitting at the terminal**.
+With several tasks, you end up juggling terminal windows, remembering who is doing what, and shutting things down yourself when your Mac slows to a crawl.
 
-Hivelane은 이걸 **회사처럼** 바꿉니다.
+Hivelane turns this into something that works **like a company**.
 
-| 회사에서는 | Hivelane에서는 |
+| At a company | In Hivelane |
 |---|---|
-| 팀장에게 「이거 해 줘」라고 말한다 | **총괄**(AI)에게 채팅으로 말한다 |
-| 팀장이 일에 맞는 팀을 꾸린다 | 총괄이 PM·개발·QA 같은 **팀 구성을 제안**하고, 승인하면 팀이 만들어진다 |
-| 팀은 각자 자리에서 동시에 일한다 | 팀마다 **따로 떨어진 작업 폴더**(git worktree)에서 동시에 일한다 |
-| 결정이 필요하면 나에게 묻는다 | 팀이 막히면 **질문**을 올리고, 나는 단추 하나로 답한다 |
-| 사무실이 붐비면 일정을 조절한다 | **총괄 엔진**이 맥의 CPU·메모리를 보며 팀을 멈추고 다시 돌린다 |
-| 회의록·보고서가 남는다 | 모든 대화·명령·바뀐 파일이 **기록**으로 남고 검색·백업된다 |
+| You tell your manager "please take care of this" | You tell the **Lead** (an AI) in a chat |
+| The manager puts together the right team | The Lead **proposes a team** (PM, developer, QA, …), and the team is created when you approve |
+| Teams work at their own desks at the same time | Each team works at the same time in its **own separate working folder** (git worktree) |
+| When a decision is needed, they ask you | When a team gets stuck it posts a **question**, and you answer with one click |
+| When the office gets crowded, schedules are adjusted | The **Lead engine** watches your Mac's CPU and memory and pauses and resumes teams |
+| Meeting notes and reports are kept | Every conversation, command and changed file is **recorded**, searchable and backed up |
 
-모든 것은 **내 맥에서** 돌아갑니다. 코드와 기록이 다른 서버로 가지 않고, 이미 쓰고 있는 Claude(또는 ChatGPT) 구독을 그대로 씁니다.
+Everything runs **on your Mac**. Your code and records never go to another server, and Hivelane uses the Claude (or ChatGPT) subscription you already have.
 
-### 이런 분께 맞습니다
+### Who it's for
 
-- 맥 한 대로 여러 프로젝트를 동시에 굴리는 **1인 개발자·작은 팀**
-- Claude Code를 이미 쓰는데, **여러 작업을 동시에 맡기고 결과만 확인**하고 싶은 분
-- 출퇴근길에 **휴대폰으로 진행을 보고 답**하고 싶은 분
-- AI가 내 맥에서 일하되 **운영 DB·배포 같은 위험한 일은 꼭 내 승인**을 거치게 하고 싶은 분
+- **Solo developers and small teams** running several projects at once on a single Mac
+- People who already use Claude Code and want to **hand off several tasks at once and just check the results**
+- People who want to **follow progress and answer from their phone** on the go
+- People who want AI working on their Mac, but with **risky things like production databases and deploys always requiring their approval**
 
 ---
 
-## 할 수 있는 일
+## What it can do
 
-### 1. 말로 맡기면, 총괄이 팀을 꾸린다
+### 1. Say what you need, and the Lead builds a team
 
-「결제 끝났는데 주문이 계속 결제 대기로 보인대, 고쳐 줘」처럼 말하면 총괄이 일의 크기를 보고 팀 구성(PM·개발·QA·리뷰어, 모델, 예산)을 제안합니다. 승인하면 팀이 생기고 바로 일을 시작합니다. 「지금 팀들 상황 정리해 줘」라고 물으면 표로 정리해 줍니다(위 화면).
+Say something like "Payment went through, but the order still shows as awaiting payment. Please fix it," and the Lead sizes up the job and proposes a team (PM, developer, QA, reviewer, models, budget). Approve it and the team is created and starts right away. Ask "Give me a rundown of where the teams are" and you get a table (screenshot above).
 
-### 2. 팀은 알아서 일하고, 나는 지켜본다
+### 2. Teams work on their own while you watch
 
-<img src="docs/images/team-detail.png" alt="팀 채널과 팀 상세: 단계, 에이전트별 현재 작업, 요약, 할 일" width="900" />
+<img src="docs/images/en/team-detail.png" alt="Team channel and team details: stage, what each agent is doing, summary, to-dos" width="900" />
 
-팀마다 채널이 있고 **기획 → 구현 → 검사 → 보고** 단계, 할 일 목록, 팀원(에이전트)이 지금 하는 일, 쓴 비용이 실시간으로 보입니다. 팀원을 누르면 어떤 명령을 실행했고 어떤 파일을 고쳤는지까지 볼 수 있습니다. 중간에 끼어들어 직접 지시하거나 멈출 수 있습니다.
+Each team has its own channel where you can see, in real time, its stage (**Plan → Build → Check → Report**), its to-do list, what each member (agent) is doing right now, and how much it has spent. Click a member to see which commands it ran and which files it changed. You can jump in at any time to give instructions directly or pause the team.
 
-### 3. 나는 결정만 한다
+### 3. You only make the decisions
 
-<img src="docs/images/now.png" alt="지금 볼 것: 답이 필요한 질문, 일하는 팀" width="900" />
+<img src="docs/images/en/now.png" alt="Inbox: questions that need an answer, teams at work" width="900" />
 
-「지금 볼 것」에는 **내 답이 필요한 것**과 일하는 팀만 모입니다. 팀의 질문에는 선택지 단추로 바로 답합니다. 답·보고가 오면 맥 알림·휴대폰 푸시·슬랙으로 알려 줍니다.
+The **Inbox** gathers only **what needs your answer**, plus the teams that are working. You answer a team's question right there with option buttons. When answers or reports arrive, you're notified via macOS notifications, phone push notifications or Slack.
 
-### 4. 늘 대기하는 직속 팀
+### 4. Standing teams, always on call
 
-<img src="docs/images/standing-team.png" alt="직속 팀(운영 점검팀)에게 바로 묻고 결론부터 답을 받는 화면" width="900" />
+<img src="docs/images/en/standing-team.png" alt="Asking a standing team (ops check team) directly and getting the conclusion first" width="900" />
 
-서버 점검·긴급 대응처럼 자주 시키는 일은 **직속 팀**을 두고 총괄을 거치지 않고 바로 지시합니다. 답은 늘 「결론 한 줄 + 근거」 형식으로 옵니다. 죽으면 스스로 되살아납니다.
+For things you ask for often, like server checks or incident response, set up a **standing team** and instruct it directly without going through the Lead. Answers always come as "one-line conclusion + supporting evidence". If it dies, it revives itself.
 
-### 5. 휴대폰에서도
+### 5. On your phone, too
 
 <p>
-  <img src="docs/images/mobile.png" alt="휴대폰: 지금 볼 것" width="260" />
+  <img src="docs/images/en/mobile.png" alt="Phone: Inbox" width="260" />
   &nbsp;&nbsp;
-  <img src="docs/images/mobile-team.png" alt="휴대폰: 팀 채널" width="260" />
+  <img src="docs/images/en/mobile-team.png" alt="Phone: team channel" width="260" />
 </p>
 
-[Tailscale](https://tailscale.com)로 내 휴대폰에서만 접속합니다(인터넷에 열지 않음). 홈 화면에 추가하면 앱처럼 쓰고, 푸시 알림도 받습니다. 맥 앱을 쓰면 메뉴 막대의 벌집 아이콘이 일하는 중·확인할 것을 알려 줍니다.
+You connect only from your own phone through [Tailscale](https://tailscale.com) (nothing is exposed to the internet). Add it to your Home Screen to use it like an app and get push notifications. With the Mac app, the honeycomb icon in the menu bar tells you when teams are working and when something needs your attention.
 
-### 6. 맥이 버거워하지 않게 — 총괄 엔진
+### 6. Keeping your Mac from struggling: the Lead engine
 
-5초마다 CPU·메모리를 재서 **여유/주의/위험** 구간에 맞춰 팀 수를 조절합니다. 바쁘면 덜 급한 팀부터 멈추고, 여유가 생기면 다시 돌립니다. 테스트·빌드 같은 무거운 명령은 **대기열**에서 차례로 돌려서 여러 팀이 동시에 빌드해 맥이 멈추는 일을 막습니다.
+Every 5 seconds it measures CPU and memory and adjusts how many teams run according to three zones: **OK / Busy / Overloaded**. When things get busy it pauses the least urgent teams first, and resumes them when there's room again. Heavy commands like tests and builds run one after another from a **queue**, so several teams building at once can't freeze your Mac.
 
-### 7. 기록·검색·백업
+### 7. Records, search and backup
 
-<img src="docs/images/backup.png" alt="설정 › 백업: 자동 백업 주기, 저장소, 백업 목록" width="900" />
+<img src="docs/images/en/backup.png" alt="Settings › Backup: automatic backup schedule, destinations, list of backups" width="900" />
 
-대화·도구 실행·바뀐 파일·요약이 모두 남고 한국어로 검색됩니다(「어제 바뀐 파일 알려줘」). 기록은 **이 맥 폴더 · 시놀로지 NAS · AWS S3**에 30분~1주 간격으로 자동 백업하고, 지금 기록을 건드리지 않고 과거 백업을 **열어 볼** 수 있습니다.
+Conversations, tool runs, changed files and summaries are all kept and searchable in Korean, too ("Which files changed yesterday?"). Records are backed up automatically to **a folder on this Mac, a Synology NAS or AWS S3**, anywhere from every 30 minutes to once a week, and you can **browse** past backups without touching your current records.
 
-### 8. AI 계정·모델을 팀 단위로, 한도가 차도 이어서
+### 8. AI accounts and models per team, and work that continues when limits run out
 
-- **계정 여러 개**: Claude 계정 여러 개와 Codex(OpenAI) 계정을 연결하고, 계정마다 플랜 사용량(5시간·주간 %)을 봅니다.
-- **팀·역할마다 모델과 계정**: 「PM 은 Opus·회사 계정, 개발은 Sonnet·개인 계정, 검토는 Codex」처럼 한 팀 안에서도 역할마다 고릅니다. 총괄도 따로 고릅니다.
-- **토큰 이어 쓰기**: 쓰던 계정이 기준(예: 90%)을 넘으면 다음 계정을 빌려 쓰고, 한도가 풀리면 저절로 돌아옵니다. 계정이 바뀌어도 **하던 대화를 그대로 이어 가서** 팀원이 처음부터 다시 시작하지 않습니다.
+- **Multiple accounts**: Connect several Claude accounts and Codex (OpenAI) accounts, and see each account's plan usage (5-hour and weekly %).
+- **A model and account for each team and role**: Choose per role, even within one team, e.g. "PM on Opus with the work account, developer on Sonnet with the personal account, reviews by Codex". The Lead gets its own choice too.
+- **Uninterrupted tokens**: When the account in use passes a threshold (e.g. 90%), the next account is borrowed, and it switches back automatically once the limit resets. Even when the account changes, **the ongoing conversation continues as is**, so members don't have to start over.
 
-자세한 내용은 [사용 가이드 › AI 계정과 모델](docs/GUIDE.md#8-ai-계정과-모델--팀역할마다-고르고-한도가-차도-이어서).
+For details, see [User guide › AI accounts and models](docs/GUIDE.md#8-ai-accounts-and-models).
 
-### 9. 그 밖에
+### 9. And more
 
-- **PR·저장소·스크립트**: 열린 PR의 검사·리뷰를 보고 병합하고, 자주 쓰는 터미널 명령을 단추로 실행합니다(휴대폰에서도).
-- **안전장치**: 팀은 자기 작업 폴더 밖에 쓸 수 없고, `git push --force`·`rm -rf` 같은 위험 명령은 막힙니다. 운영 DB·배포 명령은 **사람 승인**을 받아야 실행됩니다. 커밋·푸시는 프로젝트마다 허용해야 합니다.
+- **PRs, repositories, scripts**: See checks and reviews on open PRs and merge them, and run frequently used terminal commands with a button (from your phone, too).
+- **Safety rails**: Teams can't write outside their own working folder, and dangerous commands like `git push --force` and `rm -rf` are blocked. Production database and deploy commands only run after **human approval**. Commits and pushes must be allowed per project.
 
 ---
 
-## 어떻게 동작하나
+## How it works
 
 ```mermaid
 flowchart LR
-  me([나<br/>맥·휴대폰]) -- 채팅으로 지시 --> po[총괄 AI]
-  po -- 팀 구성 제안 --> me
-  po -- 승인되면 팀 생성 --> t1 & t2 & t3
-  subgraph mac[내 맥]
+  me([Me<br/>Mac · phone]) -- instructions via chat --> po[Lead AI]
+  po -- team proposal --> me
+  po -- creates team on approval --> t1 & t2 & t3
+  subgraph mac[My Mac]
     direction TB
-    t1[팀 A<br/>PM · 개발 · QA]
-    t2[팀 B<br/>PM · 개발]
-    t3[직속 팀<br/>운영 점검]
-    eng{{총괄 엔진<br/>CPU·메모리 감시<br/>무거운 명령 대기열}}
-    db[(기록<br/>SQLite)]
+    t1[Team A<br/>PM · dev · QA]
+    t2[Team B<br/>PM · dev]
+    t3[Standing team<br/>ops checks]
+    eng{{Lead engine<br/>watches CPU · memory<br/>heavy command queue}}
+    db[(Records<br/>SQLite)]
   end
-  eng -. 멈춤·재개 .-> t1 & t2 & t3
-  t1 & t2 & t3 -- 질문·보고 --> me
+  eng -. pause · resume .-> t1 & t2 & t3
+  t1 & t2 & t3 -- questions · reports --> me
   t1 & t2 & t3 --> db
-  t1 -- git worktree --> repo[(내 저장소)]
+  t1 -- git worktree --> repo[(My repository)]
 ```
 
-- 팀원은 [Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk)(= Claude Code)로 돌고, 원하면 [Codex SDK](https://github.com/openai/codex)로도 돕니다.
-- 업무마다 저장소에서 **새 브랜치 + git worktree**를 만들어 일하므로 내가 작업 중인 폴더나 다른 팀과 섞이지 않습니다.
-- 서버 하나(Node)가 맥에서 상시 돌고, 화면은 그 서버가 주는 웹 페이지(맥 앱은 그 웹을 감싼 것)입니다.
+- Team members run on the [Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk) (= Claude Code), and optionally on the [Codex SDK](https://github.com/openai/codex).
+- Each task gets a **new branch + git worktree** in the repository, so it never mixes with the folder you're working in or with other teams.
+- A single server (Node) runs on your Mac at all times, and the UI is a web page served by that server (the Mac app is a wrapper around that web page).
 
 ---
 
-## 비슷한 도구와 무엇이 다른가
+## How it compares to similar tools
 
-여러 AI 코딩 에이전트를 동시에 돌리는 도구는 이미 여럿 있습니다. 대부분은 **「세션을 여러 개 띄워 주는」** 데 집중하고, Hivelane은 그 위에 **「일을 나누고 관리하는 쪽」**을 얹습니다.
+There are already several tools for running multiple AI coding agents at once. Most focus on **"launching lots of sessions for you"**; Hivelane adds **"dividing up and managing the work"** on top of that.
 
-| | Claude Code 그대로 | 병렬 실행 도구<br/>(예: [Conductor](https://www.conductor.build), [Claude Squad](https://github.com/smtg-ai/claude-squad), Crystal, Vibe Kanban) | 클라우드 에이전트<br/>(예: Codex cloud, Devin) | **Hivelane** |
+| | Plain Claude Code | Parallel-session tools<br/>(e.g. [Conductor](https://www.conductor.build), [Claude Squad](https://github.com/smtg-ai/claude-squad), Crystal, Vibe Kanban) | Cloud agents<br/>(e.g. Codex cloud, Devin) | **Hivelane** |
 |---|---|---|---|---|
-| 일을 나누는 사람 | 나 | 나(세션마다 직접 시킴) | 나(작업마다) | **총괄 AI가 팀 구성 제안**, 나는 승인 |
-| 한 작업 안의 역할 | 에이전트 하나(+서브에이전트) | 세션마다 에이전트 하나 | 에이전트 하나 | **PM이 개발·QA·리뷰어에게 나눠 맡김** |
-| 작업 격리 | 같은 폴더 | git worktree | 클라우드 컨테이너 | git worktree |
-| 맥 부하 관리 | 없음 | 대체로 없음 | 해당 없음(클라우드) | **CPU·메모리 보고 팀 멈춤·재개, 무거운 명령 대기열** |
-| 사람 확인 | 터미널에서 대답 | 앱에서 세션별로 | 웹에서 | **「지금 볼 것」에 질문만 모아 단추로 답** · 운영 명령은 승인 필수 |
-| 휴대폰 | 제한적 | 대체로 데스크톱 전용 | 웹 | **메신저형 웹 + 푸시 알림**(Tailscale) |
-| 늘 대기하는 팀 | 없음 | 없음 | 없음 | **직속 팀**(점검·긴급 대응, 스스로 되살아남) |
-| 모델·계정 정하는 단위 | 세션마다 하나 | 세션(작업)마다 하나 | 작업마다 | **팀 안의 역할마다** 모델·계정(Claude·Codex 섞기) |
-| 사용 한도가 찼을 때 | 기다리거나 직접 다시 로그인 | 기다리거나 직접 바꿈 | 요금제에 따름 | **다음 계정으로 자동 전환, 하던 대화 그대로 이어감** · 한도 풀리면 원래 계정으로 |
-| 기록 | 세션 기록 | 세션별 | 서비스 안 | **모든 대화·명령·변경 검색 + NAS/S3 백업** |
-| 코드·데이터 위치 | 내 맥 | 내 맥 | 클라우드 | 내 맥 |
-| 비용 | 내 구독 | 내 구독(+앱 요금이 있는 경우) | 별도 요금 | 내 Claude·ChatGPT 구독 그대로, Hivelane은 무료(MIT) |
+| Who divides up the work | You | You (instructing each session yourself) | You (per task) | **The Lead AI proposes the team**, you approve |
+| Roles within one task | One agent (+ subagents) | One agent per session | One agent | **A PM delegates to developer, QA and reviewer** |
+| Task isolation | Same folder | git worktree | Cloud container | git worktree |
+| Mac load management | None | Mostly none | N/A (cloud) | **Pauses and resumes teams based on CPU and memory, heavy command queue** |
+| Human check-ins | Answer in the terminal | Per session in the app | On the web | **Only questions gathered in the Inbox, answered with buttons** · approval required for production commands |
+| Phone | Limited | Mostly desktop-only | Web | **Messenger-style web + push notifications** (Tailscale) |
+| Always-on teams | None | None | None | **Standing teams** (checks and incident response, revive themselves) |
+| Unit for choosing model and account | One per session | One per session (task) | Per task | Model and account **per role within a team** (mix Claude and Codex) |
+| When usage limits run out | Wait, or log in again yourself | Wait, or switch yourself | Depends on your plan | **Switches to the next account automatically, conversation continues as is** · switches back once the limit resets |
+| Records | Session history | Per session | Inside the service | **Search across every conversation, command and change + NAS/S3 backups** |
+| Where code and data live | Your Mac | Your Mac | Cloud | Your Mac |
+| Cost | Your subscription | Your subscription (+ app fees in some cases) | Separate fees | Your existing Claude / ChatGPT subscription; Hivelane itself is free (MIT) |
 
-> 다른 도구의 내용은 2026년 11월에 각 도구의 공개 자료로 확인한 것을 줄인 것이라 지금과 다를 수 있습니다. 세션을 직접 하나하나 다루는 게 편하다면 병렬 실행 도구가, 맥이 꺼져 있어도 돌아가야 한다면 클라우드 에이전트가 더 맞을 수 있습니다.
+> Information about other tools is a summary of what their public materials said as of November 2026, so it may have changed since. If you prefer handling each session yourself, a parallel-session tool may suit you better; if work has to continue while your Mac is off, a cloud agent may be a better fit.
 
-**한 줄로**: 다른 도구가 「AI 작업자 여러 명을 띄워 주는 책상」이라면, Hivelane은 「팀장과 팀이 있는 작은 회사를 맥 안에 차려 주는 것」에 가깝습니다.
+**In one line**: if other tools are "a desk that spawns several AI workers," Hivelane is closer to "setting up a small company, with a manager and teams, inside your Mac."
 
 ---
 
-## 시작하기
+## Getting started
 
-준비물: **macOS**(Apple Silicon 권장), **Claude 구독**(Pro·Max 등, `claude` 로그인만 되면 되고 API 키는 필요 없음). Codex를 쓰려면 ChatGPT 구독 또는 OpenAI API 키.
+You'll need **macOS** (Apple Silicon recommended) and a **Claude subscription** (Pro, Max, etc.; you just need to be logged in to `claude`, no API key required). To use Codex, you'll also need a ChatGPT subscription or an OpenAI API key.
 
-### Homebrew로 설치(가장 쉬움) — 업데이트도 한 줄
+### Install with Homebrew (easiest) — one-line updates
 
 ```bash
 brew tap webjihong/hivelane https://github.com/webjihong/hivelane
 brew trust webjihong/hivelane     # Homebrew 7+: allow this tap
 brew install --cask hivelane
 
-# 새 버전이 나오면
+# when a new version is out
 brew upgrade --cask hivelane
 ```
 
-설치한 뒤 Hivelane을 열고 「서버 설치하고 시작」을 누릅니다. 업데이트하면 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다. 처음 한 번은 DMG와 같이 「그래도 열기」가 필요합니다(아직 Apple 공증 전).
+Open Hivelane and click "Install server and start". After an update the server restarts on the new version by itself once no team is working. Like the DMG, the first launch needs "Open Anyway" once (not notarized yet).
 
-### 맥 앱으로 설치(권장) — 터미널 없이
+### Install the Mac app (recommended), no terminal needed
 
-1. **[최신 버전 받기](https://github.com/webjihong/hivelane/releases/latest)** 에서 `Hivelane-<버전>-arm64.dmg`를 받습니다.
-2. DMG를 열어 Hivelane을 **응용 프로그램** 폴더로 끌어 놓습니다.
-3. 처음 열 때 「확인되지 않은 개발자」 경고가 뜨면 **시스템 설정 › 개인정보 보호 및 보안 › 그래도 열기**를 한 번 누릅니다.
-4. 안내 화면에서 **「서버 설치하고 시작」**을 누르고, Claude 로그인을 마칩니다.
+1. Download `Hivelane-<version>-arm64.dmg` from **[the latest release](https://github.com/webjihong/hivelane/releases/latest)**.
+2. Open the DMG and drag Hivelane into your **Applications** folder.
+3. If you get an "unidentified developer" warning the first time you open it, click **System Settings › Privacy & Security › Open Anyway** once.
+4. On the setup screen, click **"Install server and start"**, then finish logging in to Claude.
 
-Node.js 같은 다른 프로그램은 설치하지 않아도 됩니다. 처음 보는 분 기준의 자세한 설명(휴대폰 연결, 새 버전으로 바꾸기, 지우기)은 **[맥 앱 가이드](docs/MAC_APP.md)**에 있습니다. 버전별 바뀐 점은 [변경 기록](CHANGELOG.md)에 있습니다.
+You don't need to install anything else, such as Node.js. A detailed walkthrough for first-timers (connecting your phone, updating to a new version, uninstalling) is in the **[Mac app guide](docs/MAC_APP.md)**. What changed in each version is in the [changelog](CHANGELOG.md).
 
 <details>
-<summary><b>소스로 설치(선택) — 코드를 고치거나 직접 빌드하고 싶은 개발자용</b></summary>
+<summary><b>Install from source (optional): for developers who want to modify the code or build it themselves</b></summary>
 
-Node 22 이상과 git이 필요합니다.
+You'll need Node 22 or later and git.
 
 ```bash
 git clone https://github.com/webjihong/hivelane.git
 cd hivelane
 npm install
-npm run service:install   # 화면 빌드 → 맥 로그인 때 자동 실행(launchd) → (있으면) 휴대폰용 tailscale serve
+npm run service:install   # builds the UI → starts automatically when you log in to your Mac (launchd) → tailscale serve for your phone (if installed)
 open http://127.0.0.1:4310
 ```
 
-자세한 내용(상시 실행, 휴대폰 연결, 업데이트·제거, 문제 해결)은 **[설치 가이드](docs/INSTALL.md)**.
+For details (always-on mode, phone access, updating and uninstalling, troubleshooting), see the **[installation guide](docs/INSTALL.md)**.
 
 </details>
 
-### 처음 5분
+### Your first 5 minutes
 
-1. **설정 › 프로젝트**에서 일을 시킬 git 저장소를 고릅니다(Finder로 폴더 선택).
-2. **총괄** 채널에 할 일을 말합니다. 예: 「shop-web 상품 목록이 느려, 원인 찾아서 고쳐 줘」
-3. 총괄이 제안한 팀 구성 카드에서 **승인**을 누릅니다.
-4. 팀 채널에서 진행을 보고, 질문이 오면 답합니다. 끝나면 보고와 바뀐 파일이 남습니다.
+1. In **Settings › Projects**, pick the git repository you want teams to work on (choose the folder in Finder).
+2. Tell the **Lead** channel what you want done. For example: "The product list in shop-web is slow. Find the cause and fix it."
+3. On the team proposal card from the Lead, click **Approve and start**.
+4. Follow progress in the team channel and answer any questions. When the team finishes, its report and changed files are kept.
+
+> The UI follows your Mac or browser language the first time (Korean or English). AI replies and notifications are Korean by default; to get them in English, set **Settings › Lead & engine › AI reply & notification language** to English.
 
 ---
 
-## 먼저 알아 둘 것
+## Good to know
 
-- Hivelane은 **AI가 내 맥에서 파일을 고치고 명령을 실행**하게 합니다. 가드(작업 폴더 밖 쓰기 금지, 위험 명령 차단, 운영 명령 승인)가 있지만 완벽하지 않습니다. 중요한 저장소는 백업하고, 프로젝트 설정의 「막을 명령」을 확인하세요.
-- 팀은 **내 Claude(또는 ChatGPT) 구독 사용량**을 씁니다. 여러 팀을 동시에 돌리면 한도에 빨리 닿습니다. 업무마다 예산 상한을 둘 수 있고, 사이드바에서 사용량(%)을 봅니다.
-- 원격 접속은 **내 Tailscale 네트워크 안에서만**, 등록한 주인 계정만 허용합니다. 인터넷에 직접 열지 마세요.
+- Hivelane lets **AI modify files and run commands on your Mac**. There are guards (no writing outside the working folder, dangerous commands blocked, approval for production commands), but they're not perfect. Back up important repositories and review the "Blocked commands" in each project's settings.
+- Teams use **your Claude (or ChatGPT) subscription usage**. Running many teams at once will hit your limits quickly. You can set a budget cap per task, and see usage (%) in the sidebar.
+- Remote access is allowed **only within your Tailscale network**, and only for the registered owner account. Don't expose it directly to the internet.
 
-## 자주 묻는 질문
+## FAQ
 
 <details>
-<summary><b>API 키가 있어야 하나요? 비용은 얼마나 드나요?</b></summary>
+<summary><b>Do I need an API key? How much does it cost?</b></summary>
 
-필요 없습니다. 맥에서 `claude`(Claude Code)에 로그인돼 있으면 그 구독으로 돕니다. Hivelane 자체는 무료(MIT)입니다. 비용은 구독 사용량으로 나가고, 화면에 팀별 사용 금액(환산)과 플랜 사용량(%)이 보입니다.
+No. If you're logged in to `claude` (Claude Code) on your Mac, Hivelane runs on that subscription. Hivelane itself is free (MIT). Costs come out of your subscription usage, and the UI shows each team's spend (estimated in dollars) and your plan usage (%).
 </details>
 
 <details>
-<summary><b>Windows·Linux에서도 되나요?</b></summary>
+<summary><b>Does it work on Windows or Linux?</b></summary>
 
-지금은 macOS만 지원합니다(launchd 상시 실행, 맥 알림·메뉴 막대, 잠자기 방지 등 맥 기능을 씁니다).
+Only macOS is supported for now (it relies on Mac features such as launchd for always-on running, macOS notifications and the menu bar, and sleep prevention).
 </details>
 
 <details>
-<summary><b>맥이 꺼지거나 잠들면요?</b></summary>
+<summary><b>What if my Mac shuts down or goes to sleep?</b></summary>
 
-서버가 도는 동안은 잠자기를 막습니다(전원 연결 시). 꺼졌다 켜지면 서버가 저절로 다시 뜨고, 하던 팀은 이어서 진행합니다. 놓친 자동 백업도 깨어나는 대로 합니다.
+While the server is running, it keeps your Mac from sleeping (when plugged in). After a shutdown and restart, the server comes back up on its own and teams pick up where they left off. Any automatic backups that were missed run as soon as the Mac wakes up.
 </details>
 
 <details>
-<summary><b>AI가 내 코드를 망가뜨리면요?</b></summary>
+<summary><b>What if the AI breaks my code?</b></summary>
 
-팀은 업무마다 만든 별도 브랜치·작업 폴더에서만 고치므로 내 작업 폴더와 main 브랜치는 그대로입니다. 커밋·푸시는 프로젝트에서 허용해야 하고, 끝난 팀의 작업 폴더는 변경을 패치로 남긴 뒤 정리합니다.
+Teams only make changes in a separate branch and working folder created for each task, so your own working folder and main branch stay untouched. Commits and pushes must be allowed per project, and a finished team's working folder is cleaned up only after its changes are saved as a patch.
 </details>
 
 <details>
-<summary><b>이미 Claude Code의 서브에이전트·병렬 세션을 쓰고 있는데요?</b></summary>
+<summary><b>I already use Claude Code subagents and parallel sessions. Why this?</b></summary>
 
-그대로 씁니다. Hivelane의 팀원이 곧 Claude Code이고, 내 Claude Code 설정·플러그인·MCP를 쓰게 할 수도 있습니다(팀마다 「작업 환경」). Hivelane은 그 위에서 일을 나누고, 맥 부하를 조절하고, 질문·보고·기록을 한곳에 모으는 역할을 합니다.
+You keep using them. Hivelane's team members are Claude Code, and you can even let them use your own Claude Code settings, plugins and MCP servers (the per-team "Environment" setting). On top of that, Hivelane divides up the work, manages your Mac's load, and gathers questions, reports and records in one place.
 </details>
 
 <details>
-<summary><b>화면이 한국어뿐인가요?</b></summary>
+<summary><b>Is the UI Korean only?</b></summary>
 
-아니요. 화면은 한국어와 영어를 지원합니다. **설정 › 화면 › 언어**에서 고르고, 기기마다 따로 저장되며 처음에는 맥·브라우저 언어를 따릅니다. 총괄·팀이 답하는 말과 알림의 언어는 따로 **설정 › 총괄·엔진 › AI 답변·알림 언어**에서 정합니다. 맥 앱의 메뉴 막대·처음 설정 화면은 맥 언어를 따릅니다. 문서는 [English](README.en.md)도 있습니다(명세는 한국어만).
+No. The UI is available in Korean and English. Choose it in **Settings › Display › Language**; it's saved per device. The language the Lead and teams answer in, and that notifications are written in, is a separate setting: **Settings › Lead & engine › AI reply & notification language**. You pick the language (English by default) on the Mac app's first setup screen; that choice becomes the default for the menu bar, the control room and AI replies. Some docs, such as the design spec, are only available in Korean.
 </details>
 
 ---
 
-## 문서
+## Documentation
 
-| 문서 | 내용 |
+| Document | Contents |
 |---|---|
-| [맥 앱 가이드](docs/MAC_APP.md) | **권장 설치 방법.** DMG로 설치해서 쓰기(터미널 없이), 새 버전으로 바꾸기, 릴리스 만들기 |
-| [변경 기록](CHANGELOG.md) | 버전별 바뀐 점 |
-| [설치 가이드](docs/INSTALL.md) | (선택) 소스로 설치, 상시 실행, 휴대폰(Tailscale), 업데이트·제거, 문제 해결 |
-| [사용 가이드](docs/GUIDE.md) | 화면 구성, 총괄에게 일 맡기기, 팀 채널, PR·스크립트, 설정, 안전장치 |
-| [명세](docs/SPEC.md) | 설계와 동작 규칙(개발자용) |
+| [Mac app guide](docs/MAC_APP.md) | **Recommended way to install.** Installing and using the DMG (no terminal), updating to a new version, making a release |
+| [Changelog](CHANGELOG.md) | What changed in each version |
+| [Installation guide](docs/INSTALL.md) | (Optional) Installing from source, always-on mode, phone access (Tailscale), updating and uninstalling, troubleshooting |
+| [User guide](docs/GUIDE.md) | Screen layout, handing work to the Lead, team channels, PRs and scripts, settings, safety rails |
+| [Spec](docs/SPEC.md) | Design and behavior rules (for developers, Korean only) |
 
-## 개발
+## Development
 
 ```bash
-npm run dev          # 서버(4310, tsx watch) + 화면(4311, Vite)
-npm test             # 단위 테스트(vitest)
+npm run dev          # server (4310, tsx watch) + UI (4311, Vite)
+npm test             # unit tests (vitest)
 npm run typecheck
-npm run e2e          # 실제 Claude(Haiku)로 연습 저장소에서 팀 한 번 돌려 보기(몇 센트)
+npm run e2e          # run one team on a practice repository with real Claude (Haiku) (a few cents)
 ```
 
-개발할 때는 `HIVELANE_HOME=/tmp/hl-dev npm run dev`처럼 데이터 폴더를 따로 쓰면 실제 데이터와 섞이지 않습니다.
+During development, use a separate data folder, e.g. `HIVELANE_HOME=/tmp/hl-dev npm run dev`, so you don't mix it with your real data.
 
 <details>
-<summary>README 스크린샷 다시 찍기(가짜 데모 데이터로)</summary>
+<summary>Retaking the README screenshots (with fake demo data)</summary>
 
 ```bash
-HIVELANE_HOME=/tmp/hl-demo npx tsx scripts/readme-demo.ts            # 가짜 프로젝트·팀·대화 → 팀 id 가 출력됨
-HIVELANE_HOME=/tmp/hl-demo HIVELANE_PORT=4391 npx tsx server/index.ts  # 데모 서버(다른 터미널)
-HL_URL=http://127.0.0.1:4391 HL_TEAMS='<위에서 나온 JSON>' npx electron scripts/readme-shots.mjs   # docs/images/*.png
+HIVELANE_HOME=/tmp/hl-demo npx tsx scripts/readme-demo.ts            # fake projects, teams, conversations → prints team ids
+HIVELANE_HOME=/tmp/hl-demo HIVELANE_PORT=4391 npx tsx server/index.ts  # demo server (in another terminal)
+HL_URL=http://127.0.0.1:4391 HL_TEAMS='<JSON printed above>' npx electron scripts/readme-shots.mjs   # docs/images/*.png
 ```
 
-실제 데이터로 찍지 마세요(이름·메일·경로가 나올 수 있습니다).
+Don't take them with real data (names, emails and paths may show up).
 </details>
 
 <details>
-<summary>코드 구조</summary>
+<summary>Code structure</summary>
 
 ```
 server/
-  index.ts            부팅·종료·잠자기 방지
-  store.ts            SQLite 접근(모든 기록)
-  agents/             Agent SDK·Codex 실행 · 경로·명령 가드 · 역할 지시문
-  teams/              팀 생성·PM 턴 루프·질문/답변·멈춤/재개·직속 팀·복구 · PM 전용 도구
-  po/                 총괄 에이전트·도구 · 엔진(측정·정책) · 무거운 명령 슬롯 · 플랜 사용량 · 재인증
-  accounts.ts         AI 계정 여러 개 · 사용량 기준 전환
-  backup/             백업(이 맥 폴더·WebDAV·S3) · 열어 보기 · 복구
-  projects/           worktree·PR·저장소 상태·git 정리
-  search/             FTS5(한국어 trigram) + 선택적 벡터 검색
-  http/app.ts         REST·SSE·접근 제어
-web/src/              React 화면(채널 목록·지금 볼 것·총괄·팀 채널·PR·스크립트·설정), PWA
-desktop/              맥 앱(Electron): 첫 설정·메뉴 막대·알림
-shared/               서버·화면 공용 타입·도우미
+  index.ts            boot, shutdown, sleep prevention
+  store.ts            SQLite access (all records)
+  agents/             Agent SDK and Codex runners · path and command guards · role instructions
+  teams/              team creation, PM turn loop, questions/answers, pause/resume, standing teams, recovery · PM-only tools
+  po/                 Lead agent and tools · engine (measurement, policy) · heavy command slots · plan usage · re-authentication
+  accounts.ts         multiple AI accounts · usage-based switching
+  backup/             backup (folder on this Mac, WebDAV, S3) · browse · restore
+  projects/           worktrees, PRs, repository status, git cleanup
+  search/             FTS5 (Korean trigram) + optional vector search
+  http/app.ts         REST, SSE, access control
+web/src/              React UI (channel list, Inbox, Lead, team channels, PRs, scripts, settings), PWA
+desktop/              Mac app (Electron): first-run setup, menu bar, notifications
+shared/               types and helpers shared by server and UI
 ```
 </details>
 
-## 라이선스
+## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE) — 개인 사용·공부·연구·비영리 단체 등 **비상업적 사용은 무료로 자유롭게** 쓰고 고칠 수 있습니다. 회사 업무·유료 서비스·판매 등 **상업적 사용**은 별도 허락이 필요하니 [GitHub 이슈](https://github.com/webjihong/hivelane/issues)로 문의해 주세요.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free to use and modify for **noncommercial purposes** (personal use, study, research, nonprofits). **Commercial use** (work at a company, paid services, resale) needs a separate license — please ask via [GitHub issues](https://github.com/webjihong/hivelane/issues).
 
-v1.0.2 까지는 MIT 로 배포됐고, 그 버전들은 MIT 조건이 그대로 적용됩니다.
+Versions up to v1.0.2 were released under MIT and stay under MIT.

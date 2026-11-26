@@ -1,149 +1,151 @@
-**한국어** · [English](en/MAC_APP.md)
+[한국어](ko/MAC_APP.md) · **English**
 
-# 맥 앱 가이드 (DMG)
+# Mac app guide (DMG)
 
-터미널을 몰라도 Hivelane을 쓸 수 있게 만든 맥 앱입니다.
-이 문서는 두 부분으로 나뉩니다.
+The Mac app lets you use Hivelane without knowing anything about the terminal.
+This document has two parts.
 
-- **[1부. 앱을 받아서 쓰는 사람](#1부-앱을-받아서-쓰는-사람)**: DMG 파일을 받았고, 설치해서 쓰고 싶은 분
-- **[2부. DMG를 만드는 사람](#2부-dmg를-만드는-사람)**: 소스 코드로 직접 DMG 파일을 만들어 나눠 주려는 분
+- **[Part 1. Using the app](#part-1-using-the-app)**: for people who have downloaded the DMG and want to install and use it
+- **[Part 2. Building the DMG](#part-2-building-the-dmg)**: for people who want to build the DMG from source and share it
 
-> **DMG가 뭔가요?** 맥에서 앱을 나눠 줄 때 쓰는 파일 형식입니다. 더블클릭하면 USB를 꽂은 것처럼 창이 열리고, 그 안의 앱을 「응용 프로그램」 폴더로 끌어다 놓으면 설치가 끝납니다.
-
----
-
-## 1부. 앱을 받아서 쓰는 사람
-
-### 1-1. 먼저 확인할 것
-
-| 항목 | 필요한가 | 설명 |
-| --- | --- | --- |
-| Apple 실리콘 맥 (M1·M2·M3·M4 …) | 필수 | 메뉴 막대 왼쪽 위 사과 › 「이 Mac에 관하여」의 「칩」에 **Apple M…** 이 보이면 됩니다. Intel 맥은 아직 지원하지 않습니다. |
-| Claude 계정 | 필수 | Claude Pro 또는 Max 구독이 있는 계정이면 됩니다. AI 팀이 이 계정 사용량으로 일합니다. |
-| git (개발자 도구) | 필수 | 없어도 괜찮습니다. 앱이 처음 실행될 때 설치 단추를 보여 줍니다. |
-| Tailscale | 선택 | 휴대폰에서도 보고 싶을 때만 필요합니다. |
-
-Node.js나 다른 프로그램은 따로 설치하지 않아도 됩니다. 앱 안에 모두 들어 있습니다.
-
-### 1-2. 설치하기
-
-1. **[GitHub Releases 최신 버전](https://github.com/webjihong/hivelane/releases/latest)** 의 「Assets」에서 `Hivelane-<버전>-arm64.dmg` 를 받아 더블클릭합니다.
-2. 열린 창에서 **Hivelane** 아이콘을 **Applications(응용 프로그램)** 폴더 쪽으로 끌어다 놓습니다.
-3. 창을 닫고, 바탕화면이나 Finder 왼쪽에 생긴 「Hivelane」 디스크를 꺼냅니다(⏏ 단추).
-
-### 1-3. 처음 열기 — 「확인되지 않은 개발자」 경고가 뜰 때
-
-이 앱은 Apple의 유료 서명을 받지 않았기 때문에, 처음 열 때 맥이 한 번 막습니다. 아래처럼 한 번만 허용하면 다음부터는 바로 열립니다.
-
-1. 응용 프로그램 폴더에서 **Hivelane** 을 더블클릭합니다.
-2. 「"Hivelane"을(를) 열 수 없습니다」 같은 창이 뜨면 **완료**(또는 취소)를 누릅니다.
-3. 사과 메뉴 › **시스템 설정** › **개인정보 보호 및 보안** 으로 갑니다.
-4. 아래로 내리면 「"Hivelane"이(가) 차단되었습니다」 옆에 **그래도 열기** 단추가 있습니다. 누릅니다.
-5. 맥 암호(또는 Touch ID)를 넣고, 다시 뜨는 창에서 **열기** 를 누릅니다.
-
-### 1-4. 처음 설정 — 「Hivelane 시작하기」 화면
-
-앱을 처음 열면 아래 4줄이 보입니다. 동그라미 색으로 상태를 알려 줍니다(초록 = 준비됨, 주황 = 해야 함, 회색 = 선택).
-
-| 줄 | 할 일 |
-| --- | --- |
-| **git (개발자 도구)** | 주황이면 **설치** 를 누릅니다. 맥의 「개발자 도구 설치」 창이 뜨면 「설치」를 눌러 끝날 때까지 기다린 뒤(몇 분), 앱에서 **다시 확인** 을 누릅니다. |
-| **Claude 계정** | 여기서는 할 일이 없습니다. 서버가 켜진 뒤 관제실 화면에서 로그인합니다(아래 1-5). |
-| **Tailscale** | 휴대폰에서 쓸 생각이 없으면 건너뜁니다. 쓰려면 아래 1-7을 보세요. |
-| **Hivelane 서버** | 아래의 **서버 설치하고 시작** 을 누릅니다. 30초 안에 관제실 화면으로 바뀝니다. |
-
-> **서버가 뭔가요?** AI 팀이 실제로 일하는 프로그램입니다. 한 번 설치하면 맥을 켤 때마다 저절로 켜지고, 앱 창을 닫아도 뒤에서 계속 일합니다. 시스템 설정 › 일반 › 로그인 항목에 **Hivelane** 으로 보입니다.
-
-### 1-5. Claude 로그인
-
-1. 관제실 화면 왼쪽 아래 상태줄에 빨간 **인증** 과 「로그인 필요」가 보이면 옆의 **재인증** 을 누릅니다.
-2. 나오는 링크를 눌러 브라우저에서 Claude에 로그인하고, 화면에 나온 **코드** 를 복사합니다.
-3. 관제실 화면으로 돌아와 코드를 붙여 넣으면 끝입니다. 상태줄의 **인증** 이 초록색으로 바뀝니다.
-
-이미 이 맥에서 Claude Code(`claude` 명령)를 쓰고 있었다면 그 로그인을 그대로 써서 이 단계가 필요 없습니다.
-
-### 1-6. 쓰기 시작
-
-1. **설정 › 프로젝트** 에서 AI 팀이 일할 폴더(저장소)를 등록합니다. 「Finder에서 고르기」로 폴더를 고르면 됩니다.
-2. 왼쪽의 **총괄** 을 눌러 대화창에 하고 싶은 일을 적습니다. 예: 「로그인 화면에 비밀번호 보기 단추 추가해줘」
-3. 자세한 사용법은 [사용 가이드](GUIDE.md)에 있습니다.
-
-### 1-7. 휴대폰에서 보기 (선택)
-
-1. 맥과 휴대폰에 [Tailscale](https://tailscale.com/download)을 설치하고 **같은 계정** 으로 로그인합니다.
-2. Tailscale 관리 화면(웹) › **DNS** 에서 **HTTPS Certificates** 를 켭니다.
-3. 맥의 메뉴 막대 Hivelane 아이콘 › **휴대폰 연결(Tailscale)…** 을 누릅니다. `https://<맥 이름>.<…>.ts.net` 주소가 나옵니다. (처음 설정 화면의 Tailscale 줄에 있는 **휴대폰 연결** 단추도 같은 일을 합니다.)
-4. 휴대폰 브라우저로 그 주소를 엽니다. 처음에는 거절되는데, 맥의 관제실 화면 **설정 › 원격 접속** 에 방금 시도한 계정이 보이면 **주인으로 등록** 을 누릅니다.
-5. 휴대폰에서 다시 열고, 브라우저 메뉴의 **홈 화면에 추가** 를 누르면 앱처럼 쓸 수 있습니다.
-
-### 1-8. 메뉴 막대 아이콘
-
-화면 맨 위 오른쪽 메뉴 막대에 Hivelane 벌집 아이콘이 있습니다. 아이콘 모양으로 지금 상태를 알 수 있습니다.
-
-| 아이콘 모양 | 뜻 |
-| --- | --- |
-| 빈 벌집 세 칸 | 서버는 켜져 있고 팀은 쉬는 중 |
-| 칸이 하나씩 차오르며 돎 | 팀이나 총괄이 일하는 중 |
-| 오른쪽 위에 점 | 내가 확인할 것이 있음(팀의 질문·실패·총괄 제안 승인 등 · 개수는 아이콘을 누르면 나옴) |
-| 흐린 점선 벌집 | 서버가 꺼져 있음 |
-
-아이콘을 누르면 확인할 것과 일하는 팀이 이름으로 나오고, 누르면 그 대화로 바로 갑니다. 그 밖에 쓸 수 있는 것:
-
-| 메뉴 | 하는 일 |
-| --- | --- |
-| ● 서버 실행 중 / ○ 서버 멈춤 | 지금 상태(누르면 창 열기) |
-| Hivelane 열기 | 관제실 창 열기 |
-| 브라우저로 열기 | 사파리·크롬 등에서 `http://127.0.0.1:4310` 열기 |
-| 서버 다시 시작 | 화면이 이상할 때. 일하던 팀이 잠깐 끊겼다가 이어서 합니다 |
-| 기록 폴더 열기 | 문제가 생겼을 때 기록 파일(`~/.hivelane/logs`) 보기 |
-| 휴대폰 연결(Tailscale)… | 휴대폰에서 열 주소를 만들고 보여 줌(1-7) |
-| 서버 끄기(상시 실행 해제) | 서버를 완전히 끕니다. 팀이 모두 멈춥니다. 터미널(`npm run service:install`)로 설치한 서버는 여기서 끌 수 없어 흐리게 보이고, 터미널에서 `npm run service:uninstall` 로 끕니다 |
-| Hivelane 앱 종료 | 앱 창과 아이콘만 닫습니다. **서버는 계속 일합니다** |
-
-### 1-9. 새 버전으로 바꾸기
-
-1. 새 DMG를 받아 1-2처럼 응용 프로그램 폴더에 끌어다 놓습니다. 「대치할까요?」라고 물으면 **대치** 를 누릅니다.
-2. 앱을 열고 메뉴 막대 아이콘 › **서버 다시 시작** 을 누릅니다. 새 서버로 바뀝니다.
-
-기록(대화·팀·설정)은 `~/.hivelane` 폴더에 남아 있어서 그대로 이어집니다.
-
-### 1-10. 지우기
-
-1. 메뉴 막대 아이콘 › **서버 끄기(상시 실행 해제)** 를 누릅니다.
-2. 메뉴 막대 아이콘 › **Hivelane 앱 종료** 를 누릅니다.
-3. 응용 프로그램 폴더의 **Hivelane** 을 휴지통으로 옮깁니다.
-4. 기록까지 지우려면 Finder에서 `⌘ + ⇧ + G` 를 누르고 `~/.hivelane` 을 입력해 그 폴더를 지웁니다(되돌릴 수 없습니다).
-
-### 1-11. 문제가 생겼을 때
-
-| 증상 | 해결 |
-| --- | --- |
-| 「손상되었기 때문에 열 수 없습니다」 | 1-3의 「그래도 열기」를 하세요. 그래도 같으면 터미널 앱을 열어 `xattr -dr com.apple.quarantine /Applications/Hivelane.app` 을 붙여 넣고 엔터를 누른 뒤 다시 엽니다. |
-| 「서버 설치하고 시작」 뒤 30초가 지나도 안 바뀜 | 메뉴 막대 아이콘 › 기록 폴더 열기 › `launchd.err.log` 와 `server.log` 를 확인하거나, 이 두 파일을 만든 분께 보내 주세요. |
-| 팀이 바로 실패함 | 상태줄의 **인증** 이 빨간색인지 보고 1-5를 다시 하세요. |
-| 메뉴 막대 아이콘이 안 보임 | 메뉴 막대 아이콘이 많으면 가려질 수 있습니다. 응용 프로그램 폴더에서 Hivelane을 다시 열면 창이 뜹니다. |
-| 화면이 하얗거나 예전 모습 | 메뉴 막대 아이콘 › 서버 다시 시작, 그다음 창에서 `⌘ + R` |
+> **What's a DMG?** It's the file format commonly used to distribute Mac apps. Double-click it and a window opens as if you'd plugged in a USB drive; drag the app inside it into your Applications folder and the installation is done.
 
 ---
 
-## 2부. DMG를 만드는 사람
+## Part 1. Using the app
 
-소스 코드에서 DMG 파일을 만드는 방법입니다. 한 번 준비해 두면 이후로는 명령 한 줄입니다.
+### 1-1. Before you begin
 
-### 2-1. 준비물 (처음 한 번)
-
-| 항목 | 확인 방법 | 없으면 |
+| Item | Required? | Details |
 | --- | --- | --- |
-| Apple 실리콘 맥 | 1-1 참고 | 지금은 Apple 실리콘용 DMG만 만듭니다 |
-| 개발자 도구(git 포함) | 터미널에서 `xcode-select -p` 가 경로를 출력 | `xcode-select --install` |
-| Node.js 22 이상 | `node --version` | <https://nodejs.org> 에서 LTS 설치 |
-| 소스 코드 | — | 아래 2-2 |
+| Apple silicon Mac (M1, M2, M3, M4, …) | Required | Go to the Apple menu at the top left › "About This Mac"; if "Chip" shows **Apple M…**, you're set. Intel Macs aren't supported yet. |
+| Claude account | Required | Any account with a Claude Pro or Max subscription. The AI teams work using this account's usage. |
+| git (developer tools) | Required | It's fine if you don't have it. The app shows an install button the first time it runs. |
+| Tailscale | Optional | Only needed if you also want to use Hivelane from your phone. |
 
-> **터미널 여는 법**: `⌘ + Space` 로 Spotlight를 열고 「터미널」을 입력해 엔터.
+You don't need to install Node.js or anything else. Everything is bundled inside the app.
 
-### 2-2. 소스 코드 받기와 설치 (처음 한 번)
+### 1-2. Installing
 
-터미널에 한 줄씩 붙여 넣고 엔터를 누릅니다.
+1. Under "Assets" on **[the latest GitHub release](https://github.com/webjihong/hivelane/releases/latest)**, download `Hivelane-<version>-arm64.dmg` and double-click it.
+2. In the window that opens, drag the **Hivelane** icon onto the **Applications** folder.
+3. Close the window and eject the "Hivelane" disk that appeared on your desktop or in the Finder sidebar (the ⏏ button).
+
+### 1-3. Opening it the first time: the "unidentified developer" warning
+
+This app isn't signed through Apple's paid program, so macOS blocks it the first time you open it. Allow it once as shown below and it will open normally from then on.
+
+1. Double-click **Hivelane** in your Applications folder.
+2. When a window like "“Hivelane” Not Opened" appears, click **Done** (or Cancel).
+3. Go to the Apple menu › **System Settings** › **Privacy & Security**.
+4. Scroll down; next to "“Hivelane” was blocked…" there's an **Open Anyway** button. Click it.
+5. Enter your Mac password (or use Touch ID), then click **Open** in the window that appears.
+
+### 1-4. First-time setup: the "Get started with Hivelane" screen
+
+When you open the app for the first time, you'll see the four rows below. The dot color shows each row's status (green = ready, orange = needs action, gray = optional).
+
+| Row | What to do |
+| --- | --- |
+| **git (developer tools)** | If it's orange, click **Install**. When the macOS developer tools installer appears, click "Install" and wait for it to finish (a few minutes), then click **Check again** in the app. |
+| **Claude account** | Nothing to do here. You'll log in from the control room after the server starts (see 1-5 below). |
+| **Tailscale** | Skip it if you don't plan to use your phone. If you do, see 1-7 below. |
+| **Hivelane server** | Click **Install server and start** at the bottom. Within 30 seconds the window switches to the control room. |
+
+> **What's the server?** It's the program where the AI teams actually do their work. Once installed, it starts automatically every time you turn on your Mac and keeps working in the background even if you close the app window. It shows up as **Hivelane** in System Settings › General › Login Items.
+
+### 1-5. Logging in to Claude
+
+1. If the status bar at the bottom left of the control room shows a red **Auth** with "Login required", click **Re-authenticate** next to it.
+2. Click the link that appears, log in to Claude in your browser, and copy the **code** shown on the page.
+3. Go back to the control room and paste the code. That's it: **Auth** in the status bar turns green.
+
+If you were already using Claude Code (the `claude` command) on this Mac, Hivelane uses that login and you can skip this step.
+
+### 1-6. Getting started
+
+1. In **Settings › Projects**, register the folder (repository) for the AI teams to work in. Just pick the folder with "Choose in Finder".
+2. Click **Lead** on the left and type what you'd like done in the chat. For example: "Add a show-password button to the login screen."
+3. For details on how to use it, see the [user guide](GUIDE.md).
+
+Choose the language (English or 한국어, English by default) at the top of the first setup screen. It is used for the menu bar, as the control room's default language, and for AI replies and notifications. The control room's language is chosen in **Settings › Display › Language** (per device), and the language of AI replies and notifications in **Settings › Lead & engine › AI reply & notification language**.
+
+### 1-7. Using it from your phone (optional)
+
+1. Install [Tailscale](https://tailscale.com/download) on your Mac and phone and log in with **the same account**.
+2. In the Tailscale admin console (web) › **DNS**, turn on **HTTPS Certificates**.
+3. Click the Hivelane icon in your Mac's menu bar › **Connect phone (Tailscale)…**. An address like `https://<mac-name>.<…>.ts.net` appears. (The **Connect phone** button in the Tailscale row of the setup screen does the same thing.)
+4. Open that address in your phone's browser. It's refused at first; then, when the account you just tried appears in **Settings › Remote access** in the control room on your Mac, click **Make this account the owner**.
+5. Open it again on your phone and tap **Add to Home Screen** in the browser menu to use it like an app.
+
+### 1-8. The menu bar icon
+
+The Hivelane honeycomb icon sits in the menu bar at the top right of your screen. Its shape tells you the current status.
+
+| Icon | Meaning |
+| --- | --- |
+| Three empty honeycomb cells | The server is running and teams are idle |
+| Cells filling up one by one, cycling | A team or the Lead is working |
+| A dot at the top right | Something needs your attention (a team's question, a failure, a Lead proposal to approve, etc. · click the icon to see how many) |
+| Faint dotted honeycomb | The server is off |
+
+Click the icon to see the items that need you and the working teams by name; click one to jump straight to that conversation. Other menu items:
+
+| Menu item | What it does |
+| --- | --- |
+| ● Server running / ○ Server stopped | Current status (click to open the window) |
+| Open Hivelane | Opens the control room window |
+| Open in browser | Opens `http://127.0.0.1:4310` in Safari, Chrome, etc. |
+| Restart server | Use when the UI looks wrong. Working teams are briefly interrupted, then continue |
+| Open logs folder | Shows the log files (`~/.hivelane/logs`) when something goes wrong |
+| Connect phone (Tailscale)… | Creates and shows the address to open on your phone (1-7) |
+| Stop server (turn off always-on) | Shuts the server down completely. All teams stop. A server installed from the terminal (`npm run service:install`) can't be stopped here, so the item is grayed out; stop it in the terminal with `npm run service:uninstall` |
+| Quit Hivelane app (server keeps running) | Closes only the app window and icon. **The server keeps working** |
+
+### 1-9. Updating to a new version
+
+1. Download the new DMG and drag it into the Applications folder as in 1-2. When asked whether to replace it, click **Replace**.
+2. Open the app and click the menu bar icon › **Restart server**. The new server takes over.
+
+Your records (conversations, teams, settings) stay in the `~/.hivelane` folder, so everything carries over.
+
+### 1-10. Uninstalling
+
+1. Menu bar icon › **Stop server (turn off always-on)**.
+2. Menu bar icon › **Quit Hivelane app (server keeps running)**.
+3. Move **Hivelane** from the Applications folder to the Trash.
+4. To delete your records too, press `⌘ + ⇧ + G` in Finder, type `~/.hivelane`, and delete that folder (this cannot be undone).
+
+### 1-11. Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| "“Hivelane” is damaged and can't be opened" | Do the "Open Anyway" step in 1-3. If it still happens, open the Terminal app, paste `xattr -dr com.apple.quarantine /Applications/Hivelane.app`, press Enter, and open the app again. |
+| Nothing changes 30 seconds after "Install server and start" | Menu bar icon › Open logs folder › check `launchd.err.log` and `server.log`, or send those two files to whoever built the app. |
+| Teams fail immediately | Check whether **Auth** in the status bar is red, and redo 1-5. |
+| The menu bar icon isn't visible | It can be hidden when the menu bar has many icons. Open Hivelane again from the Applications folder and the window appears. |
+| The UI is white or looks outdated | Menu bar icon › Restart server, then press `⌘ + R` in the window |
+
+---
+
+## Part 2. Building the DMG
+
+How to build the DMG file from source. Once you've set things up, it's a single command from then on.
+
+### 2-1. Requirements (first time only)
+
+| Item | How to check | If missing |
+| --- | --- | --- |
+| Apple silicon Mac | See 1-1 | For now, only DMGs for Apple silicon are built |
+| Developer tools (including git) | `xcode-select -p` prints a path in Terminal | `xcode-select --install` |
+| Node.js 22 or later | `node --version` | Install the LTS from <https://nodejs.org> |
+| Source code | — | See 2-2 below |
+
+> **How to open Terminal**: press `⌘ + Space` to open Spotlight, type "Terminal" and press Enter.
+
+### 2-2. Getting the source and installing dependencies (first time only)
+
+Paste these into Terminal one line at a time, pressing Enter after each.
 
 ```bash
 git clone https://github.com/webjihong/hivelane.git
@@ -151,89 +153,89 @@ cd hivelane
 npm install
 ```
 
-`npm install` 은 필요한 부품을 받습니다(몇 분, 1GB 안팎). 끝나면 Electron(앱 껍데기) 실행 파일이 제대로 받아졌는지 확인합니다.
+`npm install` downloads the required packages (a few minutes, around 1 GB). When it's done, check that the Electron (app shell) binary downloaded correctly.
 
 ```bash
 ls node_modules/electron/dist
 ```
 
-`Electron.app` 이 보이면 됩니다. **아무것도 안 보이면** 아래를 한 번 실행하세요(npm 설정에 따라 자동으로 안 받아질 때가 있습니다).
+If you see `Electron.app`, you're fine. **If nothing is listed**, run the following once (depending on your npm configuration, it sometimes isn't downloaded automatically).
 
 ```bash
 node node_modules/electron/install.js
 ```
 
-### 2-3. DMG 만들기
+### 2-3. Building the DMG
 
 ```bash
 npm run dist:mac
 ```
 
-1~5분 걸립니다. 하는 일:
+It takes 1–5 minutes. What it does:
 
-1. 화면(웹)과 서버를 만들고 서버를 파일 하나로 묶습니다.
-2. `desktop/.stage` 폴더에 앱에 들어갈 것만 따로 모아 설치합니다. 원래 `node_modules` 는 건드리지 않습니다.
-3. 데이터베이스 부품(better-sqlite3)을 앱 안의 Node에 맞게 다시 만들고, DMG를 만듭니다.
+1. Builds the UI (web) and the server, and bundles the server into a single file.
+2. Gathers only what goes into the app in the `desktop/.stage` folder and installs it there. Your original `node_modules` isn't touched.
+3. Rebuilds the database module (better-sqlite3) for the Node inside the app, then creates the DMG.
 
-끝에 `완료:` 가 보이면 성공입니다. 결과 파일(소스 코드를 받은 `hivelane` 폴더 안, git worktree 에서 만들어도 원본 폴더 쪽에 생깁니다):
+It succeeded if you see `완료:` ("done") at the end. The output file (inside the `hivelane` folder you cloned; even if you build from a git worktree, it ends up in the original folder):
 
 ```
-dist/desktop/Hivelane-<버전>-arm64.dmg
+dist/desktop/Hivelane-<version>-arm64.dmg
 ```
 
-Finder에서 열려면:
+To open it in Finder:
 
 ```bash
 open dist/desktop
 ```
 
-> 크기가 300MB쯤 되는 건 정상입니다. 대부분 앱에 들어간 Claude 실행 파일입니다.
+> A size of around 300 MB is normal. Most of it is the Claude binary bundled into the app.
 
-### 2-4. 만들기 전에 앱을 미리 띄워 보기 (선택)
+### 2-4. Trying the app before building (optional)
 
 ```bash
 npm run desktop
 ```
 
-DMG를 만들지 않고 앱 창만 띄웁니다. 이미 이 맥에 Hivelane 서버가 떠 있으면 그 서버에 붙습니다. 창을 닫아도 메뉴 막대에 남으니, 끝내려면 메뉴 막대 아이콘 › Hivelane 앱 종료.
+This opens just the app window without building a DMG. If a Hivelane server is already running on this Mac, it connects to that server. Closing the window leaves it in the menu bar; to quit, use menu bar icon › Quit Hivelane app.
 
-### 2-5. 버전 매기기
+### 2-5. Versioning
 
-버전은 **큰 변화.기능 추가.고침**(예: `1.2.3`)으로 매깁니다. 기능을 더하면 가운데, 고치기만 하면 끝 숫자를 올립니다. 바뀐 점은 저장소 맨 위의 [CHANGELOG.md](../CHANGELOG.md)에 버전마다 적습니다.
+Versions follow **major.feature.fix** (e.g. `1.2.3`). Bump the middle number when you add features, and the last number for fixes only. Record what changed for each version in [CHANGELOG.md](../CHANGELOG.md) at the top of the repository (Korean: [CHANGELOG.ko.md](../CHANGELOG.ko.md)). The release notes are taken from CHANGELOG.md.
 
-### 2-6. 릴리스(새 버전 DMG 올리기)
+### 2-6. Releasing (publishing a new DMG)
 
-원본 저장소에서 main 이 깨끗하고 최신인 상태로:
+In the original repository, with main clean and up to date:
 
-1. `CHANGELOG.md` 맨 위에 `## 1.1.0 — 2026-12-01` 처럼 새 버전 단락을 쓰고 커밋·푸시합니다.
-2. 아래 명령 하나로 버전 올리기 → 커밋·태그(`v1.1.0`) → 푸시 → DMG 만들기 → GitHub Releases 에 DMG 올리기까지 합니다.
+1. Write a new version section at the top of `CHANGELOG.md` (and `CHANGELOG.ko.md`), like `## 1.1.0 — 2026-12-01`, then commit and push.
+2. The single command below bumps the version → commits and tags (`v1.1.0`) → pushes → builds the DMG → uploads the DMG to GitHub Releases.
 
 ```bash
-npm run release -- 1.1.0          # --dry 를 붙이면 할 일만 보여 줌
+npm run release -- 1.1.0          # add --dry to only show what it would do
 ```
 
-GitHub CLI(`gh`)에 저장소 주인 계정으로 로그인돼 있어야 합니다(`gh auth status`). 받는 사람에게는 [Releases](https://github.com/webjihong/hivelane/releases) 주소와 이 문서의 **1부** 를 알려 주세요.
+You need to be logged in to the GitHub CLI (`gh`) with the repository owner's account (`gh auth status`). Give recipients the [Releases](https://github.com/webjihong/hivelane/releases) address and **Part 1** of this document.
 
-받는 사람은 서명 없는 앱이라 1-3의 「그래도 열기」를 한 번 해야 합니다. 이 단계를 없애려면 Apple 개발자 계정(연 $99)으로 서명·공증을 해야 합니다(아직 지원하지 않음).
+Because the app is unsigned, recipients have to do the "Open Anyway" step in 1-3 once. Removing that step would require signing and notarizing with an Apple Developer account ($99/year), which isn't supported yet.
 
-### 2-7. 자주 나는 오류
+### 2-7. Common errors
 
-| 오류 메시지(일부) | 원인 · 해결 |
+| Error message (partial) | Cause · fix |
 | --- | --- |
-| `Cannot find module 'electron/package.json'` | `npm install` 을 안 했거나 실패했습니다. 2-2를 다시 하세요. |
-| `Electron failed to install correctly` / `npm run desktop` 이 바로 꺼짐 | Electron 실행 파일이 없습니다. `node node_modules/electron/install.js` |
-| `gyp ERR!` · `xcrun: error` | 개발자 도구가 없거나 고장났습니다. `xcode-select --install` 후 다시. |
-| `npm install` 단계에서 네트워크 오류 | 인터넷 연결을 확인하고 다시 `npm run dist:mac`. |
-| 만든 앱이 「손상됨」으로 안 열림 | 1-11의 `xattr` 명령. 서명이 없어서 생기는 맥의 보호 동작입니다. |
+| `Cannot find module 'electron/package.json'` | `npm install` wasn't run or failed. Redo 2-2. |
+| `Electron failed to install correctly` / `npm run desktop` exits immediately | The Electron binary is missing. Run `node node_modules/electron/install.js` |
+| `gyp ERR!` · `xcrun: error` | Developer tools are missing or broken. Run `xcode-select --install` and try again. |
+| Network error during the `npm install` step | Check your internet connection and run `npm run dist:mac` again. |
+| The built app won't open because it's "damaged" | Use the `xattr` command from 1-11. This is macOS protection kicking in because the app isn't signed. |
 
-### 2-8. 앱 구조 (궁금한 분만)
+### 2-8. App structure (if you're curious)
 
-| 파일 | 역할 |
+| File | Role |
 | --- | --- |
-| `desktop/main.mjs` | 앱 본체: 창, 메뉴 막대 아이콘, 서버 상시 실행(launchd) 등록 |
-| `desktop/setup.html`, `setup.js` | 「Hivelane 시작하기」 화면 |
-| `desktop/preload.cjs` | 시작 화면과 앱 본체를 잇는 다리 |
-| `scripts/bundle-server.ts` | 서버를 파일 하나(`dist/server/index.mjs`)로 묶기 (`npm run build:server`) |
-| `scripts/build-desktop.ts` | DMG 만들기 전체 과정 (`npm run dist:mac`) |
+| `desktop/main.mjs` | The app itself: window, menu bar icon, registering the always-on server (launchd) |
+| `desktop/setup.html`, `setup.js` | The "Get started with Hivelane" screen |
+| `desktop/preload.cjs` | Bridge between the setup screen and the app |
+| `scripts/bundle-server.ts` | Bundles the server into a single file (`dist/server/index.mjs`) (`npm run build:server`) |
+| `scripts/build-desktop.ts` | The whole DMG build process (`npm run dist:mac`) |
 
-서버는 앱 안의 Electron을 Node처럼 실행해서(`ELECTRON_RUN_AS_NODE=1`) 돌립니다. 그래서 받는 사람이 Node를 설치하지 않아도 됩니다. 등록되는 서비스 이름은 `com.webjihong.hivelane` 이고, 설정 파일은 `~/Library/LaunchAgents/com.webjihong.hivelane.plist` 입니다. 이미 `npm run service:install` 로 서버를 돌리고 있는 맥에서는 앱이 그 서버에 붙기만 하고 등록을 바꾸지 않습니다.
+The server runs by launching the app's bundled Electron as Node (`ELECTRON_RUN_AS_NODE=1`), so recipients don't need to install Node. The registered service is named `com.webjihong.hivelane`, and its configuration file is `~/Library/LaunchAgents/com.webjihong.hivelane.plist`. On a Mac where a server is already running via `npm run service:install`, the app just connects to that server and doesn't change the registration.

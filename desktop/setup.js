@@ -3,13 +3,18 @@ const $ = (id) => document.getElementById(id);
 const mark = (id, cls) => { const el = $(id); el.classList.remove('ok', 'need', 'opt'); if (cls) el.classList.add(cls); };
 const button = (label, onClick) => { const b = document.createElement('button'); b.textContent = label; b.onclick = onClick; return b; };
 
-/* 언어: main.mjs 가 ?lang=ko|en 으로 넘긴다. 영어면 setup.html 의 data-en 글로 바꾼다 */
-const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ko';
+/* 언어: main.mjs 가 ?lang=ko|en 으로 넘긴다(기본 영어). 한국어면 setup.html 의 data-ko 글로 바꾼다 */
+const LANG = new URLSearchParams(location.search).get('lang') === 'ko' ? 'ko' : 'en';
 const L = (ko, en) => (LANG === 'ko' ? ko : en);
-if (LANG === 'en') {
-  document.documentElement.lang = 'en';
-  document.title = 'Get started with Hivelane';
-  for (const el of document.querySelectorAll('[data-en]')) el.textContent = el.dataset.en;
+if (LANG === 'ko') {
+  document.documentElement.lang = 'ko';
+  document.title = 'Hivelane 시작하기';
+  for (const el of document.querySelectorAll('[data-ko]')) el.textContent = el.dataset.ko;
+}
+/* 언어 고르기: 앱에 저장하고(메뉴 막대·서버 AI 답변·관제실 화면 기본 언어에도 쓰임) 이 화면을 그 언어로 다시 연다 */
+for (const b of document.querySelectorAll('.lang button')) {
+  b.setAttribute('aria-checked', String(b.dataset.lang === LANG));
+  b.onclick = () => { if (b.dataset.lang !== LANG) void window.hl.setLang(b.dataset.lang); };
 }
 
 async function refresh() {

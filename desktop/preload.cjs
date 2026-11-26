@@ -10,6 +10,7 @@ if (location.protocol === 'file:') {
     link: (url) => ipcRenderer.invoke('hl:link', url),
     copy: (text) => ipcRenderer.invoke('hl:copy', text),
     installCLT: () => ipcRenderer.invoke('hl:installCLT'),
+    setLang: (lang) => ipcRenderer.invoke('hl:setLang', lang),
   });
 }
 

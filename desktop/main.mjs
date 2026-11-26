@@ -27,12 +27,30 @@ const SERVER = join(ROOT, 'dist', 'server', 'index.mjs');
 const WEB = join(ROOT, 'dist', 'web');
 const HERE = import.meta.dirname;
 
-/** 앱 글 언어: HIVELANE_LANG(ko/en) 이 있으면 그것, 아니면 맥 언어(한국어가 아니면 영어) */
-const LANG = (() => {
+/** 처음 설치 화면에서 고른 언어를 남기는 곳(앱 설정 폴더) */
+const PREFS = join(app.getPath('userData'), 'prefs.json');
+const readPrefs = () => { try { return JSON.parse(readFileSync(PREFS, 'utf8')); } catch { return {}; } };
+/**
+ * 앱 글 언어: 처음 설치 화면에서 고른 것 > HIVELANE_LANG > 이미 서버를 설치해 쓰던 맥이면 맥 언어(예전 동작) > 영어.
+ * 고른 언어는 서버에도 넘겨(launchd 환경 변수 · 설정 저장) AI 답변·알림과 관제실 화면의 기본 언어가 된다.
+ */
+let LANG = (() => {
+  const saved = readPrefs().lang;
+  if (saved === 'ko' || saved === 'en') return saved;
   const env = process.env.HIVELANE_LANG?.toLowerCase();
   if (env === 'ko' || env === 'en') return env;
-  try { return app.getPreferredSystemLanguages()[0]?.toLowerCase().startsWith('ko') ? 'ko' : 'en'; } catch { return 'ko'; }
+  if (existsSync(PLIST)) { try { return app.getPreferredSystemLanguages()[0]?.toLowerCase().startsWith('ko') ? 'ko' : 'en'; } catch { /* 영어 */ } }
+  return 'en';
 })();
+function setLang(l) {
+  if (l !== 'ko' && l !== 'en') return;
+  LANG = l;
+  try { mkdirSync(app.getPath('userData'), { recursive: true }); writeFileSync(PREFS, JSON.stringify({ ...readPrefs(), lang: l })); } catch { /* 저장 안 됨 — 이번 실행만 */ }
+}
+/** 서버 설정에 언어를 저장(AI 답변·알림 언어 + 관제실 화면 기본 언어) */
+async function pushLang() {
+  try { await fetch(`${BASE}/api/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lang: LANG }), signal: AbortSignal.timeout(3000) }); } catch { /* 서버가 아직 없음 */ }
+}
 /** 한국어 / 영어 중 앱 언어에 맞는 글 */
 const L = (ko, en) => (LANG === 'ko' ? ko : en);
 
@@ -88,6 +106,7 @@ function plist() {
     <key>HIVELANE_HOME</key><string>${esc(DATA)}</string>
     <key>HIVELANE_PORT</key><string>${PORT}</string>
     <key>HIVELANE_WEB_DIST</key><string>${esc(WEB)}</string>
+    <key>HIVELANE_LANG</key><string>${LANG}</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -281,7 +300,8 @@ async function connectPhone() {
 /* ---------- IPC (setup.html) ---------- */
 
 ipcMain.handle('hl:status', () => status());
-ipcMain.handle('hl:install', async () => { const r = await installService(); await refreshTray(); return r; });
+ipcMain.handle('hl:install', async () => { const r = await installService(); if (r.ok) await pushLang(); await refreshTray(); return r; });
+ipcMain.handle('hl:setLang', async (_e, l) => { setLang(l); if (await healthy()) await pushLang(); await refreshTray(); showSetup(); });
 ipcMain.handle('hl:tailscale', () => serveTailscale());
 ipcMain.handle('hl:open', () => showApp());
 ipcMain.handle('hl:focus', () => { if (!win) createWindow(); win?.show(); win?.focus(); app.focus({ steal: true }); });

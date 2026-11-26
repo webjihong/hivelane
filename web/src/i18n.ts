@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 /**
- * 화면 언어(한국어 / English). 이 기기에만 저장(테마처럼). 처음에는 브라우저·맥 언어를 따른다(한국어가 아니면 영어).
+ * 화면 언어(한국어 / English). 이 기기에만 저장(테마처럼). 처음에는 서버 설정 언어(기본 영어)를 따른다.
  *
  * 쓰는 법: 한국어 문장을 그대로 키로 쓴다.
  *   t('저장했습니다')                       → 영어면 locales/en/*.ts 에서 찾은 번역, 없으면 한국어 그대로
@@ -19,8 +19,9 @@ function detect(): Lang {
     const saved = localStorage.getItem(KEY);
     if (saved === 'ko' || saved === 'en') return saved;
   } catch { /* 저장소 없음 */ }
-  const nav = typeof navigator !== 'undefined' ? navigator.languages?.[0] ?? navigator.language ?? 'ko' : 'ko';
-  return nav.toLowerCase().startsWith('ko') ? 'ko' : 'en';
+  // 이 기기에서 고른 적이 없으면 서버 설정 언어(맥 앱 처음 설치 화면에서 고른 것 · index.html 에 서버가 심음), 그것도 없으면 영어
+  const def = typeof document !== 'undefined' ? document.documentElement.dataset.defaultLang : undefined;
+  return def === 'ko' ? 'ko' : 'en';
 }
 
 export const lang: Lang = detect();
