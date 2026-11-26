@@ -1,3 +1,4 @@
+import { withTeamNames } from '../../shared/teamRefs.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as webpush from 'web-push';
@@ -59,7 +60,12 @@ export class AppNotifier implements Notifier {
   presence(device: string, view: string | null): void { if (view) this.views.set(device, { view, at: Date.now() }); else this.views.delete(device); }
   viewing(scope: string): boolean { const now = Date.now(); return [...this.views.values()].some((v) => v.view === scope && now - v.at < 45_000); }
 
-  async send(n: Notice): Promise<void> {
+  async send(n0: Notice): Promise<void> {
+    // 알림 글의 팀 id 는 「이름(id)」로(알림은 칩을 못 그린다)
+    let names: Record<string, string> = {};
+    try { names = this.store.teamNames(); } catch { /* DB 없음 */ }
+    const look = (id: string) => (names[id] ? { name: names[id]! } : undefined);
+    const n: Notice = { ...n0, title: withTeamNames(n0.title, look), body: withTeamNames(n0.body, look) };
     if (n.scope && this.viewing(n.scope)) { log.info(`알림 생략(보고 있는 대화) · ${n.title}`); return; }
     bus.emitEvent({ type: 'notice', notice: { title: n.title, body: n.body, url: n.url, level: n.level, tag: n.tag } });
     await Promise.allSettled([this.slack(n), this.push(n)]);

@@ -270,6 +270,8 @@ export function createApp(d: AppDeps): Hono<Env> {
     }
     return out;
   };
+  /** 팀 id → 이름(끝난·보관 팀 포함). 화면이 글 속 팀 id 를 이름 칩으로 바꿀 때 쓴다 */
+  app.get('/api/team-names', (c) => c.json({ names: store.teamNames() }));
   app.get('/api/accounts', (c) => c.json({ accounts: accts().views(usedBy), switch: accts().switchView(), hiddenDefault: accts().hidesDefault() }));
   app.post('/api/accounts/switch', async (c) => { const b = await body(c, z.object({ from: z.string(), to: z.string().optional() })); try { const t = accts().switchNow(b.from, b.to); return c.json({ to: t }); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : String(e)); } });
   app.post('/api/accounts/revert', async (c) => { const b = await body(c, z.object({ from: z.string() })); accts().revert(b.from); return c.json({ ok: true }); });

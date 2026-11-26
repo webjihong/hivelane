@@ -1,4 +1,6 @@
 /** 여러 화면이 함께 쓰는 라벨·작은 조각. */
+import { shortName, splitTeamRefs } from '../../shared/teamRefs.ts';
+import { teamName, useTeamNames } from './teamNames.ts';
 import { useState, type ReactNode } from 'react';
 import { STAGES, type AgentView, type Priority, type TeamState, type TeamView } from '../../shared/types.ts';
 import { avatar, toolKind } from './art.ts';
@@ -104,14 +106,29 @@ function link(k: number, href: string, label: ReactNode): ReactNode {
   if (!h) return label;
   return <a key={k} href={h} {...(h.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}>{label}</a>;
 }
+/** 팀 칩: 「이름 · id」 · 누르면 그 팀 화면 · 긴 제목은 줄이고 전체는 툴팁 */
+export function TeamChip({ id, name }: { id: string; name: string }) {
+  return <a className="team-ref" href={`#team-${id}`} title={`${name} · ${id}`}><span className="team-ref-n">{shortName(name)}</span><span className="team-ref-id">{id}</span></a>;
+}
+/** 글 속 팀 id → 팀 칩(모르는 id 는 그대로) */
+function teamRefs(text: string, key: number): ReactNode[] {
+  if (!/(?:tm|s)-[a-z0-9]{6}/.test(text)) return [text];
+  return splitTeamRefs(text, (id) => { const n = teamName(id); return n ? { name: n } : undefined; })
+    .map((p, j) => (typeof p === 'string' ? p : <TeamChip key={`${key}-${j}`} id={p.id} name={p.name} />));
+}
 function inline(line: string): ReactNode[] {
-  return line.split(INLINE).map((seg, k) => {
-    if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4) return <b key={k}>{seg.slice(2, -2)}</b>;
-    if (seg.startsWith('`') && seg.endsWith('`') && seg.length > 2) return <code key={k}>{seg.slice(1, -1)}</code>;
+  return line.split(INLINE).flatMap((seg, k): ReactNode[] => {
+    if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4) return [<b key={k}>{teamRefs(seg.slice(2, -2), k)}</b>];
+    if (seg.startsWith('`') && seg.endsWith('`') && seg.length > 2) {
+      // `tm-…` 처럼 팀 id 하나만 감싼 것은 칩으로(칩에도 id 가 그대로 보임)
+      const code = seg.slice(1, -1);
+      const n = /^(?:tm|s)-[a-z0-9]{6,12}$/.test(code) ? teamName(code) : undefined;
+      return [n ? <TeamChip key={k} id={code} name={n} /> : <code key={k}>{code}</code>];
+    }
     const m = seg.match(/^\[([^\]\n]+)\]\(([^\s)]+)\)$/);
-    if (m) return link(k, m[2]!, m[1]!);
-    if (/^https?:\/\//.test(seg)) return link(k, seg, seg);
-    return seg;
+    if (m) return [link(k, m[2]!, m[1]!)];
+    if (/^https?:\/\//.test(seg)) return [link(k, seg, seg)];
+    return teamRefs(seg, k);
   });
 }
 
@@ -122,15 +139,20 @@ export function splitSentences(line: string): string[] {
   return parts.length > 1 ? parts : [line];
 }
 
-type Block = { t: 'p'; lines: string[] } | { t: 'img'; src: string; alt: string } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
+type Block = { t: 'code'; lines: string[] } | { t: 'p'; lines: string[] } | { t: 'img'; src: string; alt: string } | { t: 'h'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'table'; rows: string[][] };
 
 /** 가벼운 마크다운: 제목·목록·표·굵게·코드. 첫 줄이 「결론」이면 강조한다. */
 export function RichText({ text }: { text: string }) {
+  useTeamNames(); // 팀 이름 사전이 오면 다시 그림
   const blocks: Block[] = [];
   const last = () => blocks[blocks.length - 1];
+  let code: { t: 'code'; lines: string[] } | null = null;
   for (const raw of text.replace(/\r/g, '').split('\n')) {
     const line = raw.trimEnd();
     let m: RegExpMatchArray | null;
+    // ``` 코드 블록: 안은 그대로(팀 id 도 바꾸지 않음)
+    if (/^\s*```/.test(line)) { if (code) code = null; else { code = { t: 'code', lines: [] }; blocks.push(code); } continue; }
+    if (code) { code.lines.push(raw); continue; }
     if (!line.trim()) { blocks.push({ t: 'p', lines: [] }); continue; }
     if ((m = line.match(/^\s*!\[([^\]]*)\]\((\/api\/uploads\/u-[a-z0-9]{12}\.(?:png|jpg|gif|webp))\)\s*$/))) { blocks.push({ t: 'img', alt: m[1]!, src: m[2]! }); continue; }
     if ((m = line.match(/^\s{0,3}#{1,4}\s+(.*)$/))) { blocks.push({ t: 'h', text: m[1]! }); continue; }
@@ -146,10 +168,11 @@ export function RichText({ text }: { text: string }) {
     if (split.length > 1) { blocks.push({ t: 'p', lines: [] }); blocks.push({ t: 'p', lines: split }); blocks.push({ t: 'p', lines: [] }); continue; }
     const b = last(); if (b?.t === 'p' && b.lines.length) b.lines.push(line); else blocks.push({ t: 'p', lines: [line] });
   }
-  const shown = blocks.filter((b) => b.t !== 'p' || b.lines.length);
+  const shown = blocks.filter((b) => (b.t !== 'p' && b.t !== 'code') || b.lines.length);
   return (
     <div className="rt">
       {shown.map((b, i) => {
+        if (b.t === 'code') return <pre key={i} className="rt-code"><code>{b.lines.join('\n')}</code></pre>;
         if (b.t === 'img') return <a key={i} href={b.src} target="_blank" rel="noreferrer"><img className="rt-img" src={b.src} alt={b.alt || '첨부 이미지'} loading="lazy" /></a>;
         if (b.t === 'h') return <div key={i} className="rt-h">{inline(b.text)}</div>;
         if (b.t === 'ul') return <ul key={i}>{b.items.map((x, j) => <li key={j}>{inline(x)}</li>)}</ul>;

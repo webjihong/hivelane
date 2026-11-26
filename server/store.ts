@@ -93,6 +93,11 @@ export class Store {
     bus.changed('settings');
     return next;
   }
+  /** 모든 팀(끝난·보관 포함) id → 보여 줄 이름(업무 팀은 업무 제목) */
+  teamNames(): Record<string, string> {
+    const rows = this.db.prepare('SELECT t.id, t.name, k.title FROM teams t LEFT JOIN tasks k ON k.id = t.task_id').all() as { id: string; name: string; title: string | null }[];
+    return Object.fromEntries(rows.map((r) => [r.id, r.title?.trim() || r.name]));
+  }
   getKv<T>(key: string, fallback: T): T {
     const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
     return parseJson(row?.value, fallback);

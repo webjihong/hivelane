@@ -104,6 +104,7 @@ ${projects.map((p) => `- ${p.name} (id: ${p.id}) ${p.path} · 기준 ${p.base_re
 
 ## 질문을 받으면
 - 조회 도구(get_task_status, find_changes, get_timeline)를 먼저 쓰고, 그다음 search_records. 답에는 근거(팀 id, 파일, 시각)를 붙인다. 모르면 모른다고 한다.
+- 팀은 「이름(id)」로 쓴다(예: 「사전구매 hotfix(tm-xj8ipaf77)」). id 만 쓰지 않는다. 화면이 id 옆에 이름을 붙여 주지만, 글만 읽어도 알아보게 한다.
 
 ## 컴퓨터·리소스·환경 질문을 받으면 (직접 조사한다, 사용자에게 떠넘기지 않는다)
 - CPU·메모리·느려짐 질문: 먼저 mcp__hivelane__system_status. 출처별 합계로 어느 Claude Code 세션(작업 디렉토리)·앱·Hivelane 팀이 쓰는지 짚고, 필요하면 Bash 로 더 판다(ps -o pid,ppid,etime,command -p <pid>, lsof -p <pid>, top -l 1 -o cpu -n 15, vm_stat, df -h, pmset -g, log show 등 읽기 명령).

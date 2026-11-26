@@ -804,3 +804,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .bk-msg { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .bk-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; margin-top: 2px; }
 @media (max-width: 760px) { .bk-viewer { padding: 0; } .bk-viewer-in { border-radius: 0; height: 100%; } .bk-viewer-b { flex-direction: column; } .bk-viewer-l { width: auto; max-height: 38%; border-right: 0; border-bottom: 1px solid var(--line); } }
+/* 글 속 팀 id → 팀 칩 */
+.team-ref { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; padding: 0 6px; border-radius: 5px; background: var(--surface-2); color: var(--fg); text-decoration: none; border: 1px solid var(--line); line-height: 1.5; vertical-align: baseline; white-space: nowrap; }
+.team-ref:hover { border-color: var(--accent); }
+.team-ref-n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.team-ref-id { font-family: var(--font-mono); font-size: 0.85em; color: var(--muted); }
+.rt-code { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 12px; margin: 6px 0; }
