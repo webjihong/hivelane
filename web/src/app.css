@@ -813,7 +813,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 /* 팀 상세: 「끝난 팀으로 보내기」는 다른 단추와 떨어뜨려 오른쪽 끝에 */
 .team-close { margin-left: auto; }
 /* AI 계정 › 바꿀 순서: 종류별 목록(번호 · 이름·사용량 · 막대 · 위아래) */
-.sw-order { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.sw-order { padding-top: 2px; display: flex; flex-direction: column; gap: 8px; }
 .sw-order-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .sw-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .sw-group-h { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
@@ -838,3 +838,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sw-handle { color: var(--muted); font-size: 16px; line-height: 1; padding: 4px 2px; border-radius: 4px; }
 .sw-item:hover .sw-handle, .sw-handle:focus-visible { color: var(--fg); background: var(--surface-2); outline: none; }
 .sw-list.settle .sw-item { transition: none; }
+/* 목록 모서리: 줄 배경이 둥근 테두리를 가리지 않게 첫·끝 줄도 둥글게 */
+.sw-list { border-radius: 8px; }
+.sw-item:first-child { border-top-left-radius: 7px; border-top-right-radius: 7px; }
+.sw-item:last-child { border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }
