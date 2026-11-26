@@ -251,7 +251,8 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
   const cfg = snap.settings.accountSwitch;
   const save = (patch: Partial<typeof cfg>, ok: string) => act(async () => { await api('/api/settings', 'PUT', { accountSwitch: patch }); await refreshState(); await reload(); }, ok);
   const order = [...cfg.order.filter((id) => list.some((a) => a.id === id)), ...list.map((a) => a.id).filter((id) => !cfg.order.includes(id))];
-  const move = (i: number, d: -1 | 1) => { const o = [...order]; const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j]!, o[i]!]; void save({ order: o }, t('순서를 바꿨습니다')); };
+  /** 같은 종류 안에서 두 계정 자리 바꾸기(사이에 다른 종류가 있어도) */
+  const swap = (i: number, j: number) => { const o = [...order]; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j]!, o[i]!]; void save({ order: o }, t('순서를 바꿨습니다')); };
   const switchNow = (from: string, to?: string) => act(async () => { await api('/api/accounts/switch', 'POST', { from, to }); await reload(); }, t('바꿔 씁니다'));
   const revert = (from: string) => act(async () => { await api('/api/accounts/revert', 'POST', { from }); await reload(); }, t('원래 계정으로 돌렸습니다'));
   return (
@@ -270,13 +271,43 @@ function SwitchPanel({ snap, ro, list, sw, reload }: { snap: StateSnapshot; ro: 
         </span>
       </div>
       {cfg.mode !== 'off' && list.length > 1 && (
-        <div className="set-row">
-          <label>{t('바꿀 순서')}<small>{t('위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다')}</small></label>
-          <span className="set-v">
-            <ol style={{ margin: 0, paddingLeft: 18 }}>
-              {order.map((id, i) => <li key={id} className="small">{nameOf(list, id)} {!ro && <><button className="link-btn" type="button" disabled={i === 0} onClick={() => move(i, -1)}>▲</button> <button className="link-btn" type="button" disabled={i === order.length - 1} onClick={() => move(i, 1)}>▼</button></>}</li>)}
-            </ol>
-          </span>
+        <div className="sw-order">
+          <div className="sw-order-h"><b>{t('바꿀 순서')}</b> <span className="small muted">{t('위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다 · 같은 종류끼리만 바꿉니다')}</span></div>
+          <div className="sw-groups">
+            {(['claude', 'codex'] as const).map((kind) => {
+              const ids = order.filter((id) => list.find((a) => a.id === id)?.provider === kind);
+              if (ids.length < 1) return null;
+              return (
+                <div key={kind} className="sw-group">
+                  <div className="sw-group-h">{kind === 'claude' ? 'Claude' : 'Codex'}</div>
+                  <ol className="sw-list">
+                    {ids.map((id, k) => {
+                      const a = list.find((x) => x.id === id)!;
+                      const i = order.indexOf(id);
+                      const prev = ids[k - 1], next = ids[k + 1];
+                      const pct = a.peakPct;
+                      return (
+                        <li key={id} className="sw-item">
+                          <span className="sw-num">{k + 1}</span>
+                          <span className="sw-name">
+                            <b className="ellipsis">{a.name}</b>
+                            <span className="small muted">{a.usage?.login?.loggedIn ? (pct === null ? t('사용량 모름') : t('{pct}% 사용', { pct: Math.round(pct) })) : t('로그인 필요')}</span>
+                          </span>
+                          {pct !== null && <span className="sw-bar" aria-hidden><span style={{ width: `${Math.min(100, pct)}%`, background: pctTone(pct) }} /></span>}
+                          {!ro && (
+                            <span className="sw-move">
+                              <button className="icon-btn" type="button" aria-label={t('위로')} title={t('위로')} disabled={!prev} onClick={() => prev && swap(i, order.indexOf(prev))}>↑</button>
+                              <button className="icon-btn" type="button" aria-label={t('아래로')} title={t('아래로')} disabled={!next} onClick={() => next && swap(i, order.indexOf(next))}>↓</button>
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {sw.overrides.map((o) => (

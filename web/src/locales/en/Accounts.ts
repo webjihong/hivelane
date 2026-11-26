@@ -112,4 +112,9 @@ export default {
   '{name} 으로 전환': 'Switch to {name}',
   '바꿔 쓸 계정이 없습니다. 「+ 계정 추가」 탭에서 계정을 하나 더 추가하세요.': 'No account to switch to. Add another account in the "+ Add account" tab.',
   '계정을 바꿔도 그 팀원은 하던 대화를 그대로 이어 갑니다(대화 기록 파일을 새 계정 쪽으로 옮겨 씀). 기록 파일을 찾지 못할 때만 요약을 넘겨받아 새 대화로 시작합니다.': 'Members keep their ongoing conversation when the account changes (the conversation file is moved to the new account). Only if the file can\'t be found do they start a new conversation from a summary.',
+  '위에서부터 로그인돼 있고 사용량이 기준 아래인 계정을 씁니다 · 같은 종류끼리만 바꿉니다': 'Uses the first account from the top that is logged in and below the threshold · switches only within the same kind',
+  '사용량 모름': 'Usage unknown',
+  '{pct}% 사용': '{pct}% used',
+  '위로': 'Move up',
+  '아래로': 'Move down',
 } as Record<string, string>;
