@@ -842,3 +842,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sw-list { border-radius: 8px; }
 .sw-item:first-child { border-top-left-radius: 7px; border-top-right-radius: 7px; }
 .sw-item:last-child { border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }
+
+/* 새 버전 안내 */
+.nw-card.upd { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); margin-bottom: 12px; }
+.upd-cmd { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.upd-cmd code { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; }
+.upd-row .upd-new { color: var(--accent); }

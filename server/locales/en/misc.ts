@@ -62,4 +62,8 @@ export default {
   '팀 대화': 'Team chat',
   '팀원 진행 기록': 'Member activity',
   '하루치만': 'Last day only',
+  '새 버전 {v} 이 나왔습니다': 'Hivelane {v} is available',
+  '터미널에서 brew upgrade --cask hivelane — 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다.': 'Run brew upgrade --cask hivelane in Terminal — the server switches to the new version by itself once no team is working.',
+  '릴리스 페이지에서 새 DMG 를 받아 응용 프로그램 폴더의 Hivelane 을 바꾸세요. 일하는 팀이 없을 때 서버가 새 버전으로 저절로 다시 시작합니다.': 'Download the new DMG from the releases page and replace Hivelane in your Applications folder. The server switches to the new version by itself once no team is working.',
+  '저장소에서 git pull 후 npm run service:restart 를 실행하세요.': 'In the repository, run git pull and then npm run service:restart.',
 } as Record<string, string>;

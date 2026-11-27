@@ -8,6 +8,7 @@ import type { PlanUsage } from '../po/usage.ts';
 import type { AuthLogin } from '../po/auth.ts';
 import type { AccountManager } from '../accounts.ts';
 import type { BackupManager } from '../backup/index.ts';
+import type { UpdateChecker } from '../updates.ts';
 import type { GitCleanWatcher } from '../projects/cleanwatch.ts';
 import { readPatch } from '../projects/archive.ts';
 import { run } from '../util.ts';
@@ -36,7 +37,7 @@ import type { Priority, StateSnapshot, TemplateRole } from '../../shared/types.t
 
 const log = logger('http');
 
-export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager; backups?: BackupManager }
+export interface AppDeps { cfg: AppConfig; store: Store; orch: Orchestrator; engine: Engine; po: PoAgent; search: Search; notifier: Notifier; prs?: PrWatcher; repos?: RepoWatcher; scripts?: ScriptRunner; usage?: PlanUsage; auth?: AuthLogin; gitClean?: GitCleanWatcher; ollama?: OllamaManager; accounts?: AccountManager; backups?: BackupManager; updates?: UpdateChecker }
 type Env = { Bindings: HttpBindings; Variables: { access: 'local' | 'remote'; login: string | null } };
 
 /** 지시·답·총괄 대화 한 번에 보낼 수 있는 글자 수(긴 로그·명세 붙여넣기도 되게) · 상시 지시서 */
@@ -137,7 +138,7 @@ export function createApp(d: AppDeps): Hono<Env> {
   /* ---------- 상태·스트림 ---------- */
   app.get('/api/state', (c) => {
     const snap: StateSnapshot = {
-      version: VERSION, access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, gitClean: d.gitClean?.summary ?? { remove: 0, ask: 0, takenAt: null, running: false }, projects: store.listProjects(), templates: store.listTemplates(),
+      version: VERSION, update: d.updates?.view(), access: c.get('access'), settings: store.getSettings(), resource: engine.last, usage: d.usage?.last ?? { available: false, plan: null, windows: [], takenAt: null, error: null }, gitClean: d.gitClean?.summary ?? { remove: 0, ask: 0, takenAt: null, running: false }, projects: store.listProjects(), templates: store.listTemplates(),
       teams: snapshotTeams(store.listTeams()).map((t) => ({ ...store.teamView(t), resume_grace_until: orch.graceUntil(t.id) })), finishedCount: store.finishedCount(), proposals: store.listProposals(), poBusy: po.busy, knowledgeCount: store.knowledgeCount(), poUnread: store.poUnread(), prs: d.prs?.prs ?? [], repos: d.repos?.repos ?? [], scripts: d.scripts?.list() ?? [], prErrors: d.prs?.problems ?? {}, vapidPublicKey: notifier.vapidPublicKey(),
     };
     return c.json(snap);
@@ -558,6 +559,9 @@ export function createApp(d: AppDeps): Hono<Env> {
     return c.json({ ok: true });
   });
   app.get('/api/health', (c) => c.json({ ok: true, version: VERSION, build: webBuild(cfg.webDist) }));
+  /* ---------- 새 버전 ---------- */
+  app.get('/api/update', (c) => { if (!d.updates) throw new HttpError(404, 'no update checker'); return c.json(d.updates.view()); });
+  app.post('/api/update/check', async (c) => { if (!d.updates) throw new HttpError(404, 'no update checker'); return c.json(await d.updates.check()); });
 
   /* ---------- 화면 ---------- */
   if (existsSync(cfg.webDist)) {

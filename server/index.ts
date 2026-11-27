@@ -25,6 +25,7 @@ import { seedTemplates, Store } from './store.ts';
 import { Orchestrator } from './teams/orchestrator.ts';
 import { createApp } from './http/app.ts';
 import { applyPendingRestore, BackupManager } from './backup/index.ts';
+import { UpdateChecker } from './updates.ts';
 
 const cfg = loadConfig();
 ensureDirs(cfg);
@@ -86,7 +87,10 @@ const backups = new BackupManager({
   exit: underLaunchd ? () => void shutdown('restore') : undefined,
 });
 backups.start();
-const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama, accounts, backups });
+// 새 버전 확인(GitHub 최신 릴리스, 시작 때·6시간마다) → 화면·메뉴 막대에 안내, 버전마다 알림 한 번
+const updates = new UpdateChecker({ store, onChange: () => bus.emitEvent({ type: 'state', reason: 'update' }), notify: (title, body) => void notifier.send({ title, body, level: 'info', url: '/#home', tag: 'update' }) });
+updates.start();
+const app = createApp({ cfg, store, orch, engine, po, search, notifier, prs, repos, scripts, usage, auth, gitClean, ollama, accounts, backups, updates });
 const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port }, (info) => {
   log.info(`Hivelane 관제실 http://${cfg.host}:${info.port} · 데이터 ${cfg.home}`);
 });
@@ -122,6 +126,7 @@ async function shutdown(sig: string) {
   closing = true;
   log.info(`${sig} 받음 · 종료`);
   engine.stop();
+  updates.stop();
   ollama.stop();
   backups.stop();
   caffeinate?.kill();

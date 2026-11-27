@@ -319,8 +319,26 @@ export interface ScriptView {
   last_run: ScriptRunView | null;
 }
 
+/** 설치 방식: Homebrew cask · DMG 로 옮긴 맥 앱 · 저장소에서 직접 */
+export type InstallKind = 'brew' | 'app' | 'source';
+
+/** 새 버전 확인 결과(GitHub 최신 릴리스) */
+export interface UpdateView {
+  current: string;
+  latest: string | null;
+  hasUpdate: boolean;
+  url: string | null;
+  publishedAt: string | null;
+  notes: string | null;
+  checkedAt: string | null;
+  error: string | null;
+  install: InstallKind;
+}
+
 export interface StateSnapshot {
   version: string;
+  /** 새 버전 확인(없으면 아직 확인 기능이 없는 서버) */
+  update?: UpdateView;
   access: 'local' | 'remote';
   settings: Settings;
   resource: ResourceView;

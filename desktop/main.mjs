@@ -207,7 +207,7 @@ async function teamSummary() {
     const needTeams = live.filter((t) => asks(t) || ['waiting_human', 'failed', 'down'].includes(t.state));
     const proposals = (snap.proposals ?? []).filter((p) => p.status === 'pending').length;
     const working = live.filter((t) => ['running', 'queued', 'reviving'].includes(t.state));
-    return { need: needTeams.length + proposals, needTeams, proposals, working, poBusy: !!snap.poBusy };
+    return { need: needTeams.length + proposals, needTeams, proposals, working, poBusy: !!snap.poBusy, update: snap.update ?? null };
   } catch { return null; }
 }
 
@@ -256,6 +256,7 @@ async function refreshTray() {
   const workItems = (sum?.working ?? []).slice(0, 6).map((t) => ({ label: `   ${t.title ?? t.name ?? t.id}`, click: () => void openAt(`#team-${t.id}`) }));
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: up ? L('● 서버 실행 중', '● Server running') : L('○ 서버 멈춤 — 눌러서 시작 화면 열기', '○ Server stopped — click to open setup'), click: () => void openMain() },
+    ...(sum?.update?.hasUpdate ? [{ label: L(`⬆ 새 버전 ${sum.update.latest} — 업데이트 방법 보기`, `⬆ Hivelane ${sum.update.latest} available — how to update`), click: () => void openAt('#settings') }] : []),
     ...(sum?.need ? [{ type: 'separator' }, { label: L(`확인할 것 ${sum.need}개`, `Needs you: ${sum.need}`), click: () => void openAt('#home') }, ...(sum.proposals ? [{ label: L(`   총괄 제안 승인 ${sum.proposals}건`, `   Lead proposals to approve: ${sum.proposals}`), click: () => void openAt('#po') }] : []), ...needItems] : []),
     ...(workingN ? [{ type: 'separator' }, { label: L(`일하는 중 ${workingN}`, `Working: ${workingN}`), click: () => void openAt('#home') }, ...(sum?.poBusy ? [{ label: L('   총괄 — 생각 중', '   Lead — thinking'), click: () => void openAt('#po') }] : []), ...workItems] : []),
     { type: 'separator' },

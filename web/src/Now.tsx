@@ -2,6 +2,7 @@ import type { StateSnapshot, TeamView } from '../../shared/types.ts';
 import { asks, dotOf, isApproval, nowCount } from './chan.ts';
 import { PrRow } from './Prs.tsx';
 import { t } from './i18n.ts';
+import { UpdateBanner } from './Update.tsx';
 import { act, api, chat, clock, go, refreshState, useBox } from './store.ts';
 
 const STAGE = [t('기획'), t('구현'), t('검사'), t('보고')];
@@ -77,6 +78,8 @@ export function Now({ snap }: { snap: StateSnapshot }) {
         <span className="muted">{need ? t('답·결정이 필요한 것 {n}', { n: need }) : t('답할 것 없음')} · {t('새 소식 {n}', { n: news })}</span>
         {news > 0 && <button type="button" className="link-btn" onClick={() => void allRead()}>{t('모두 읽음으로')}</button>}
       </header>
+
+      <UpdateBanner snap={snap} />
 
       <div className="nw-tiles">
         <button type="button" className={`nw-tile${need ? ' ask' : ''}`} onClick={() => document.getElementById('nw-need')?.scrollIntoView({ behavior: 'smooth' })}><b>{need}</b><span>{t('결정 기다림')}</span></button>

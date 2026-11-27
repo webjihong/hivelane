@@ -1,4 +1,5 @@
 import { lang, locale, setLang, t, tn } from './i18n.ts';
+import { VersionRow } from './Update.tsx';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EngineSettings, Model, OllamaView, Project, SearchStatusView, StorageView, Settings as SettingsT, StateSnapshot, TeamView } from '../../shared/types.ts';
 import { act, api, isDesktopApp, refreshState, toast } from './store.ts';
@@ -912,7 +913,7 @@ export function Settings({ snap, tab = 'engine' }: { snap: StateSnapshot; tab?: 
           </div>
         </Section>}
       </div>
-      <p className="note-sample">Hivelane {snap.version} · {ro ? t('원격 접속') : t('로컬 접속')}</p>
+      <VersionRow snap={snap} ro={ro} />
     </>
   );
 }
